@@ -92,8 +92,8 @@ SECTOR_TICKERS = {
 }
 
 ALL_SECTORS       = list(SECTOR_ETFS.keys())
-RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary"}
-REFLATION_SECTORS = {"Energy", "Materials", "Industrials"}
+RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary", "Industrials"}
+REFLATION_SECTORS = {"Energy", "Materials"}
 DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
 
 PERM_LIMITS = {
@@ -193,10 +193,19 @@ def calc_layer0(close: pd.DataFrame) -> dict:
         if   r["tlt_ret_1m"] >  0.01: r["tlt_direction"] = "Rising"
         elif r["tlt_ret_1m"] < -0.01: r["tlt_direction"] = "Declining"
         else:                          r["tlt_direction"] = "Flat"
+
+        # TLT + SPY combined regime confirmation (Signal 3)
+        tlt_rising = r["tlt_direction"] == "Rising"
+        spy_rising = r.get("spy_ret_1m", 0) > 0
+        if   tlt_rising and spy_rising:       r["tlt_spy_signal"] = "TLT ↑ + SPY ↑ → Risk-on confirmed"
+        elif not tlt_rising and spy_rising:   r["tlt_spy_signal"] = "TLT ↓ + SPY ↑ → Reflation regime"
+        elif tlt_rising and not spy_rising:   r["tlt_spy_signal"] = "TLT ↑ + SPY ↓ → Deflationary — reduce significantly"
+        else:                                 r["tlt_spy_signal"] = "TLT ↓ + SPY ↓ → Stagflation / liquidity crisis"
     else:
         r["tlt_above_50"]  = None
         r["tlt_ret_1m"]    = None
         r["tlt_direction"] = "N/A"
+        r["tlt_spy_signal"] = "N/A"
 
     # Liquidity: HYG / IEF ratio
     hyg, ief = s("HYG"), s("IEF")
@@ -512,6 +521,7 @@ def main():
         "fed_liquidity": "Not set",
         "drawdown_state": "At or near peak — full risk",
         "lei_signal":    "Not set",
+        "taylor_rule":   "Not set",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -558,6 +568,18 @@ def main():
             index=["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"].index(
                 st.session_state.lei_signal
             ),
+        )
+
+        _taylor_opts = [
+            "Not set",
+            "Positive >1% — Fed too loose ⚠️",
+            "Near zero (−1% to +1%) — neutral",
+            "Negative <−1% — Fed too tight ✅",
+        ]
+        st.session_state.taylor_rule = st.selectbox(
+            "Taylor Rule Deviation (monthly)",
+            _taylor_opts,
+            index=_taylor_opts.index(st.session_state.taylor_rule),
         )
 
         st.divider()
@@ -708,6 +730,8 @@ def main():
                  "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
                 {"Signal": "TLT vs 50d MA",
                  "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
+                {"Signal": "Bond/SPY Regime Signal",
+                 "Value": l0.get("tlt_spy_signal", "N/A")},
                 {"Signal": "HYG/IEF Credit Spread",
                  "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Ratio rising / stable'})" if hyg_r else "N/A"},
                 {"Signal": "VIX",
@@ -720,6 +744,7 @@ def main():
             sig_rows = [
                 {"Signal": "EPS Revisions (FactSet)",    "Value": st.session_state.eps_signal},
                 {"Signal": "Fed Net Liquidity (jlb05013)","Value": st.session_state.fed_liquidity},
+                {"Signal": "Taylor Rule Deviation",      "Value": st.session_state.taylor_rule},
                 {"Signal": "Drawdown from Peak Equity",  "Value": st.session_state.drawdown_state},
             ]
             st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
