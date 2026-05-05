@@ -572,43 +572,48 @@ def main():
         font-weight: 700 !important;
         letter-spacing: 0.09em !important;
         text-transform: uppercase !important;
-        border-bottom: 1px solid #374151;
+        border-bottom: 1px solid #2d4a6e;
         padding-bottom: 7px;
         margin-top: 2px !important;
         margin-bottom: 12px !important;
     }
 
-    /* Metric cards */
+    /* Top-level metric cards (Regime, Permission, SPY etc.) — light gray */
     [data-testid="stMetric"] {
-        background: #1f2937;
-        border: 1px solid #374151;
-        border-radius: 10px;
+        background: #2d3748 !important;
+        border: 1px solid #4a5568 !important;
+        border-radius: 10px !important;
         padding: 12px 16px !important;
     }
     [data-testid="stMetricLabel"] > div {
         font-size: 0.70rem !important;
-        color: #9ca3af !important;
+        color: #a0aec0 !important;
         letter-spacing: 0.05em !important;
         text-transform: uppercase !important;
     }
     [data-testid="stMetricValue"] > div {
         font-size: 1.3rem !important;
         font-weight: 700 !important;
+        color: #f7fafc !important;
     }
 
-    /* Bordered containers — card style */
+    /* Section cards — lighter blue, contrasts with dark page background */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
-        border: 1px solid #2d3748 !important;
+        border: 1px solid #2d4a6e !important;
         padding: 16px 20px !important;
-        background: #0f172a !important;
+        background-color: #162843 !important;
     }
 
-    /* Alerts */
-    [data-testid="stAlert"] { border-radius: 8px !important; }
+    /* Alert boxes — gray outline, muted fill */
+    [data-testid="stAlert"] {
+        border-radius: 8px !important;
+        background-color: rgba(0, 0, 0, 0.25) !important;
+        border: 1px solid #4b5563 !important;
+    }
 
     /* Dividers */
-    hr { border-color: #2d3748 !important; margin: 0.75rem 0 !important; }
+    hr { border-color: #2d4a6e !important; margin: 0.75rem 0 !important; }
 
     /* Dataframe outer rounding */
     [data-testid="stDataFrame"] > div { border-radius: 8px; overflow: hidden; }
