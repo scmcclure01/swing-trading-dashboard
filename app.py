@@ -313,7 +313,8 @@ def score_recession_composite(fred: dict, lei_manual: str) -> list:
         })
 
     # Conference Board LEI — manual
-    lei_ok = lei_manual not in ["6mo declining ⚠️", "Not set"]
+    # "Not set" = unknown/skip (don't count as flag). Only flag if explicitly declining.
+    lei_ok = lei_manual != "6mo declining ⚠️"
     indicators.append({
         "name":      "Conference Board LEI",
         "value":     lei_manual,
