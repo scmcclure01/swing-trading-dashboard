@@ -15,6 +15,12 @@ from ta.trend import MACD as MACDIndicator
 import warnings
 warnings.filterwarnings("ignore")
 
+try:
+    from fredapi import Fred
+    FRED_AVAILABLE = True
+except ImportError:
+    FRED_AVAILABLE = False
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
@@ -85,8 +91,8 @@ SECTOR_TICKERS = {
     ],
 }
 
-ALL_SECTORS      = list(SECTOR_ETFS.keys())
-RISK_ON_SECTORS  = {"Technology", "Financials", "Consumer Discretionary"}
+ALL_SECTORS       = list(SECTOR_ETFS.keys())
+RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary"}
 REFLATION_SECTORS = {"Energy", "Materials", "Industrials"}
 DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
 
@@ -96,32 +102,60 @@ PERM_LIMITS = {
     "Red":    {"max_pos":  5, "risk_lo": 0.00, "risk_hi": 0.00, "heat": 3},
 }
 
+SETUP_STYLE = {
+    "Green":  "Momentum breakouts",
+    "Yellow": "Pullbacks to 20d / 50d MA",
+    "Red":    "No new entries — protect capital",
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
-# DATA FETCHING  (cached 1 hour)
+# DATA FETCHING
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_macro_data():
-    """SPY, sector ETFs, TLT, HYG, IEF for Layer 0."""
+    """SPY, sector ETFs, TLT, HYG, IEF — 1 year."""
     tickers = ["SPY", "TLT", "HYG", "IEF"] + list(SECTOR_ETFS.values())
-    raw = yf.download(tickers, period="1y", auto_adjust=True, progress=False)
+    raw   = yf.download(tickers, period="1y", auto_adjust=True, progress=False)
     close = raw["Close"]
-    # VIX fetched separately — ticker has special chars that can cause issues
     try:
         vix = yf.download("^VIX", period="1y", auto_adjust=True, progress=False)
-        close["^VIX"] = vix["Close"] if isinstance(vix["Close"], pd.Series) else vix["Close"].squeeze()
+        close["^VIX"] = vix["Close"].squeeze()
     except Exception:
         pass
     return close
 
 
+@st.cache_data(ttl=86400, show_spinner=False)   # FRED updates daily/monthly — cache 24h
+def fetch_fred_data():
+    """Pull recession composite indicators from FRED."""
+    if not FRED_AVAILABLE:
+        return {"error": "fredapi package not installed"}
+    try:
+        api_key = st.secrets.get("FRED_API_KEY", "")
+        if not api_key:
+            return {"error": "Add FRED_API_KEY to Streamlit Secrets to enable recession composite"}
+        fred = Fred(api_key=api_key)
+
+        def latest(series_id, start="2023-01-01"):
+            s = fred.get_series(series_id, observation_start=start).dropna()
+            return float(s.iloc[-1]), str(s.index[-1].date())
+
+        data = {}
+        data["sahm"],    data["sahm_date"]    = latest("SAHMREALTIME")
+        data["cfnai"],   data["cfnai_date"]   = latest("CFNAIMA3")
+        data["t10y3m"],  data["t10y3m_date"]  = latest("T10Y3M")
+        data["recprob"], data["recprob_date"] = latest("RECPROUSM156N")
+        return data
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_screener_data(sectors_key: str):
-    """Download 1-year OHLCV for all tickers in the given sectors.
-    sectors_key is a sorted comma-joined string so it's hashable for caching.
-    """
+    """Download 1-year OHLCV for all tickers in the given sectors."""
     sectors = sectors_key.split(",")
     all_t   = [t for s in sectors for t in SECTOR_TICKERS.get(s, [])]
-    raw = yf.download(all_t + ["SPY"], period="1y", auto_adjust=True, progress=False)
+    raw    = yf.download(all_t + ["SPY"], period="1y", auto_adjust=True, progress=False)
     close  = raw["Close"]
     volume = raw["Volume"]
     return close, volume, all_t
@@ -137,38 +171,50 @@ def calc_layer0(close: pd.DataFrame) -> dict:
         return close[name].dropna() if name in close.columns else pd.Series(dtype=float)
 
     spy = s("SPY")
-    if len(spy) < 63:
+    if len(spy) < 126:
         return {"error": "Insufficient SPY data — try refreshing."}
 
-    # SPY
+    # SPY two-speed (ROC 21 = 1 month, ROC 126 = 6 month)
     r["spy_price"]    = float(spy.iloc[-1])
     r["spy_ma20"]     = float(spy.rolling(20).mean().iloc[-1])
     r["spy_ma50"]     = float(spy.rolling(50).mean().iloc[-1])
     r["spy_above_20"] = bool(spy.iloc[-1] > spy.rolling(20).mean().iloc[-1])
     r["spy_above_50"] = bool(spy.iloc[-1] > spy.rolling(50).mean().iloc[-1])
-    r["spy_ret_1m"]   = float(spy.iloc[-1] / spy.iloc[-21] - 1)
-    r["spy_ret_3m"]   = float(spy.iloc[-1] / spy.iloc[-63] - 1)
+    r["spy_ret_1m"]   = float(spy.iloc[-1] / spy.iloc[-21]  - 1)
+    r["spy_ret_3m"]   = float(spy.iloc[-1] / spy.iloc[-63]  - 1)
+    r["spy_ret_6m"]   = float(spy.iloc[-1] / spy.iloc[-126] - 1)
 
     # TLT
     tlt = s("TLT")
-    r["tlt_above_50"] = bool(tlt.iloc[-1] > tlt.rolling(50).mean().iloc[-1]) if len(tlt) >= 50 else None
-    r["tlt_ret_1m"]   = float(tlt.iloc[-1] / tlt.iloc[-21] - 1) if len(tlt) >= 21 else None
+    if len(tlt) >= 21:
+        r["tlt_above_50"] = bool(tlt.iloc[-1] > tlt.rolling(50).mean().iloc[-1]) if len(tlt) >= 50 else None
+        r["tlt_ret_1m"]   = float(tlt.iloc[-1] / tlt.iloc[-21] - 1)
+        # 4-week direction: flat if |ret| < 1%
+        if   r["tlt_ret_1m"] >  0.01: r["tlt_direction"] = "Rising"
+        elif r["tlt_ret_1m"] < -0.01: r["tlt_direction"] = "Declining"
+        else:                          r["tlt_direction"] = "Flat"
+    else:
+        r["tlt_above_50"]  = None
+        r["tlt_ret_1m"]    = None
+        r["tlt_direction"] = "N/A"
 
-    # Liquidity: HYG / IEF ratio trend
+    # Liquidity: HYG / IEF ratio
     hyg, ief = s("HYG"), s("IEF")
     if len(hyg) >= 21 and len(ief) >= 21:
-        ief_a = ief.reindex(hyg.index).ffill()
-        ratio = (hyg / ief_a).dropna()
+        ief_a  = ief.reindex(hyg.index).ffill()
+        ratio  = (hyg / ief_a).dropna()
         r["hyg_ief_ratio"]    = float(ratio.iloc[-1])
+        r["hyg_ief_1m_ago"]   = float(ratio.iloc[-21])
         r["liquidity_tighten"] = bool(ratio.iloc[-1] < ratio.iloc[-21])
     else:
         r["hyg_ief_ratio"]    = None
+        r["hyg_ief_1m_ago"]   = None
         r["liquidity_tighten"] = False
 
     # VIX
     vix = s("^VIX")
-    r["vix"]         = float(vix.iloc[-1]) if len(vix) > 0 else None
-    r["vix_elevated"] = bool(r["vix"] > 25) if r["vix"] else False
+    r["vix"]          = float(vix.iloc[-1]) if len(vix) > 0 else None
+    r["vix_elevated"]  = bool(r["vix"] > 25) if r["vix"] else False
 
     # Sector RS vs SPY
     sector_rs = {}
@@ -182,31 +228,28 @@ def calc_layer0(close: pd.DataFrame) -> dict:
         if len(ep_a) < 63:
             continue
 
-        rs_line    = ep_a / sa
-        rs_1m      = float(ep_a.iloc[-1]/ep_a.iloc[-21] - 1) - float(sa.iloc[-1]/sa.iloc[-21] - 1)
-        rs_3m      = float(ep_a.iloc[-1]/ep_a.iloc[-63] - 1) - float(sa.iloc[-1]/sa.iloc[-63] - 1)
-        rs_new_hi  = bool(rs_line.iloc[-1] >= rs_line.iloc[-63:].max() * 0.98)
-        ret_abs_1m = float(ep_a.iloc[-1]/ep_a.iloc[-21] - 1)
-        ret_abs_3m = float(ep_a.iloc[-1]/ep_a.iloc[-63] - 1)
+        rs_line   = ep_a / sa
+        rs_1m     = float(ep_a.iloc[-1]/ep_a.iloc[-21] - 1) - float(sa.iloc[-1]/sa.iloc[-21] - 1)
+        rs_3m     = float(ep_a.iloc[-1]/ep_a.iloc[-63] - 1) - float(sa.iloc[-1]/sa.iloc[-63] - 1)
+        rs_new_hi = bool(rs_line.iloc[-1] >= rs_line.iloc[-63:].max() * 0.98)
 
-        if rs_1m > 0 and rs_3m > 0:
-            trend = "Leading"
-        elif rs_1m > 0 or rs_3m > 0:
-            trend = "Mixed"
-        else:
-            trend = "Lagging"
+        if   rs_1m > 0 and rs_3m > 0: trend = "Leading"
+        elif rs_1m > 0 or  rs_3m > 0: trend = "Mixed"
+        else:                          trend = "Lagging"
 
         sector_rs[sector] = {
             "etf": etf, "price": round(float(ep_a.iloc[-1]), 2),
-            "ret_1m": ret_abs_1m, "ret_3m": ret_abs_3m,
+            "ret_1m": float(ep_a.iloc[-1]/ep_a.iloc[-21] - 1),
+            "ret_3m": float(ep_a.iloc[-1]/ep_a.iloc[-63] - 1),
             "rs_1m": rs_1m, "rs_3m": rs_3m,
             "rs_new_hi": rs_new_hi, "trend": trend,
         }
 
     r["sector_rs"]       = sector_rs
     r["leading_sectors"] = [s for s, v in sector_rs.items() if v["trend"] == "Leading"]
+    r["mixed_sectors"]   = [s for s, v in sector_rs.items() if v["trend"] == "Mixed"]
 
-    # Regime classification
+    # Regime
     leading = set(r["leading_sectors"])
     ro = len(leading & RISK_ON_SECTORS)
     re = len(leading & REFLATION_SECTORS)
@@ -222,6 +265,67 @@ def calc_layer0(close: pd.DataFrame) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RECESSION COMPOSITE
+# ─────────────────────────────────────────────────────────────────────────────
+def score_recession_composite(fred: dict, lei_manual: str) -> list:
+    """
+    Returns a list of indicator dicts with keys:
+    name, value, as_of, threshold, ok (bool), note
+    """
+    indicators = []
+
+    if "error" not in fred:
+        # Chauvet-Piger — flag if > 50%
+        cp = fred.get("recprob")
+        indicators.append({
+            "name":      "Chauvet-Piger Recession Prob",
+            "value":     f"{cp:.1f}%" if cp is not None else "N/A",
+            "as_of":     fred.get("recprob_date", ""),
+            "threshold": "< 50%",
+            "ok":        (cp < 50) if cp is not None else True,
+        })
+        # Sahm Rule — flag if ≥ 0.50
+        sahm = fred.get("sahm")
+        indicators.append({
+            "name":      "Sahm Rule",
+            "value":     f"{sahm:.2f}" if sahm is not None else "N/A",
+            "as_of":     fred.get("sahm_date", ""),
+            "threshold": "< 0.50",
+            "ok":        (sahm < 0.50) if sahm is not None else True,
+        })
+        # CFNAI 3-mo MA — flag if ≤ -0.70
+        cfnai = fred.get("cfnai")
+        indicators.append({
+            "name":      "CFNAI 3-mo MA",
+            "value":     f"{cfnai:.2f}" if cfnai is not None else "N/A",
+            "as_of":     fred.get("cfnai_date", ""),
+            "threshold": "> -0.70",
+            "ok":        (cfnai > -0.70) if cfnai is not None else True,
+        })
+        # 10Y-3M Yield Curve — flag if < 0
+        t10y3m = fred.get("t10y3m")
+        indicators.append({
+            "name":      "10Y-3M Yield Curve",
+            "value":     f"{t10y3m:+.2f}%" if t10y3m is not None else "N/A",
+            "as_of":     fred.get("t10y3m_date", ""),
+            "threshold": "> 0% (uninverted)",
+            "ok":        (t10y3m >= 0) if t10y3m is not None else True,
+        })
+
+    # Conference Board LEI — manual
+    lei_ok = lei_manual not in ["6mo declining ⚠️", "Not set"]
+    indicators.append({
+        "name":      "Conference Board LEI",
+        "value":     lei_manual,
+        "as_of":     "manual",
+        "threshold": "Not declining 6mo",
+        "ok":        lei_ok,
+    })
+
+    return indicators
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 1
 # ─────────────────────────────────────────────────────────────────────────────
 def calc_layer1(l0: dict, override: str = "Auto") -> tuple:
@@ -229,9 +333,9 @@ def calc_layer1(l0: dict, override: str = "Auto") -> tuple:
         perm = override
     elif l0.get("liquidity_tighten") and l0.get("vix_elevated"):
         perm = "Red"
-    elif l0.get("spy_above_50") and l0.get("spy_ret_1m", 0) > 0:
+    elif l0.get("spy_ret_1m", 0) > 0 and l0.get("spy_ret_6m", 0) > 0:
         perm = "Green"
-    elif l0.get("spy_above_50") or l0.get("spy_ret_1m", 0) > 0:
+    elif l0.get("spy_ret_1m", 0) > 0 or l0.get("spy_ret_6m", 0) > 0:
         perm = "Yellow"
     else:
         perm = "Red"
@@ -242,13 +346,9 @@ def calc_layer1(l0: dict, override: str = "Auto") -> tuple:
 # LAYER 2 SCREENER
 # ─────────────────────────────────────────────────────────────────────────────
 def run_screener(
-    close: pd.DataFrame,
-    volume: pd.DataFrame,
-    tickers: list,
-    ticker_sector: dict,
-    spy: pd.Series,
-    min_vol: int = 500_000,
-    rs_lookback: int = 63,
+    close: pd.DataFrame, volume: pd.DataFrame,
+    tickers: list, ticker_sector: dict, spy: pd.Series,
+    min_vol: int = 500_000, rs_lookback: int = 63,
 ) -> pd.DataFrame:
     rows = []
     for t in tickers:
@@ -259,12 +359,12 @@ def run_screener(
         if len(px) < 63:
             continue
 
-        price    = float(px.iloc[-1])
-        ma20     = float(px.rolling(20).mean().iloc[-1])
-        ma50     = float(px.rolling(50).mean().iloc[-1])
-        avg_vol  = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
-        ret_1m   = float(px.iloc[-1] / px.iloc[-21] - 1)
-        ret_3m   = float(px.iloc[-1] / px.iloc[-63] - 1)
+        price   = float(px.iloc[-1])
+        ma20    = float(px.rolling(20).mean().iloc[-1])
+        ma50    = float(px.rolling(50).mean().iloc[-1])
+        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
+        ret_1m  = float(px.iloc[-1] / px.iloc[-21] - 1)
+        ret_3m  = float(px.iloc[-1] / px.iloc[-63] - 1)
 
         spy_a     = spy.reindex(px.index).ffill()
         rs_line   = px / spy_a
@@ -289,27 +389,20 @@ def run_screener(
         passes = above_20 and above_50 and vol_ok and rs_new_hi and two_spd == "FULL"
 
         rows.append({
-            "Ticker":    t,
-            "Sector":    ticker_sector.get(t, ""),
-            "Price":     round(price, 2),
-            "vs 20MA":   above_20,
-            "vs 50MA":   above_50,
-            "1M Ret":    ret_1m,
-            "3M Ret":    ret_3m,
-            "RS Hi":     rs_new_hi,
-            "RSI":       round(rsi_v, 1),
-            "MACD":      m_bull,
-            "MACD Hist": round(m_hist, 4),
+            "Ticker": t, "Sector": ticker_sector.get(t, ""),
+            "Price": round(price, 2),
+            "vs 20MA": above_20, "vs 50MA": above_50,
+            "1M Ret": ret_1m, "3M Ret": ret_3m,
+            "RS Hi": rs_new_hi, "RSI": round(rsi_v, 1),
+            "MACD": m_bull, "MACD Hist": round(m_hist, 4),
             "Avg Vol(M)": round(avg_vol / 1e6, 1),
-            "2-Speed":   two_spd,
-            "PASS":      passes,
+            "2-Speed": two_spd, "PASS": passes,
         })
-
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHART BUILDER  (cached per ticker)
+# CHART BUILDER
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_chart(ticker: str):
@@ -343,7 +436,6 @@ def build_chart(ticker: str):
         vertical_spacing=0.025,
         subplot_titles=[f"{ticker} — Price", "Volume", "RS vs SPY", "RSI (14)", "MACD"],
     )
-
     fig.add_trace(go.Candlestick(
         x=dates, open=tl(op), high=tl(hi), low=tl(lo), close=tl(px),
         increasing_line_color="#22c55e", decreasing_line_color="#ef4444", showlegend=False,
@@ -353,7 +445,6 @@ def build_chart(ticker: str):
 
     vol_c = ["#22c55e" if (c or 0) >= (o or 0) else "#ef4444" for c, o in zip(tl(px), tl(op))]
     fig.add_trace(go.Bar(x=dates, y=tl(vol), marker_color=vol_c, opacity=0.7, showlegend=False), row=2, col=1)
-
     fig.add_trace(go.Scatter(x=dates, y=tl(rs),  line=dict(color="#a78bfa", width=1.5), showlegend=False), row=3, col=1)
     fig.add_trace(go.Scatter(x=dates, y=tl(rsi), line=dict(color="#38bdf8", width=1.5), showlegend=False), row=4, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", line_width=1, row=4, col=1)
@@ -365,10 +456,8 @@ def build_chart(ticker: str):
     fig.add_trace(go.Scatter(x=dates, y=tl(mg), name="Signal", line=dict(color="#a78bfa", width=1.5), showlegend=False), row=5, col=1)
 
     fig.update_layout(
-        height=750,
-        paper_bgcolor="#111827", plot_bgcolor="#1f2937",
-        font=dict(color="#d1d5db", size=11),
-        margin=dict(l=50, r=20, t=40, b=20),
+        height=750, paper_bgcolor="#111827", plot_bgcolor="#1f2937",
+        font=dict(color="#d1d5db", size=11), margin=dict(l=50, r=20, t=40, b=20),
         xaxis_rangeslider_visible=False,
         legend=dict(orientation="h", x=0, y=1.02, bgcolor="rgba(0,0,0,0)"),
     )
@@ -382,22 +471,18 @@ def build_chart(ticker: str):
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
-def pct(v):   return f"{v*100:+.1f}%"
-def icon(v):  return "✅" if v else "❌"
-def macd(v):  return "▲" if v else "▼"
+def pct(v):  return f"{v*100:+.1f}%"
+def icon(v): return "✅" if v else "❌"
+def macd(v): return "▲" if v else "▼"
 
 def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
     for col in ["1M Ret", "3M Ret"]:
-        if col in d.columns:
-            d[col] = d[col].apply(pct)
+        if col in d.columns: d[col] = d[col].apply(pct)
     for col in ["vs 20MA", "vs 50MA", "RS Hi"]:
-        if col in d.columns:
-            d[col] = d[col].apply(icon)
-    if "MACD" in d.columns:
-        d["MACD"] = d["MACD"].apply(macd)
-    if "Avg Vol(M)" in d.columns:
-        d["Avg Vol(M)"] = d["Avg Vol(M)"].apply(lambda x: f"{x:.1f}M")
+        if col in d.columns: d[col] = d[col].apply(icon)
+    if "MACD"      in d.columns: d["MACD"]      = d["MACD"].apply(macd)
+    if "Avg Vol(M)" in d.columns: d["Avg Vol(M)"] = d["Avg Vol(M)"].apply(lambda x: f"{x:.1f}M")
     return d.drop(columns=["PASS", "MACD Hist"], errors="ignore")
 
 
@@ -406,7 +491,18 @@ def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
 
-    # ── SIDEBAR (static controls) ─────────────────────────────────────────────
+    # ── SESSION STATE (manual signals) ────────────────────────────────────────
+    defaults = {
+        "eps_signal":    "Not set",
+        "fed_liquidity": "Not set",
+        "drawdown_state": "At or near peak — full risk",
+        "lei_signal":    "Not set",
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    # ── SIDEBAR ───────────────────────────────────────────────────────────────
     with st.sidebar:
         st.title("📈 Controls")
         st.caption(f"Loaded: {datetime.now().strftime('%b %d, %Y  %I:%M %p')}")
@@ -415,22 +511,54 @@ def main():
             st.rerun()
 
         st.divider()
-        st.subheader("Manual Overrides")
-        regime_ov = st.selectbox(
-            "Regime",
-            ["Auto", "Risk-on", "Reflation", "Deflation", "Stagflation", "Mixed"],
+        st.subheader("Manual Signals")
+        st.caption("Set once at the start of each weekly review.")
+
+        st.session_state.eps_signal = st.selectbox(
+            "EPS Revisions (FactSet)",
+            ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"],
+            index=["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"].index(
+                st.session_state.eps_signal
+            ),
         )
-        perm_ov = st.selectbox("Permission State", ["Auto", "Green", "Yellow", "Red"])
+        st.session_state.fed_liquidity = st.selectbox(
+            "Fed Net Liquidity (TV: jlb05013)",
+            ["Not set", "Expanding ✅", "Flat / Neutral", "Contracting ⚠️"],
+            index=["Not set", "Expanding ✅", "Flat / Neutral", "Contracting ⚠️"].index(
+                st.session_state.fed_liquidity
+            ),
+        )
+        st.session_state.drawdown_state = st.selectbox(
+            "Drawdown from Peak Equity",
+            ["At or near peak — full risk", "5–10% drawdown — reduce risk",
+             "10–15% drawdown — defensive", ">15% drawdown — cash"],
+            index=["At or near peak — full risk", "5–10% drawdown — reduce risk",
+                   "10–15% drawdown — defensive", ">15% drawdown — cash"].index(
+                st.session_state.drawdown_state
+            ),
+        )
+        st.session_state.lei_signal = st.selectbox(
+            "Conference Board LEI",
+            ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"],
+            index=["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"].index(
+                st.session_state.lei_signal
+            ),
+        )
+
+        st.divider()
+        st.subheader("Overrides")
+        regime_ov = st.selectbox("Regime", ["Auto","Risk-on","Reflation","Deflation","Stagflation","Mixed"])
+        perm_ov   = st.selectbox("Permission State", ["Auto","Green","Yellow","Red"])
 
         st.divider()
         st.subheader("Screener Settings")
         min_vol   = st.number_input("Min Avg Volume", value=500_000, step=100_000, format="%d")
-        rs_lb     = st.slider("RS Lookback (days)", min_value=21, max_value=126, value=63)
+        rs_lb     = st.slider("RS Lookback (days)", 21, 126, 63)
         show_half = st.checkbox("Show Half Signal watchlist", value=True)
         show_all  = st.checkbox("Show full universe table",   value=False)
 
-    # ── LOAD MACRO DATA ───────────────────────────────────────────────────────
-    with st.spinner("Loading macro data..."):
+    # ── LOAD DATA ─────────────────────────────────────────────────────────────
+    with st.spinner("Loading market data..."):
         macro_close = fetch_macro_data()
         l0 = calc_layer0(macro_close)
 
@@ -438,20 +566,29 @@ def main():
         st.error(l0["error"])
         return
 
-    # ── DERIVE REGIME / PERMISSION ────────────────────────────────────────────
+    with st.spinner("Loading FRED indicators..."):
+        fred_data = fetch_fred_data()
+
+    # ── REGIME / PERMISSION ───────────────────────────────────────────────────
     regime = regime_ov if regime_ov != "Auto" else l0["regime"]
     perm, limits = calc_layer1(l0, perm_ov)
 
-    # Determine sectors to screen based on regime
+    # Recession composite
+    rec_indicators = score_recession_composite(fred_data, st.session_state.lei_signal)
+    rec_flags      = sum(1 for i in rec_indicators if not i["ok"])
+    rec_total      = len(rec_indicators)
+
+    # Sectors to screen
     regime_sectors = {
         "Risk-on":     list(RISK_ON_SECTORS),
         "Reflation":   list(REFLATION_SECTORS),
         "Deflation":   list(DEFENSIVE_SECTORS),
         "Stagflation": list(REFLATION_SECTORS | {"Consumer Staples", "Utilities"}),
     }
-    auto_sectors = regime_sectors.get(regime, l0.get("leading_sectors") or ALL_SECTORS)
+    # Mixed: use Leading + Mixed trend sectors for a broader but still filtered universe
+    mixed_auto = l0.get("leading_sectors", []) + l0.get("mixed_sectors", [])
+    auto_sectors = regime_sectors.get(regime, mixed_auto or ALL_SECTORS)
 
-    # Sector selector in sidebar (after we know auto_sectors)
     with st.sidebar:
         st.divider()
         st.subheader("Sectors to Screen")
@@ -459,17 +596,17 @@ def main():
             "Override if needed",
             ALL_SECTORS,
             default=auto_sectors,
-            help="Auto-set from regime. Adjust here to add/remove sectors.",
+            help="Auto-set from regime. Adjust to add/remove sectors.",
         )
     active_sectors = selected_sectors if selected_sectors else auto_sectors
 
     # ── LOAD SCREENER DATA ────────────────────────────────────────────────────
     universe_size = sum(len(SECTOR_TICKERS.get(s, [])) for s in active_sectors)
     with st.spinner(f"Loading {universe_size} stocks..."):
-        sectors_key            = ",".join(sorted(active_sectors))
+        sectors_key             = ",".join(sorted(active_sectors))
         close_sc, vol_sc, all_t = fetch_screener_data(sectors_key)
 
-    ticker_sector = {t: s for s in active_sectors for t in SECTOR_TICKERS.get(s, [])}
+    ticker_sector = {t: sec for sec in active_sectors for t in SECTOR_TICKERS.get(sec, [])}
     spy_sc        = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
 
     with st.spinner("Running screener..."):
@@ -479,10 +616,10 @@ def main():
         st.error("Screener returned no results. Check your internet connection and refresh.")
         return
 
-    passes_df = results_df[results_df["PASS"]].sort_values(["Sector", "3M Ret"], ascending=[True, False])
+    passes_df = results_df[results_df["PASS"]].sort_values(["Sector","3M Ret"], ascending=[True, False])
     half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].sort_values("3M Ret", ascending=False)
 
-    # ── TOP BAR ───────────────────────────────────────────────────────────────
+    # ── HEADER ────────────────────────────────────────────────────────────────
     st.markdown("## Swing Trading Framework")
     st.caption(f"{datetime.now().strftime('%A, %B %d, %Y')}")
 
@@ -494,67 +631,141 @@ def main():
     c5.metric("Risk / Trade",  f"{limits['risk_lo']}–{limits['risk_hi']}%" if limits["risk_hi"] > 0 else "No new trades")
     c6.metric("Max Heat",      f"{limits['heat']}%")
 
-    if   perm == "Green":  st.success(f"🟢 **GREEN** — Full deployment. Momentum bias. Up to {limits['max_pos']} positions.")
-    elif perm == "Yellow": st.warning(f"🟡 **YELLOW** — Selective. {limits['max_pos']} positions max. Reduced risk.")
-    else:                  st.error(  f"🔴 **RED** — No new entries. Protect capital.")
+    # Permission banner
+    if   perm == "Green":  st.success(f"🟢 **GREEN STATE** — Full deployment. {SETUP_STYLE['Green']}. Up to {limits['max_pos']} positions.")
+    elif perm == "Yellow": st.warning(f"🟡 **YELLOW STATE** — Selective. {SETUP_STYLE['Yellow']}. {limits['max_pos']} positions max.")
+    else:                  st.error(  f"🔴 **RED STATE** — {SETUP_STYLE['Red']}. {limits['max_pos']} positions max.")
 
     if l0.get("liquidity_tighten"):
-        st.warning("⚠️ Liquidity tightening (HYG/IEF ratio declining). Treat as override — reduce exposure.")
+        st.warning("⚠️ Liquidity tightening (HYG/IEF ratio declining). Override in effect — reduce exposure.")
+    if rec_flags >= 3:
+        st.error(f"⚠️ Recession composite elevated: {rec_flags}/{rec_total} indicators flagging.")
+    elif rec_flags >= 1:
+        st.warning(f"⚠️ Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
 
     st.divider()
 
     # ── TABS ──────────────────────────────────────────────────────────────────
     tab1, tab2, tab3 = st.tabs(["📊 Layer 0 — Macro", "🔍 Layer 2 — Screener", "📈 Charts"])
 
-    # ── TAB 1: MACRO DASHBOARD ────────────────────────────────────────────────
+    # ── TAB 1: MACRO ──────────────────────────────────────────────────────────
     with tab1:
-        col_a, col_b = st.columns(2)
+        col_l, col_r = st.columns(2)
 
-        with col_a:
-            st.subheader("SPY")
-            st.dataframe(pd.DataFrame([
-                {"Signal": "Price",          "Value": f"${l0['spy_price']:.2f}"},
-                {"Signal": "vs 20d MA",      "Value": f"{'✅' if l0['spy_above_20'] else '❌'}  ${l0['spy_ma20']:.2f}"},
-                {"Signal": "vs 50d MA",      "Value": f"{'✅' if l0['spy_above_50'] else '❌'}  ${l0['spy_ma50']:.2f}"},
-                {"Signal": "1-Month Return", "Value": pct(l0["spy_ret_1m"])},
-                {"Signal": "3-Month Return", "Value": pct(l0["spy_ret_3m"])},
-            ]), hide_index=True, use_container_width=True)
+        # ── LEFT: SPY + Bond/Liquidity ────────────────────────────────────────
+        with col_l:
+            # SPY Two-Speed
+            st.markdown("#### SPY Two-Speed Trend")
+            roc1_pos = l0["spy_ret_1m"] > 0
+            roc6_pos = l0["spy_ret_6m"] > 0
+            spy_signal = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
 
-            st.subheader("Bond & Liquidity")
-            tlt_above = l0.get("tlt_above_50")
-            tlt_ret   = l0.get("tlt_ret_1m")
-            hyg_r     = l0.get("hyg_ief_ratio")
-            vix_v     = l0.get("vix")
-            st.dataframe(pd.DataFrame([
+            s1, s2 = st.columns(2)
+            with s1:
+                st.metric(
+                    "1-Month (ROC 21)",
+                    pct(l0["spy_ret_1m"]),
+                    delta="Positive ✅" if roc1_pos else "Negative ❌",
+                    delta_color="normal" if roc1_pos else "inverse",
+                )
+            with s2:
+                st.metric(
+                    "6-Month (ROC 126)",
+                    pct(l0["spy_ret_6m"]),
+                    delta="Positive ✅" if roc6_pos else "Negative ❌",
+                    delta_color="normal" if roc6_pos else "inverse",
+                )
+
+            if   spy_signal == "GREEN": st.success(f"✅ Both positive → **GREEN signal**")
+            elif spy_signal == "RED":   st.error(  f"❌ Both negative → **RED signal**")
+            else:                       st.warning(f"⚠️ Mixed → **YELLOW signal**")
+
+            st.markdown("#### Bond & Liquidity")
+            hyg_r    = l0.get("hyg_ief_ratio")
+            hyg_ago  = l0.get("hyg_ief_1m_ago")
+            hyg_chg  = ((hyg_r / hyg_ago) - 1) * 100 if hyg_r and hyg_ago else None
+            tlt_dir  = l0.get("tlt_direction", "N/A")
+            vix_v    = l0.get("vix")
+
+            bond_rows = [
+                {"Signal": "TLT Direction (4-week)",
+                 "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
                 {"Signal": "TLT vs 50d MA",
-                 "Value":  ("✅ Above" if tlt_above else "❌ Below") if tlt_above is not None else "N/A"},
-                {"Signal": "TLT 1M Return",
-                 "Value":  pct(tlt_ret) if tlt_ret is not None else "N/A"},
-                {"Signal": "HYG/IEF Ratio",
-                 "Value":  f"{hyg_r:.3f}  {'⬇️ Tightening' if l0.get('liquidity_tighten') else '➡️ Stable'}" if hyg_r else "N/A"},
+                 "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
+                {"Signal": "HYG/IEF Credit Spread",
+                 "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Ratio rising / stable'})" if hyg_r else "N/A"},
                 {"Signal": "VIX",
-                 "Value":  f"{vix_v:.1f}  {'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'}" if vix_v else "N/A"},
-            ]), hide_index=True, use_container_width=True)
+                 "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
+            ]
+            st.dataframe(pd.DataFrame(bond_rows), hide_index=True, use_container_width=True)
 
-        with col_b:
-            st.subheader("Sector Relative Strength vs SPY")
+            # Manual signals
+            st.markdown("#### Signals (Set in Sidebar)")
+            sig_rows = [
+                {"Signal": "EPS Revisions (FactSet)",    "Value": st.session_state.eps_signal},
+                {"Signal": "Fed Net Liquidity (jlb05013)","Value": st.session_state.fed_liquidity},
+                {"Signal": "Drawdown from Peak Equity",  "Value": st.session_state.drawdown_state},
+            ]
+            st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
+
+        # ── RIGHT: Recession Composite + Sector RS ────────────────────────────
+        with col_r:
+            # Recession Composite
+            flag_color = "🟢" if rec_flags == 0 else ("🟡" if rec_flags <= 2 else "🔴")
+            st.markdown(f"#### Recession Composite &nbsp;&nbsp; {flag_color} {rec_flags}/{rec_total}")
+
+            if "error" in fred_data:
+                st.info(f"ℹ️ {fred_data['error']}")
+            else:
+                rec_rows = []
+                for ind in rec_indicators:
+                    rec_rows.append({
+                        "Indicator":  ind["name"],
+                        "Value":      ind["value"],
+                        "As of":      ind["as_of"],
+                        "Threshold":  ind["threshold"],
+                        "Status":     "✅ OK" if ind["ok"] else "⚠️ FLAG",
+                    })
+                st.dataframe(pd.DataFrame(rec_rows), hide_index=True, use_container_width=True)
+                if rec_flags == 0:
+                    st.success("Normal — full risk operations.")
+                elif rec_flags <= 2:
+                    st.warning(f"{rec_flags} indicator(s) flagging — elevated caution.")
+                else:
+                    st.error(f"{rec_flags} indicators flagging — reduce risk.")
+
+            # Sector RS
+            st.markdown("#### Sector Relative Strength vs SPY")
             sr = l0.get("sector_rs", {})
             if sr:
-                rows_sr = []
+                sr_rows = []
                 for sec, v in sr.items():
                     emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
-                    rows_sr.append({
-                        "Sector": sec,
-                        "ETF":    v["etf"],
-                        "Price":  f"${v['price']:.2f}",
-                        "1M RS":  pct(v["rs_1m"]),
-                        "3M RS":  pct(v["rs_3m"]),
-                        "RS Hi":  icon(v["rs_new_hi"]),
-                        "Status": f"{emoji} {v['trend']}",
-                        "_sort":  v["rs_3m"],
+                    sr_rows.append({
+                        "Sector":  sec,
+                        "ETF":     v["etf"],
+                        "Price":   f"${v['price']:.2f}",
+                        "1M RS":   pct(v["rs_1m"]),
+                        "3M RS":   pct(v["rs_3m"]),
+                        "RS Hi":   icon(v["rs_new_hi"]),
+                        "Status":  f"{emoji} {v['trend']}",
+                        "_sort":   v["rs_3m"],
                     })
-                sr_df = pd.DataFrame(rows_sr).sort_values("_sort", ascending=False).drop(columns=["_sort"])
-                st.dataframe(sr_df, hide_index=True, use_container_width=True, height=380)
+                sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
+                st.dataframe(sr_df, hide_index=True, use_container_width=True, height=360)
+
+        # ── THIS WEEK'S RULES ─────────────────────────────────────────────────
+        st.divider()
+        st.markdown("#### This Week's Rules")
+        rules_text = (
+            f"**Max Positions:** {limits['max_pos']}  &nbsp;|&nbsp;  "
+            f"**Risk / Trade:** {limits['risk_lo']}–{limits['risk_hi']}%  &nbsp;|&nbsp;  "
+            f"**Max Portfolio Heat:** {limits['heat']}%  &nbsp;|&nbsp;  "
+            f"**Setup Style:** {SETUP_STYLE[perm]}"
+        )
+        if   perm == "Green":  st.success(rules_text)
+        elif perm == "Yellow": st.warning(rules_text)
+        else:                  st.error(rules_text)
 
     # ── TAB 2: SCREENER ───────────────────────────────────────────────────────
     with tab2:
@@ -586,18 +797,17 @@ def main():
 
         if show_all:
             with st.expander(f"Full Universe — {len(results_df)} stocks"):
-                all_s = results_df.sort_values(["PASS", "2-Speed", "3M Ret"], ascending=[False, True, False])
+                all_s = results_df.sort_values(["PASS","2-Speed","3M Ret"], ascending=[False,True,False])
                 st.dataframe(fmt_df(all_s), hide_index=True, use_container_width=True)
 
     # ── TAB 3: CHARTS ─────────────────────────────────────────────────────────
     with tab3:
         if passes_df.empty:
-            st.info("No Full Signal candidates to chart. Run the screener first.")
+            st.info("No Full Signal candidates to chart.")
         else:
-            ticker_opts = passes_df["Ticker"].tolist()
             sel = st.selectbox(
                 "Select ticker",
-                ticker_opts,
+                passes_df["Ticker"].tolist(),
                 format_func=lambda t: f"{t}  —  {passes_df[passes_df['Ticker']==t]['Sector'].iloc[0]}",
             )
             if sel:
@@ -607,7 +817,6 @@ def main():
                 c2.metric("1M Ret", pct(row["1M Ret"]))
                 c3.metric("3M Ret", pct(row["3M Ret"]))
                 c4.metric("RSI",    f"{row['RSI']:.1f}")
-
                 with st.spinner(f"Building {sel} chart..."):
                     fig = build_chart(sel)
                 if fig:
@@ -615,12 +824,10 @@ def main():
                 else:
                     st.error(f"Could not load chart data for {sel}.")
 
-            # Show all charts toggle
             if st.checkbox("Show all Full Signal charts"):
                 for _, row in passes_df.iterrows():
                     t = row["Ticker"]
-                    label = f"{t}  —  {row['Sector']}  |  1M: {pct(row['1M Ret'])}  |  3M: {pct(row['3M Ret'])}"
-                    with st.expander(label, expanded=False):
+                    with st.expander(f"{t}  —  {row['Sector']}  |  1M: {pct(row['1M Ret'])}  |  3M: {pct(row['3M Ret'])}", expanded=False):
                         with st.spinner(f"Loading {t}..."):
                             fig = build_chart(t)
                         if fig:
