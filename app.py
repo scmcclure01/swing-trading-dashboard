@@ -329,17 +329,31 @@ def score_recession_composite(fred: dict, lei_manual: str) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 # LAYER 1
 # ─────────────────────────────────────────────────────────────────────────────
-def calc_layer1(l0: dict, override: str = "Auto") -> tuple:
+def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto") -> tuple:
+    """
+    Permission state per framework v3:
+      Green:  SPY both positive + rec composite < 2/5 + EPS not declining + no liquidity override
+      Yellow: SPY mixed OR rec composite 2-3/5 OR EPS declining
+      Red:    SPY both negative OR liquidity override OR rec composite 4+/5
+    """
     if override != "Auto":
-        perm = override
-    elif l0.get("liquidity_tighten") and l0.get("vix_elevated"):
+        return override, PERM_LIMITS[override]
+
+    roc1_pos = l0.get("spy_ret_1m", 0) > 0
+    roc6_pos = l0.get("spy_ret_6m", 0) > 0
+    liq_override = l0.get("liquidity_tighten") and l0.get("vix_elevated")
+    eps_declining = "Declining" in eps_signal
+
+    # Red — hard stops
+    if liq_override or (not roc1_pos and not roc6_pos) or rec_flags >= 4:
         perm = "Red"
-    elif l0.get("spy_ret_1m", 0) > 0 and l0.get("spy_ret_6m", 0) > 0:
-        perm = "Green"
-    elif l0.get("spy_ret_1m", 0) > 0 or l0.get("spy_ret_6m", 0) > 0:
+    # Yellow — caution conditions
+    elif rec_flags >= 2 or eps_declining or not roc1_pos or not roc6_pos:
         perm = "Yellow"
+    # Green — all clear
     else:
-        perm = "Red"
+        perm = "Green"
+
     return perm, PERM_LIMITS[perm]
 
 
@@ -572,12 +586,13 @@ def main():
 
     # ── REGIME / PERMISSION ───────────────────────────────────────────────────
     regime = regime_ov if regime_ov != "Auto" else l0["regime"]
-    perm, limits = calc_layer1(l0, perm_ov)
 
-    # Recession composite
+    # Recession composite must be scored before Layer 1 (feeds permission state)
     rec_indicators = score_recession_composite(fred_data, st.session_state.lei_signal)
     rec_flags      = sum(1 for i in rec_indicators if not i["ok"])
     rec_total      = len(rec_indicators)
+
+    perm, limits = calc_layer1(l0, rec_flags, st.session_state.eps_signal, perm_ov)
 
     # Sectors to screen
     regime_sectors = {
