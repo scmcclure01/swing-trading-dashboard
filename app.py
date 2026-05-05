@@ -372,7 +372,7 @@ def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto
 def run_screener(
     close: pd.DataFrame, volume: pd.DataFrame,
     tickers: list, ticker_sector: dict, spy: pd.Series,
-    min_vol: int = 500_000, rs_lookback: int = 63,
+    min_dollar_vol: float = 10_000_000, rs_lookback: int = 63,
 ) -> pd.DataFrame:
     rows = []
     for t in tickers:
@@ -383,16 +383,19 @@ def run_screener(
         if len(px) < 63:
             continue
 
-        price   = float(px.iloc[-1])
-        ma20    = float(px.rolling(20).mean().iloc[-1])
-        ma50    = float(px.rolling(50).mean().iloc[-1])
-        avg_vol = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
-        ret_1m  = float(px.iloc[-1] / px.iloc[-21] - 1)
-        ret_3m  = float(px.iloc[-1] / px.iloc[-63] - 1)
+        price         = float(px.iloc[-1])
+        ma20          = float(px.rolling(20).mean().iloc[-1])
+        ma50          = float(px.rolling(50).mean().iloc[-1])
+        avg_share_vol = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
+        avg_dollar_vol = price * avg_share_vol   # dollar volume = price × shares
+        ret_1m        = float(px.iloc[-1] / px.iloc[-21] - 1)
+        ret_3m        = float(px.iloc[-1] / px.iloc[-63] - 1)
 
         spy_a     = spy.reindex(px.index).ffill()
         rs_line   = px / spy_a
         rs_new_hi = bool(rs_line.iloc[-1] >= rs_line.iloc[-rs_lookback:].max() * 0.98)
+        # RS direction: is RS line higher now than 21 days ago?
+        rs_rising = bool(len(rs_line) >= 21 and rs_line.iloc[-1] > rs_line.iloc[-21])
 
         try:
             rsi_v  = float(RSIIndicator(close=px, window=14).rsi().iloc[-1])
@@ -404,22 +407,22 @@ def run_screener(
 
         above_20 = price > ma20
         above_50 = price > ma50
-        vol_ok   = avg_vol >= min_vol
+        vol_ok   = avg_dollar_vol >= min_dollar_vol
 
         if   ret_1m > 0 and ret_3m > 0: two_spd = "FULL"
         elif ret_1m > 0 or  ret_3m > 0: two_spd = "HALF"
         else:                            two_spd = "NO TRADE"
 
-        passes = above_20 and above_50 and vol_ok and rs_new_hi and two_spd == "FULL"
+        passes = above_20 and above_50 and vol_ok and rs_new_hi and rs_rising and two_spd == "FULL"
 
         rows.append({
             "Ticker": t, "Sector": ticker_sector.get(t, ""),
             "Price": round(price, 2),
             "vs 20MA": above_20, "vs 50MA": above_50,
             "1M Ret": ret_1m, "3M Ret": ret_3m,
-            "RS Hi": rs_new_hi, "RSI": round(rsi_v, 1),
+            "RS Hi": rs_new_hi, "RS ↑": rs_rising, "RSI": round(rsi_v, 1),
             "MACD": m_bull, "MACD Hist": round(m_hist, 4),
-            "Avg Vol(M)": round(avg_vol / 1e6, 1),
+            "Avg $Vol(M)": round(avg_dollar_vol / 1e6, 1),
             "2-Speed": two_spd, "PASS": passes,
         })
     return pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -503,10 +506,10 @@ def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
     for col in ["1M Ret", "3M Ret"]:
         if col in d.columns: d[col] = d[col].apply(pct)
-    for col in ["vs 20MA", "vs 50MA", "RS Hi"]:
+    for col in ["vs 20MA", "vs 50MA", "RS Hi", "RS ↑"]:
         if col in d.columns: d[col] = d[col].apply(icon)
-    if "MACD"      in d.columns: d["MACD"]      = d["MACD"].apply(macd)
-    if "Avg Vol(M)" in d.columns: d["Avg Vol(M)"] = d["Avg Vol(M)"].apply(lambda x: f"{x:.1f}M")
+    if "MACD"        in d.columns: d["MACD"]        = d["MACD"].apply(macd)
+    if "Avg $Vol(M)" in d.columns: d["Avg $Vol(M)"] = d["Avg $Vol(M)"].apply(lambda x: f"${x:.1f}M")
     return d.drop(columns=["PASS", "MACD Hist"], errors="ignore")
 
 
@@ -589,7 +592,7 @@ def main():
 
         st.divider()
         st.subheader("Screener Settings")
-        min_vol   = st.number_input("Min Avg Volume", value=500_000, step=100_000, format="%d")
+        min_vol   = st.number_input("Min Avg Dollar Volume ($M)", value=10, step=5, format="%d") * 1_000_000
         rs_lb     = st.slider("RS Lookback (days)", 21, 126, 63)
         show_half = st.checkbox("Show Half Signal watchlist", value=True)
         show_all  = st.checkbox("Show full universe table",   value=False)
@@ -618,10 +621,10 @@ def main():
 
     # Sectors to screen
     regime_sectors = {
-        "Risk-on":     list(RISK_ON_SECTORS),
-        "Reflation":   list(REFLATION_SECTORS),
+        "Risk-on":     list(RISK_ON_SECTORS),                                           # includes Industrials
+        "Reflation":   list(REFLATION_SECTORS | {"Industrials"}),                       # XLI in both per Layer 2 Step 1
         "Deflation":   list(DEFENSIVE_SECTORS),
-        "Stagflation": list(REFLATION_SECTORS | {"Consumer Staples", "Utilities"}),
+        "Stagflation": list(REFLATION_SECTORS | {"Industrials", "Consumer Staples", "Utilities"}),
     }
     # Mixed: use Leading + Mixed trend sectors for a broader but still filtered universe
     mixed_auto = l0.get("leading_sectors", []) + l0.get("mixed_sectors", [])
@@ -648,7 +651,7 @@ def main():
     spy_sc        = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
 
     with st.spinner("Running screener..."):
-        results_df = run_screener(close_sc, vol_sc, all_t, ticker_sector, spy_sc, min_vol, rs_lb)
+        results_df = run_screener(close_sc, vol_sc, all_t, ticker_sector, spy_sc, min_vol, rs_lb)  # min_vol already in dollars
 
     if results_df.empty:
         st.error("Screener returned no results. Check your internet connection and refresh.")
