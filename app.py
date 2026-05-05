@@ -560,6 +560,61 @@ def main():
         if k not in st.session_state:
             st.session_state[k] = v
 
+    # ── CSS ───────────────────────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+    .block-container { padding-top: 1.25rem !important; }
+
+    /* Section headers */
+    h4 {
+        color: #e5e7eb !important;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.09em !important;
+        text-transform: uppercase !important;
+        border-bottom: 1px solid #374151;
+        padding-bottom: 7px;
+        margin-top: 2px !important;
+        margin-bottom: 12px !important;
+    }
+
+    /* Metric cards */
+    [data-testid="stMetric"] {
+        background: #1f2937;
+        border: 1px solid #374151;
+        border-radius: 10px;
+        padding: 12px 16px !important;
+    }
+    [data-testid="stMetricLabel"] > div {
+        font-size: 0.70rem !important;
+        color: #9ca3af !important;
+        letter-spacing: 0.05em !important;
+        text-transform: uppercase !important;
+    }
+    [data-testid="stMetricValue"] > div {
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+    }
+
+    /* Bordered containers — card style */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px !important;
+        border: 1px solid #2d3748 !important;
+        padding: 16px 20px !important;
+        background: #0f172a !important;
+    }
+
+    /* Alerts */
+    [data-testid="stAlert"] { border-radius: 8px !important; }
+
+    /* Dividers */
+    hr { border-color: #2d3748 !important; margin: 0.75rem 0 !important; }
+
+    /* Dataframe outer rounding */
+    [data-testid="stDataFrame"] > div { border-radius: 8px; overflow: hidden; }
+    </style>
+    """, unsafe_allow_html=True)
+
     # ── SIDEBAR ───────────────────────────────────────────────────────────────
     with st.sidebar:
         st.title("📈 Controls")
@@ -721,125 +776,131 @@ def main():
 
     # ── TAB 1: MACRO ──────────────────────────────────────────────────────────
     with tab1:
-        col_l, col_r = st.columns(2)
+        roc1_pos   = l0["spy_ret_1m"] > 0
+        roc6_pos   = l0["spy_ret_6m"] > 0
+        spy_signal = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
+        tlt_dir    = l0.get("tlt_direction", "N/A")
+        vix_v      = l0.get("vix")
+        hyg_r      = l0.get("hyg_ief_ratio")
+        hyg_ago    = l0.get("hyg_ief_1m_ago")
 
-        # ── LEFT: SPY + Bond/Liquidity ────────────────────────────────────────
+        col_l, col_r = st.columns([1, 1], gap="medium")
+
+        # ── LEFT COLUMN ───────────────────────────────────────────────────────
         with col_l:
-            # SPY Two-Speed
-            st.markdown("#### SPY Two-Speed Trend")
-            roc1_pos = l0["spy_ret_1m"] > 0
-            roc6_pos = l0["spy_ret_6m"] > 0
-            spy_signal = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
 
-            s1, s2 = st.columns(2)
-            with s1:
-                st.metric(
-                    "1-Month (ROC 21)",
-                    pct(l0["spy_ret_1m"]),
-                    delta="Positive ✅" if roc1_pos else "Negative ❌",
-                    delta_color="normal" if roc1_pos else "inverse",
-                )
-            with s2:
-                st.metric(
-                    "6-Month (ROC 126)",
-                    pct(l0["spy_ret_6m"]),
-                    delta="Positive ✅" if roc6_pos else "Negative ❌",
-                    delta_color="normal" if roc6_pos else "inverse",
-                )
+            # SPY Two-Speed card
+            with st.container(border=True):
+                st.markdown("#### SPY Two-Speed Trend")
+                s1, s2 = st.columns(2)
+                with s1:
+                    st.metric(
+                        "1-Month (ROC 21)", pct(l0["spy_ret_1m"]),
+                        delta="Positive ✅" if roc1_pos else "Negative ❌",
+                        delta_color="normal" if roc1_pos else "inverse",
+                    )
+                with s2:
+                    st.metric(
+                        "6-Month (ROC 126)", pct(l0["spy_ret_6m"]),
+                        delta="Positive ✅" if roc6_pos else "Negative ❌",
+                        delta_color="normal" if roc6_pos else "inverse",
+                    )
+                if   spy_signal == "GREEN": st.success("✅ Both positive → **GREEN signal**")
+                elif spy_signal == "RED":   st.error(  "❌ Both negative → **RED signal**")
+                else:                       st.warning("⚠️ Mixed → **YELLOW signal**")
 
-            if   spy_signal == "GREEN": st.success(f"✅ Both positive → **GREEN signal**")
-            elif spy_signal == "RED":   st.error(  f"❌ Both negative → **RED signal**")
-            else:                       st.warning(f"⚠️ Mixed → **YELLOW signal**")
+            st.write("")
 
-            st.markdown("#### Bond & Liquidity")
-            hyg_r    = l0.get("hyg_ief_ratio")
-            hyg_ago  = l0.get("hyg_ief_1m_ago")
-            hyg_chg  = ((hyg_r / hyg_ago) - 1) * 100 if hyg_r and hyg_ago else None
-            tlt_dir  = l0.get("tlt_direction", "N/A")
-            vix_v    = l0.get("vix")
+            # Bond & Liquidity card
+            with st.container(border=True):
+                st.markdown("#### Bond & Liquidity")
+                bond_rows = [
+                    {"Signal": "TLT Direction (4-week)",
+                     "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
+                    {"Signal": "TLT vs 50d MA",
+                     "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
+                    {"Signal": "Bond/SPY Regime Signal",
+                     "Value": l0.get("tlt_spy_signal", "N/A")},
+                    {"Signal": "HYG/IEF Credit Spread",
+                     "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Stable'})" if hyg_r else "N/A"},
+                    {"Signal": "VIX",
+                     "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
+                ]
+                st.dataframe(pd.DataFrame(bond_rows), hide_index=True, use_container_width=True)
 
-            bond_rows = [
-                {"Signal": "TLT Direction (4-week)",
-                 "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
-                {"Signal": "TLT vs 50d MA",
-                 "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
-                {"Signal": "Bond/SPY Regime Signal",
-                 "Value": l0.get("tlt_spy_signal", "N/A")},
-                {"Signal": "HYG/IEF Credit Spread",
-                 "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Ratio rising / stable'})" if hyg_r else "N/A"},
-                {"Signal": "VIX",
-                 "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
-            ]
-            st.dataframe(pd.DataFrame(bond_rows), hide_index=True, use_container_width=True)
+            st.write("")
 
-            # Manual signals
-            st.markdown("#### Signals (Set in Sidebar)")
-            sig_rows = [
-                {"Signal": "EPS Revisions (FactSet)",    "Value": st.session_state.eps_signal},
-                {"Signal": "Fed Net Liquidity (jlb05013)","Value": st.session_state.fed_liquidity},
-                {"Signal": "Taylor Rule Deviation",      "Value": st.session_state.taylor_rule},
-                {"Signal": "Drawdown from Peak Equity",  "Value": st.session_state.drawdown_state},
-            ]
-            st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
+            # Manual signals card
+            with st.container(border=True):
+                st.markdown("#### Signals — Set in Sidebar")
+                sig_rows = [
+                    {"Signal": "EPS Revisions (FactSet)",     "Value": st.session_state.eps_signal},
+                    {"Signal": "Fed Net Liquidity (jlb05013)", "Value": st.session_state.fed_liquidity},
+                    {"Signal": "Taylor Rule Deviation",        "Value": st.session_state.taylor_rule},
+                    {"Signal": "Drawdown from Peak Equity",    "Value": st.session_state.drawdown_state},
+                ]
+                st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
 
-        # ── RIGHT: Recession Composite + Sector RS ────────────────────────────
+        # ── RIGHT COLUMN ──────────────────────────────────────────────────────
         with col_r:
-            # Recession Composite
+
+            # Recession Composite card
             flag_color = "🟢" if rec_flags == 0 else ("🟡" if rec_flags <= 2 else "🔴")
-            st.markdown(f"#### Recession Composite &nbsp;&nbsp; {flag_color} {rec_flags}/{rec_total}")
-
-            if "error" in fred_data:
-                st.info(f"ℹ️ {fred_data['error']}")
-            else:
-                rec_rows = []
-                for ind in rec_indicators:
-                    rec_rows.append({
-                        "Indicator":  ind["name"],
-                        "Value":      ind["value"],
-                        "As of":      ind["as_of"],
-                        "Threshold":  ind["threshold"],
-                        "Status":     "✅ OK" if ind["ok"] else "⚠️ FLAG",
-                    })
-                st.dataframe(pd.DataFrame(rec_rows), hide_index=True, use_container_width=True)
-                if rec_flags == 0:
-                    st.success("Normal — full risk operations.")
-                elif rec_flags <= 2:
-                    st.warning(f"{rec_flags} indicator(s) flagging — elevated caution.")
+            with st.container(border=True):
+                st.markdown(f"#### Recession Composite &nbsp; {flag_color} {rec_flags} / {rec_total}")
+                if "error" in fred_data:
+                    st.info(f"ℹ️ {fred_data['error']}")
                 else:
-                    st.error(f"{rec_flags} indicators flagging — reduce risk.")
+                    rec_rows = [{
+                        "Indicator": ind["name"],
+                        "Value":     ind["value"],
+                        "As of":     ind["as_of"],
+                        "Threshold": ind["threshold"],
+                        "Status":    "✅ OK" if ind["ok"] else "⚠️ FLAG",
+                    } for ind in rec_indicators]
+                    st.dataframe(pd.DataFrame(rec_rows), hide_index=True, use_container_width=True)
+                    if rec_flags == 0:
+                        st.success("Normal — full risk operations.")
+                    elif rec_flags <= 2:
+                        st.warning(f"{rec_flags} indicator(s) flagging — elevated caution.")
+                    else:
+                        st.error(f"{rec_flags} indicators flagging — reduce risk.")
 
-            # Sector RS
-            st.markdown("#### Sector Relative Strength vs SPY")
-            sr = l0.get("sector_rs", {})
-            if sr:
-                sr_rows = []
-                for sec, v in sr.items():
-                    emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
-                    sr_rows.append({
-                        "Sector":  sec,
-                        "ETF":     v["etf"],
-                        "Price":   f"${v['price']:.2f}",
-                        "1M RS":   pct(v["rs_1m"]),
-                        "3M RS":   pct(v["rs_3m"]),
-                        "RS Hi":   icon(v["rs_new_hi"]),
-                        "Status":  f"{emoji} {v['trend']}",
-                        "_sort":   v["rs_3m"],
-                    })
-                sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
-                st.dataframe(sr_df, hide_index=True, use_container_width=True, height=360)
+            st.write("")
+
+            # Sector RS card
+            with st.container(border=True):
+                st.markdown("#### Sector Relative Strength vs SPY")
+                sr = l0.get("sector_rs", {})
+                if sr:
+                    sr_rows = []
+                    for sec, v in sr.items():
+                        emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
+                        sr_rows.append({
+                            "Sector": sec, "ETF": v["etf"],
+                            "Price":  f"${v['price']:.2f}",
+                            "1M RS":  pct(v["rs_1m"]),
+                            "3M RS":  pct(v["rs_3m"]),
+                            "RS Hi":  icon(v["rs_new_hi"]),
+                            "Status": f"{emoji} {v['trend']}",
+                            "_sort":  v["rs_3m"],
+                        })
+                    sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
+                    st.dataframe(sr_df, hide_index=True, use_container_width=True, height=360)
 
         # ── THIS WEEK'S RULES ─────────────────────────────────────────────────
-        st.divider()
-        st.markdown("#### This Week's Rules")
-        rules_text = (
-            f"**Max Positions:** {limits['max_pos']}  &nbsp;|&nbsp;  "
-            f"**Risk / Trade:** {limits['risk_lo']}–{limits['risk_hi']}%  &nbsp;|&nbsp;  "
-            f"**Max Portfolio Heat:** {limits['heat']}%  &nbsp;|&nbsp;  "
-            f"**Setup Style:** {SETUP_STYLE[perm]}"
-        )
-        if   perm == "Green":  st.success(rules_text)
-        elif perm == "Yellow": st.warning(rules_text)
-        else:                  st.error(rules_text)
+        st.write("")
+        with st.container(border=True):
+            st.markdown("#### This Week's Rules")
+            rules_text = (
+                f"**Max Positions:** {limits['max_pos']}  &nbsp;|&nbsp;  "
+                f"**Risk / Trade:** {limits['risk_lo']}–{limits['risk_hi']}%  &nbsp;|&nbsp;  "
+                f"**Max Portfolio Heat:** {limits['heat']}%  &nbsp;|&nbsp;  "
+                f"**Setup Style:** {SETUP_STYLE[perm]}"
+            )
+            if   perm == "Green":  st.success(rules_text)
+            elif perm == "Yellow": st.warning(rules_text)
+            else:                  st.error(rules_text)
 
     # ── TAB 2: SCREENER ───────────────────────────────────────────────────────
     with tab2:
