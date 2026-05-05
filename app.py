@@ -457,11 +457,21 @@ def build_chart(ticker: str):
 
     dates = [str(d)[:10] for d in px.index]
 
+    # row_heights=[0.38,0.12,0.18,0.16,0.16], vertical_spacing=0.025
+    # Panel domain tops (paper coords, bottom→top): MACD=0.144, RSI=0.313, RS=0.500, Vol=0.633, Price=1.000
+    PANEL_SEP    = [0.633, 0.500, 0.313, 0.144]   # separator line y positions
+    PANEL_LABELS = [                               # (label_text, y_position, x_anchor)
+        (f"{ticker} — Price", 0.993, 0.13),
+        ("Volume",            0.621, 0.01),
+        ("RS vs SPY",         0.488, 0.01),
+        ("RSI (14)",          0.301, 0.01),
+        ("MACD",              0.132, 0.01),
+    ]
+
     fig = make_subplots(
         rows=5, cols=1, shared_xaxes=True,
         row_heights=[0.38, 0.12, 0.18, 0.16, 0.16],
         vertical_spacing=0.025,
-        subplot_titles=[f"{ticker} — Price", "Volume", "RS vs SPY", "RSI (14)", "MACD"],
     )
     fig.add_trace(go.Candlestick(
         x=dates, open=tl(op), high=tl(hi), low=tl(lo), close=tl(px),
@@ -482,11 +492,31 @@ def build_chart(ticker: str):
     fig.add_trace(go.Scatter(x=dates, y=tl(ml), name="MACD",   line=dict(color="#f59e0b", width=1.5), showlegend=False), row=5, col=1)
     fig.add_trace(go.Scatter(x=dates, y=tl(mg), name="Signal", line=dict(color="#a78bfa", width=1.5), showlegend=False), row=5, col=1)
 
+    # Separator lines between panels
+    for y in PANEL_SEP:
+        fig.add_shape(
+            type="line", xref="paper", yref="paper",
+            x0=0, x1=1, y0=y, y1=y,
+            line=dict(color="#6b7280", width=2),
+        )
+
+    # Panel labels — placed just inside the top of each panel
+    for label, y, x in PANEL_LABELS:
+        fig.add_annotation(
+            text=f"<b>{label}</b>",
+            xref="paper", yref="paper",
+            x=x, y=y,
+            showarrow=False,
+            font=dict(color="#d1d5db", size=11),
+            xanchor="left", yanchor="top",
+            bgcolor="rgba(0,0,0,0)",
+        )
+
     fig.update_layout(
         height=750, paper_bgcolor="#111827", plot_bgcolor="#1f2937",
-        font=dict(color="#d1d5db", size=11), margin=dict(l=50, r=20, t=40, b=20),
+        font=dict(color="#d1d5db", size=11), margin=dict(l=50, r=20, t=20, b=20),
         xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", x=0, y=1.02, bgcolor="rgba(0,0,0,0)"),
+        legend=dict(orientation="h", x=0, y=1.01, bgcolor="rgba(0,0,0,0)"),
     )
     for i in range(1, 6):
         fig.update_xaxes(gridcolor="#374151", row=i, col=1)
