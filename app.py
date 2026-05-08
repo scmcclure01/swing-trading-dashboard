@@ -561,62 +561,105 @@ def main():
             st.session_state[k] = v
 
     # ── CSS ───────────────────────────────────────────────────────────────────
+    # Design standard: Page #060C1C · Card #112266 · Panel #D8E6FF · Accent #93B6FA
+    # Border: 1px solid rgba(255,255,255,0.28) applied to all shaped elements
+    # Signal colors: Positive #27500A · Neutral #E07800 · Negative #CC1111
     st.markdown("""
     <style>
-    .block-container { padding-top: 1.25rem !important; }
+    /* Page background */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        background-color: #060C1C !important;
+    }
+    .block-container {
+        padding-top: 1.25rem !important;
+        background-color: #060C1C !important;
+    }
 
-    /* Section headers */
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #0D1B42 !important;
+        border-right: 1px solid rgba(255,255,255,0.28) !important;
+    }
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span {
+        color: #93B6FA !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #FFFFFF !important;
+    }
+
+    /* Page title and caption */
+    h2 { color: #FFFFFF !important; font-weight: 500 !important; }
+    [data-testid="stCaptionContainer"] p { color: #5A78C0 !important; font-size: 11px !important; }
+
+    /* Section headers (h4 used inside containers) */
     h4 {
-        color: #e5e7eb !important;
-        font-size: 0.72rem !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.09em !important;
-        text-transform: uppercase !important;
-        border-bottom: 1px solid #2d4a6e;
+        color: #93B6FA !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.04em !important;
+        border-bottom: 1px solid rgba(255,255,255,0.28);
         padding-bottom: 7px;
         margin-top: 2px !important;
         margin-bottom: 12px !important;
     }
 
-    /* Top-level metric cards (Regime, Permission, SPY etc.) — light gray */
+    /* Metric cards — panel style (#D8E6FF) */
     [data-testid="stMetric"] {
-        background: #2d3748 !important;
-        border: 1px solid #4a5568 !important;
-        border-radius: 10px !important;
-        padding: 12px 16px !important;
+        background: #D8E6FF !important;
+        border: 1px solid rgba(255,255,255,0.28) !important;
+        border-radius: 9px !important;
+        padding: 10px 12px !important;
     }
     [data-testid="stMetricLabel"] > div {
-        font-size: 0.70rem !important;
-        color: #a0aec0 !important;
-        letter-spacing: 0.05em !important;
-        text-transform: uppercase !important;
+        font-size: 11px !important;
+        color: #3A5EAA !important;
+        font-weight: 400 !important;
+        letter-spacing: 0.03em !important;
+        text-transform: none !important;
     }
     [data-testid="stMetricValue"] > div {
-        font-size: 1.3rem !important;
-        font-weight: 700 !important;
-        color: #f7fafc !important;
+        font-size: 17px !important;
+        font-weight: 500 !important;
+        color: #1D3B93 !important;
     }
+    [data-testid="stMetricDelta"] svg { display: none; }
 
-    /* Section cards — lighter blue, contrasts with dark page background */
+    /* Section cards — card style (#112266) */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
-        border: 1px solid #2d4a6e !important;
-        padding: 16px 20px !important;
-        background-color: #162843 !important;
+        border: 1px solid rgba(255,255,255,0.28) !important;
+        padding: 15px 17px !important;
+        background-color: #112266 !important;
     }
 
-    /* Alert boxes — gray outline, muted fill */
+    /* Alert boxes */
     [data-testid="stAlert"] {
-        border-radius: 8px !important;
-        background-color: rgba(0, 0, 0, 0.25) !important;
-        border: 1px solid #4b5563 !important;
+        border-radius: 9px !important;
+        border: 1px solid rgba(255,255,255,0.28) !important;
+    }
+
+    /* Tabs */
+    [data-baseweb="tab-list"] { background-color: transparent !important; }
+    [data-baseweb="tab"] { color: #93B6FA !important; }
+    [aria-selected="true"][data-baseweb="tab"] {
+        color: #FFFFFF !important;
+        border-bottom: 2px solid #93B6FA !important;
     }
 
     /* Dividers */
-    hr { border-color: #2d4a6e !important; margin: 0.75rem 0 !important; }
+    hr { border-color: rgba(255,255,255,0.28) !important; margin: 0.75rem 0 !important; }
 
     /* Dataframe outer rounding */
-    [data-testid="stDataFrame"] > div { border-radius: 8px; overflow: hidden; }
+    [data-testid="stDataFrame"] > div { border-radius: 9px; overflow: hidden; }
+
+    /* Select / input widgets in sidebar */
+    [data-testid="stSelectbox"] > div > div,
+    [data-testid="stNumberInput"] > div > div > input,
+    [data-testid="stSlider"] { border-color: rgba(255,255,255,0.28) !important; }
     </style>
     """, unsafe_allow_html=True)
 
