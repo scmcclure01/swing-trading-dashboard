@@ -633,13 +633,13 @@ def main():
     [data-testid="stMetricDelta"] { color: #3B6D11 !important; font-size: 11px !important; }
     [data-testid="stMetricDelta"] svg { display: none; }
 
-    /* ── SECTION CARDS (#1D3B93) ───────────────────────────────────────────── */
+    /* ── SECTION CARDS (#2550C8) ───────────────────────────────────────────── */
     /* Primary selector */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
         padding: 15px 17px !important;
-        background-color: #1D3B93 !important;
+        background-color: #2550C8 !important;
         box-shadow: 0 0 0 1px rgba(147,182,250,0.15) !important;
     }
     /* Fallback: Streamlit 1.30+ renamed the wrapper */
@@ -647,11 +647,11 @@ def main():
     div[class*="withBorder"] {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
-        background-color: #1D3B93 !important;
+        background-color: #2550C8 !important;
     }
     /* Inner content area of bordered containers */
     [data-testid="stVerticalBlockBorderWrapper"] > div > div {
-        background-color: #1D3B93 !important;
+        background-color: #2550C8 !important;
     }
 
     /* ── DATAFRAMES / TABLES ────────────────────────────────────────────────── */
@@ -675,7 +675,17 @@ def main():
 
     /* ── MISC ───────────────────────────────────────────────────────────────── */
     hr { border-color: rgba(147,182,250,0.25) !important; margin: 0.75rem 0 !important; }
-    p { color: #C8D8F8 !important; }
+    p { color: #FFFFFF !important; }
+
+    /* ── TEXT ON LIGHT PANELS (#D8E6FF) ────────────────────────────────────── */
+    [data-testid="stMetric"] p,
+    [data-testid="stMetric"] label,
+    [data-testid="stMetric"] span { color: #3A5EAA !important; }
+    [data-testid="stMetricLabel"] > div,
+    [data-testid="stMetricLabel"] p {
+        color: #3A5EAA !important;
+    }
+    [data-testid="stMetricValue"] > div { color: #1D3B93 !important; }
 
     /* Sidebar widgets */
     [data-testid="stSelectbox"] > div > div { border-color: rgba(147,182,250,0.30) !important; }
