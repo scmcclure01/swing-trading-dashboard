@@ -561,7 +561,7 @@ def main():
             st.session_state[k] = v
 
     # ── CSS ───────────────────────────────────────────────────────────────────
-    # Design standard: Page #060C1C · Card #112266 · Panel #D8E6FF · Accent #93B6FA
+    # Design standard: Page #060C1C · Card #1D3B93 · Panel #D8E6FF · Accent #93B6FA
     # Border: 1px solid rgba(255,255,255,0.28) applied to all shaped elements
     # Signal colors: Positive #27500A · Neutral #E07800 · Negative #CC1111
     st.markdown("""
@@ -633,13 +633,13 @@ def main():
     [data-testid="stMetricDelta"] { color: #3B6D11 !important; font-size: 11px !important; }
     [data-testid="stMetricDelta"] svg { display: none; }
 
-    /* ── SECTION CARDS (#112266) ───────────────────────────────────────────── */
+    /* ── SECTION CARDS (#1D3B93) ───────────────────────────────────────────── */
     /* Primary selector */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
         padding: 15px 17px !important;
-        background-color: #112266 !important;
+        background-color: #1D3B93 !important;
         box-shadow: 0 0 0 1px rgba(147,182,250,0.15) !important;
     }
     /* Fallback: Streamlit 1.30+ renamed the wrapper */
@@ -647,11 +647,11 @@ def main():
     div[class*="withBorder"] {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
-        background-color: #112266 !important;
+        background-color: #1D3B93 !important;
     }
     /* Inner content area of bordered containers */
     [data-testid="stVerticalBlockBorderWrapper"] > div > div {
-        background-color: #112266 !important;
+        background-color: #1D3B93 !important;
     }
 
     /* ── DATAFRAMES / TABLES ────────────────────────────────────────────────── */
