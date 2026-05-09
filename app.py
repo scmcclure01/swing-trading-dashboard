@@ -852,8 +852,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
     with col_l:
         # SPY Two-Speed
-        with st.container(border=True):
-            st.markdown("#### SPY Two-Speed Trend")
+        with st.expander("SPY Two-Speed Trend", expanded=True):
             s1, s2 = st.columns(2)
             with s1:
                 st.metric(
@@ -874,8 +873,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
         st.write("")
 
         # Bond & Liquidity
-        with st.container(border=True):
-            st.markdown("#### Bond & Liquidity")
+        with st.expander("Bond & Liquidity", expanded=True):
             bond_rows = [
                 {"Signal": "TLT Direction (4-week)",
                  "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
@@ -893,8 +891,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
         st.write("")
 
         # Manual signals
-        with st.container(border=True):
-            st.markdown("#### Signals — Set in Sidebar")
+        with st.expander("Signals — Set in Sidebar", expanded=True):
             sig_rows = [
                 {"Signal": "EPS Revisions (FactSet)",      "Value": st.session_state.eps_signal},
                 {"Signal": "Fed Net Liquidity (jlb05013)",  "Value": st.session_state.fed_liquidity},
@@ -906,8 +903,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
     with col_r:
         # Recession composite
         flag_color = "🟢" if rec_flags == 0 else ("🟡" if rec_flags <= 2 else "🔴")
-        with st.container(border=True):
-            st.markdown(f"#### Recession Composite &nbsp; {flag_color} {rec_flags} / {rec_total}")
+        with st.expander(f"Recession Composite  {flag_color} {rec_flags} / {rec_total}", expanded=True):
             if "error" in fred_data:
                 st.info(f"ℹ️ {fred_data['error']}")
             else:
@@ -926,8 +922,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
         st.write("")
 
         # Sector RS
-        with st.container(border=True):
-            st.markdown("#### Sector Relative Strength vs SPY")
+        with st.expander("Sector Relative Strength vs SPY", expanded=True):
             sr = l0.get("sector_rs", {})
             if sr:
                 sr_rows = []
@@ -947,8 +942,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
     # Signal 9: Sector flow momentum summary (Layer 1.5 preview)
     st.write("")
-    with st.container(border=True):
-        st.markdown("#### Signal 9 — Sector Flow Momentum (Layer 1.5 Preview)")
+    with st.expander("Signal 9 — Sector Flow Momentum (Layer 1.5 Preview)", expanded=True):
         if l15_data:
             improving = [d for d in l15_data if d["quadrant"] == "Improving"]
             leading   = [d for d in l15_data if d["quadrant"] == "Leading"]
@@ -965,8 +959,7 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
     # This week's rules
     st.write("")
-    with st.container(border=True):
-        st.markdown("#### This Week's Rules")
+    with st.expander("This Week's Rules", expanded=True):
         rules_text = (
             f"**Max Positions:** {limits['max_pos_label']}  &nbsp;|&nbsp;  "
             f"**Risk / Trade:** {limits['risk_lo']}–{limits['risk_hi']}%  &nbsp;|&nbsp;  "
@@ -1038,8 +1031,7 @@ def _render_layer15_tab(l15_data: list) -> None:
 
     with col_l:
         candidates = [d for d in l15_data if d["quadrant"] in ("Improving", "Leading")]
-        with st.container(border=True):
-            st.markdown("#### ETF Entry Candidates")
+        with st.expander("ETF Entry Candidates", expanded=True):
             if candidates:
                 rows = []
                 for d in candidates:
@@ -1071,8 +1063,7 @@ def _render_layer15_tab(l15_data: list) -> None:
 
     with col_r:
         weakening = [d for d in l15_data if d["quadrant"] == "Weakening"]
-        with st.container(border=True):
-            st.markdown("#### Weakening — Review Stops")
+        with st.expander("Weakening — Review Stops", expanded=True):
             if weakening:
                 rows = []
                 for d in weakening:
@@ -1095,8 +1086,7 @@ def _render_layer15_tab(l15_data: list) -> None:
 
     # Full sector table
     st.write("")
-    with st.container(border=True):
-        st.markdown("#### All Sectors")
+    with st.expander("All Sectors", expanded=True):
         q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
         all_rows = []
         for d in l15_data:
@@ -1265,24 +1255,27 @@ h4 {
 [data-testid="stMetricDelta"] { color: #3B6D11 !important; font-size: 11px !important; }
 [data-testid="stMetricDelta"] svg { display: none; }
 
-/* ── SECTION CARDS (#2550C8) ───────────────────────────────────────────── */
-/* Outer wrapper — shape and border */
-[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: #2550C8 !important;
-    border-radius: 12px !important;
+/* ── EXPANDER CARDS (#2550C8) ──────────────────────────────────────────── */
+/* Expanders use secondaryBackgroundColor automatically — just style shape  */
+[data-testid="stExpander"] {
     border: 1px solid rgba(147,182,250,0.40) !important;
-    padding: 15px 17px !important;
-    box-shadow: 0 0 0 1px rgba(147,182,250,0.15) !important;
-}
-/* Inner stVerticalBlock — this is the actual rendered background surface */
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
-    background-color: #2550C8 !important;
-}
-/* Catch any intermediate div layers between wrapper and stVerticalBlock */
-[data-testid="stVerticalBlockBorderWrapper"] > div,
-[data-testid="stVerticalBlockBorderWrapper"] > div > div {
-    background-color: #2550C8 !important;
     border-radius: 12px !important;
+    box-shadow: 0 0 0 1px rgba(147,182,250,0.10) !important;
+}
+/* Header label */
+[data-testid="stExpander"] details summary p {
+    color: #93B6FA !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+}
+/* Toggle arrow */
+[data-testid="stExpanderToggleIcon"] svg { color: #93B6FA !important; }
+/* Separator line below header */
+[data-testid="stExpander"] details summary {
+    border-bottom: 1px solid rgba(147,182,250,0.25) !important;
+    padding-bottom: 8px !important;
 }
 
 /* ── DATAFRAMES / TABLES ────────────────────────────────────────────────── */
