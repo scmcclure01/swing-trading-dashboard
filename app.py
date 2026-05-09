@@ -1015,9 +1015,12 @@ def _render_layer15_tab(l15_data: list) -> None:
     mc3.metric("🟡 Weakening", n_weakening)
     mc4.metric("🔴 Lagging",   n_lagging)
 
-    # Flow strength inputs — override quadrant-based sizing with user's ETF.com reading
-    with st.expander("📊 Weekly Flow Strength (from ETF.com) — set to refine sizing"):
-        st.caption("Check ETF.com fund flows tool for 1-week and 4-week directional inflows. Set each sector's flow signal here.")
+    # Flow strength inputs — manual entry from ETFdb.com, overrides quadrant-based sizing
+    with st.expander("📊 Weekly Flow Strength — set to refine sizing"):
+        st.caption(
+            "Check [ETFdb Fund Flows](https://etfdb.com/etf-fund-flows/) for 1-week and 4-week "
+            "directional inflows. Enter each sector's reading below — overrides RRG-based sizing."
+        )
         flow_cols = st.columns(3)
         for i, (sector, etf) in enumerate(SECTOR_ETFS.items()):
             key = f"flow_{etf.lower()}"
