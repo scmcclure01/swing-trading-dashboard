@@ -1223,7 +1223,7 @@ def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
         st.info("No stocks passing all Layer 2 filters in the current regime.")
 
     if show_half:
-        st.subheader("⚠️ Half Signal — Top 15 Watch List")
+        st.subheader(f"⚠️ Half Signal — {len(half_df)} candidates")
         if not half_df.empty:
             half_show = half_df.head(15)
             st.dataframe(
