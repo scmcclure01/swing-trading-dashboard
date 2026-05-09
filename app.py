@@ -204,6 +204,62 @@ def fetch_fred_data() -> dict:
         return {"error": str(e)}
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_fed_net_liquidity() -> dict:
+    """
+    Fetch Fed Net Liquidity from FRED public CSV (no API key required).
+    Formula: WALCL - WTREGEN - RRPONTSYD
+    Signal: 4-week change <= -$200B → Override Active
+    Updates Thursdays at 4:30 PM ET with the H.4.1 release.
+    """
+    import urllib.request
+    import csv
+    from io import StringIO
+
+    def fetch_series(series_id):
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            data = r.read().decode()
+        rows = list(csv.reader(StringIO(data)))[1:]
+        return {row[0]: float(row[1]) for row in rows if len(row) > 1 and row[1] not in ('.', '', 'NA')}
+
+    try:
+        walcl = fetch_series("WALCL")
+        tga   = fetch_series("WTREGEN")
+        rrp   = fetch_series("RRPONTSYD")
+
+        dates = sorted(set(walcl) & set(tga) & set(rrp))
+        if len(dates) < 5:
+            return {"error": "Insufficient FRED data"}
+
+        net_liq = {d: walcl[d] - tga[d] - rrp[d] for d in dates}
+        recent      = sorted(net_liq.keys())
+        latest_date = recent[-1]
+        prior_date  = recent[-5]  # 4 weeks back
+
+        current  = net_liq[latest_date]
+        prior    = net_liq[prior_date]
+        change_b = (current - prior) / 1000  # convert $M → $B
+
+        if change_b <= -200:
+            signal = "OVERRIDE ACTIVE"
+        elif change_b < 0:
+            signal = "DECLINING"
+        else:
+            signal = "RISING"
+
+        return {
+            "as_of":        latest_date,
+            "current_b":    round(current / 1000, 1),
+            "prior_b":      round(prior / 1000, 1),
+            "prior_date":   prior_date,
+            "change_4w_b":  round(change_b, 1),
+            "signal":       signal,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_screener_data(sectors_key: str) -> tuple:
     """
@@ -291,6 +347,20 @@ def calc_layer0(close: pd.DataFrame) -> dict:
     vix = s("^VIX")
     r["vix"]          = float(vix.iloc[-1]) if len(vix) > 0 else None
     r["vix_elevated"] = bool(r["vix"] > 25) if r["vix"] else False
+
+    # ── Signal 6: Fed Net Liquidity (WALCL - TGA - RRP) ──────────────────────
+    fnl = fetch_fed_net_liquidity()
+    if "error" not in fnl:
+        r["fnl_signal"]    = fnl["signal"]       # "RISING", "DECLINING", "OVERRIDE ACTIVE"
+        r["fnl_change_4w"] = fnl["change_4w_b"]  # $B, 4-week change
+        r["fnl_current"]   = fnl["current_b"]    # $B, latest reading
+        r["fnl_as_of"]     = fnl["as_of"]        # date string
+    else:
+        r["fnl_signal"]    = "N/A"
+        r["fnl_change_4w"] = None
+        r["fnl_current"]   = None
+        r["fnl_as_of"]     = ""
+        r["fnl_error"]     = fnl["error"]
 
     # ── Signal 2: Sector RS vs SPY → regime flavor ───────────────────────────
     sector_rs = {}
@@ -411,7 +481,10 @@ def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto
 
     roc1_pos     = l0.get("spy_ret_1m", 0) > 0
     roc6_pos     = l0.get("spy_ret_6m", 0) > 0
-    liq_override = bool(l0.get("liquidity_tighten"))   # HYG/IEF declining = override active
+    liq_override = (
+        bool(l0.get("liquidity_tighten")) or          # HYG/IEF credit spread widening
+        l0.get("fnl_signal") == "OVERRIDE ACTIVE"     # Fed Net Liquidity 4-week drop > $200B
+    )
     eps_declining = "Declining" in eps_signal
 
     if liq_override or (not roc1_pos and not roc6_pos) or rec_flags >= 4:
@@ -885,6 +958,11 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
                  "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Stable'})" if hyg_r else "N/A"},
                 {"Signal": "VIX",
                  "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
+                {"Signal": f"Fed Net Liquidity ({l0.get('fnl_as_of', '')})",
+                 "Value": (
+                     f"${l0['fnl_current']:,.1f}B  |  4-week: ${l0['fnl_change_4w']:+.1f}B  |  "
+                     f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
+                 ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
             ]
             st.dataframe(pd.DataFrame(bond_rows), hide_index=True, use_container_width=True)
 
@@ -894,7 +972,6 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
         with st.expander("Signals — Set in Sidebar", expanded=True):
             sig_rows = [
                 {"Signal": "EPS Revisions (FactSet)",      "Value": st.session_state.eps_signal},
-                {"Signal": "Fed Net Liquidity (jlb05013)",  "Value": st.session_state.fed_liquidity},
                 {"Signal": "Taylor Rule Deviation",         "Value": st.session_state.taylor_rule},
                 {"Signal": "Drawdown from Peak Equity",     "Value": st.session_state.drawdown_state},
             ]
@@ -1328,7 +1405,6 @@ def main():
     # Manual signals (set once per weekly review)
     defaults = {
         "eps_signal":    "Not set",
-        "fed_liquidity": "Not set",
         "drawdown_state": "At or near peak — full risk",
         "lei_signal":    "Not set",
         "taylor_rule":   "Not set",
@@ -1357,11 +1433,6 @@ def main():
             "EPS Revisions (FactSet)",
             ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"],
             index=["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"].index(st.session_state.eps_signal),
-        )
-        st.session_state.fed_liquidity = st.selectbox(
-            "Fed Net Liquidity (TV: jlb05013)",
-            ["Not set", "Expanding ✅", "Flat / Neutral", "Contracting ⚠️"],
-            index=["Not set", "Expanding ✅", "Flat / Neutral", "Contracting ⚠️"].index(st.session_state.fed_liquidity),
         )
         st.session_state.drawdown_state = st.selectbox(
             "Drawdown from Peak Equity",
@@ -1483,8 +1554,13 @@ def main():
     elif perm == "Yellow": st.warning(f"🟡 **YELLOW STATE** — Selective. {SETUP_STYLE['Yellow']}. {limits['max_pos_label']} positions max.")
     else:                  st.error(  f"🔴 **RED STATE** — {SETUP_STYLE['Red']}. {limits['max_pos_label']} positions max.")
 
-    if l0.get("liquidity_tighten"):
-        st.warning("⚠️ Liquidity override active — HYG/IEF ratio declining. Reduce exposure immediately.")
+    if l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE":
+        reasons = []
+        if l0.get("liquidity_tighten"):
+            reasons.append("HYG/IEF ratio declining")
+        if l0.get("fnl_signal") == "OVERRIDE ACTIVE":
+            reasons.append(f"Fed Net Liquidity −${abs(l0.get('fnl_change_4w', 0)):.0f}B (4-week)")
+        st.warning(f"⚠️ Liquidity override active — {'; '.join(reasons)}. Reduce exposure immediately.")
     if rec_flags >= 3:
         st.error(f"⚠️ Recession composite elevated: {rec_flags}/{rec_total} indicators flagging.")
     elif rec_flags >= 1:
