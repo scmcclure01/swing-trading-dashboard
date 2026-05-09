@@ -367,6 +367,91 @@ def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LAYER 1.5 — SECTOR ROTATION (RRG)
+# ─────────────────────────────────────────────────────────────────────────────
+def calc_layer15(close: pd.DataFrame) -> list:
+    """
+    Relative Rotation Graph (RRG) for sector ETFs vs SPY.
+    Weekly resampling; trailing 8 weeks shown.
+    RS-Ratio  = (RS / SMA10(RS)) * 100  — centered at 100
+    RS-Momentum = (RS-Ratio / SMA4(RS-Ratio)) * 100 — centered at 100
+    """
+    spy = close["SPY"].dropna() if "SPY" in close.columns else pd.Series(dtype=float)
+    if len(spy) < 60:
+        return []
+
+    results = []
+    for sector, etf in SECTOR_ETFS.items():
+        if etf not in close.columns:
+            continue
+        px  = close[etf].dropna()
+        idx = px.index.intersection(spy.index)
+        if len(idx) < 60:
+            continue
+
+        px_a  = px.loc[idx]
+        spy_a = spy.loc[idx]
+
+        # Weekly RS line
+        rs_daily = px_a / spy_a
+        rs_w     = rs_daily.resample("W-FRI").last().dropna()
+        if len(rs_w) < 15:
+            continue
+
+        # JdK RS-Ratio
+        sma10    = rs_w.rolling(10).mean()
+        rs_ratio = (rs_w / sma10 * 100).dropna()
+
+        # JdK RS-Momentum
+        sma4        = rs_ratio.rolling(4).mean()
+        rs_momentum = (rs_ratio / sma4 * 100).dropna()
+
+        common  = rs_ratio.index.intersection(rs_momentum.index)
+        trail_x = rs_ratio.loc[common].iloc[-8:].tolist()
+        trail_y = rs_momentum.loc[common].iloc[-8:].tolist()
+        if not trail_x or not trail_y:
+            continue
+
+        cur_x, cur_y = trail_x[-1], trail_y[-1]
+
+        if   cur_x >= 100 and cur_y >= 100: quadrant = "Leading"
+        elif cur_x <  100 and cur_y >= 100: quadrant = "Improving"
+        elif cur_x >= 100 and cur_y <  100: quadrant = "Weakening"
+        else:                               quadrant = "Lagging"
+
+        size_map = {
+            "Improving": ("Quarter → Half", "0.19–0.38%", "Early rotation — watch closely"),
+            "Leading":   ("Half → Full",    "0.38–0.75%", "Confirmed — enter or hold"),
+            "Weakening": ("Tighten stop",   "—",          "Tighten to 20d MA"),
+            "Lagging":   ("No trade",       "—",          "Avoid"),
+        }
+        sizing, risk_pct, action = size_map[quadrant]
+
+        price    = float(px_a.iloc[-1])
+        ma20     = float(px_a.rolling(20).mean().iloc[-1])
+        above_20 = price > ma20
+
+        results.append({
+            "sector": sector, "etf": etf,
+            "rs_ratio":    round(cur_x, 2),
+            "rs_momentum": round(cur_y, 2),
+            "trail_x": [round(v, 2) for v in trail_x],
+            "trail_y": [round(v, 2) for v in trail_y],
+            "quadrant": quadrant,
+            "sizing":   sizing,
+            "risk_pct": risk_pct,
+            "action":   action,
+            "price":    round(price, 2),
+            "ma20":     round(ma20, 2),
+            "above_20": above_20,
+        })
+
+    order = {"Improving": 0, "Leading": 1, "Weakening": 2, "Lagging": 3}
+    results.sort(key=lambda x: order[x["quadrant"]])
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 2 SCREENER
 # ─────────────────────────────────────────────────────────────────────────────
 def run_screener(
@@ -522,6 +607,103 @@ def build_chart(ticker: str):
         fig.update_xaxes(gridcolor="#374151", row=i, col=1)
         fig.update_yaxes(gridcolor="#374151", row=i, col=1)
     fig.update_yaxes(range=[0, 100], row=4, col=1)
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RRG CHART BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+def build_rrg_chart(l15_data: list) -> go.Figure:
+    if not l15_data:
+        return None
+
+    all_x = [v for d in l15_data for v in d["trail_x"]]
+    all_y = [v for d in l15_data for v in d["trail_y"]]
+    pad   = 0.8
+    xlo   = min(min(all_x) - pad, 98.5)
+    xhi   = max(max(all_x) + pad, 101.5)
+    ylo   = min(min(all_y) - pad, 98.5)
+    yhi   = max(max(all_y) + pad, 101.5)
+
+    color_map = {
+        "Leading":   "#27500A",
+        "Improving": "#93B6FA",
+        "Weakening": "#E07800",
+        "Lagging":   "#CC1111",
+    }
+    fill_map = {
+        "Leading":   "rgba(39,80,10,0.15)",
+        "Improving": "rgba(37,80,200,0.15)",
+        "Weakening": "rgba(224,120,0,0.15)",
+        "Lagging":   "rgba(204,17,17,0.15)",
+    }
+
+    shapes = [
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=100, y1=yhi,  fillcolor=fill_map["Leading"],   line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=100, y1=yhi,  fillcolor=fill_map["Improving"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=ylo, y1=100,  fillcolor=fill_map["Weakening"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=ylo, y1=100,  fillcolor=fill_map["Lagging"],   line_width=0, layer="below"),
+        dict(type="line", xref="x", yref="y", x0=xlo, x1=xhi, y0=100, y1=100,  line=dict(color="#6b7280", width=1, dash="dot")),
+        dict(type="line", xref="x", yref="y", x0=100, x1=100, y0=ylo, y1=yhi,  line=dict(color="#6b7280", width=1, dash="dot")),
+    ]
+
+    fig = go.Figure()
+    fig.update_layout(shapes=shapes)
+
+    for d in l15_data:
+        color  = color_map[d["quadrant"]]
+        tx, ty = d["trail_x"], d["trail_y"]
+
+        # Trailing dots — fade in opacity over time
+        for i in range(len(tx) - 1):
+            opacity = 0.15 + 0.6 * (i / max(len(tx) - 1, 1))
+            fig.add_trace(go.Scatter(
+                x=[tx[i], tx[i+1]], y=[ty[i], ty[i+1]],
+                mode="lines+markers",
+                line=dict(color=color, width=1),
+                marker=dict(size=5, color=color, opacity=opacity),
+                showlegend=False, hoverinfo="skip",
+            ))
+
+        # Current position — large labeled dot
+        fig.add_trace(go.Scatter(
+            x=[d["rs_ratio"]], y=[d["rs_momentum"]],
+            mode="markers+text",
+            marker=dict(size=14, color=color, line=dict(color="#FFFFFF", width=1.5)),
+            text=[d["etf"]],
+            textposition="top center",
+            textfont=dict(color="#FFFFFF", size=10),
+            name=d["etf"],
+            hovertemplate=(
+                f"<b>{d['sector']} ({d['etf']})</b><br>"
+                f"RS-Ratio: %{{x:.2f}}<br>"
+                f"RS-Momentum: %{{y:.2f}}<br>"
+                f"Quadrant: {d['quadrant']}<br>"
+                f"Action: {d['action']}<extra></extra>"
+            ),
+        ))
+
+    for text, x, y, xa, ya, c in [
+        ("LEADING",   xhi - 0.05, yhi - 0.05, "right", "top",    color_map["Leading"]),
+        ("IMPROVING", xlo + 0.05, yhi - 0.05, "left",  "top",    color_map["Improving"]),
+        ("WEAKENING", xhi - 0.05, ylo + 0.05, "right", "bottom", color_map["Weakening"]),
+        ("LAGGING",   xlo + 0.05, ylo + 0.05, "left",  "bottom", color_map["Lagging"]),
+    ]:
+        fig.add_annotation(
+            text=f"<b>{text}</b>", x=x, y=y,
+            xanchor=xa, yanchor=ya, showarrow=False,
+            font=dict(color=c, size=11),
+        )
+
+    fig.update_layout(
+        height=560,
+        paper_bgcolor="#111827", plot_bgcolor="#1f2937",
+        font=dict(color="#d1d5db", size=11),
+        margin=dict(l=55, r=20, t=30, b=55),
+        xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="#374151", zeroline=False, range=[xlo, xhi]),
+        yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="#374151", zeroline=False, range=[ylo, yhi]),
+        showlegend=False,
+    )
     return fig
 
 
@@ -774,6 +956,9 @@ def main():
     with st.spinner("Loading FRED indicators..."):
         fred_data = fetch_fred_data()
 
+    with st.spinner("Computing sector rotation (RRG)..."):
+        l15_data = calc_layer15(macro_close)
+
     # ── REGIME / PERMISSION ───────────────────────────────────────────────────
     regime = regime_ov if regime_ov != "Auto" else l0["regime"]
 
@@ -852,7 +1037,7 @@ def main():
     st.divider()
 
     # ── TABS ──────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs(["📊 Layer 0 — Macro", "🔍 Layer 2 — Screener", "📈 Charts"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Layer 0 — Macro", "🔀 Layer 1.5 — Sector Rotation", "🔍 Layer 2 — Screener", "📈 Charts"])
 
     # ── TAB 1: MACRO ──────────────────────────────────────────────────────────
     with tab1:
@@ -982,8 +1167,98 @@ def main():
             elif perm == "Yellow": st.warning(rules_text)
             else:                  st.error(rules_text)
 
-    # ── TAB 2: SCREENER ───────────────────────────────────────────────────────
+    # ── TAB 2: LAYER 1.5 ─────────────────────────────────────────────────────
     with tab2:
+        st.caption("Relative Rotation Graph — sector ETFs vs SPY. Weekly data, trailing 8 weeks. Clockwise rotation is normal cycle progression.")
+
+        with st.spinner("Building RRG chart..."):
+            rrg_fig = build_rrg_chart(l15_data)
+        if rrg_fig:
+            st.plotly_chart(rrg_fig, use_container_width=True)
+        else:
+            st.warning("Insufficient data to build RRG chart.")
+
+        st.divider()
+
+        n_improving = sum(1 for d in l15_data if d["quadrant"] == "Improving")
+        n_leading   = sum(1 for d in l15_data if d["quadrant"] == "Leading")
+        n_weakening = sum(1 for d in l15_data if d["quadrant"] == "Weakening")
+        n_lagging   = sum(1 for d in l15_data if d["quadrant"] == "Lagging")
+
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.metric("🔵 Improving", n_improving)
+        mc2.metric("🟢 Leading",   n_leading)
+        mc3.metric("🟡 Weakening", n_weakening)
+        mc4.metric("🔴 Lagging",   n_lagging)
+
+        st.divider()
+
+        col_l, col_r = st.columns([1, 1], gap="medium")
+
+        with col_l:
+            candidates = [d for d in l15_data if d["quadrant"] in ("Improving", "Leading")]
+            with st.container(border=True):
+                st.markdown("#### ETF Entry Candidates")
+                if candidates:
+                    rows = []
+                    for d in candidates:
+                        q_icon = "🔵" if d["quadrant"] == "Improving" else "🟢"
+                        rows.append({
+                            "ETF":      d["etf"],
+                            "Sector":   d["sector"],
+                            "Phase":    f"{q_icon} {d['quadrant']}",
+                            "RS Ratio": d["rs_ratio"],
+                            "RS Mom":   d["rs_momentum"],
+                            "vs 20MA":  "✅" if d["above_20"] else "❌",
+                            "Price":    f"${d['price']:.2f}",
+                            "Stop":     f"${d['ma20']:.2f}",
+                            "Sizing":   d["sizing"],
+                            "Risk %":   d["risk_pct"],
+                        })
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                else:
+                    st.info("No Improving or Leading sectors currently.")
+
+        with col_r:
+            weakening = [d for d in l15_data if d["quadrant"] == "Weakening"]
+            with st.container(border=True):
+                st.markdown("#### Weakening — Review Stops")
+                if weakening:
+                    rows = []
+                    for d in weakening:
+                        rows.append({
+                            "ETF":      d["etf"],
+                            "Sector":   d["sector"],
+                            "RS Ratio": d["rs_ratio"],
+                            "RS Mom":   d["rs_momentum"],
+                            "vs 20MA":  "✅" if d["above_20"] else "❌",
+                            "Price":    f"${d['price']:.2f}",
+                            "Stop":     f"${d['ma20']:.2f}",
+                            "Action":   d["action"],
+                        })
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                else:
+                    st.success("No sectors in Weakening quadrant.")
+
+        st.write("")
+        with st.container(border=True):
+            st.markdown("#### All Sectors")
+            q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
+            all_rows = [{
+                "Sector":   d["sector"],
+                "ETF":      d["etf"],
+                "Quadrant": f"{q_icons[d['quadrant']]} {d['quadrant']}",
+                "RS Ratio": d["rs_ratio"],
+                "RS Mom":   d["rs_momentum"],
+                "Price":    f"${d['price']:.2f}",
+                "vs 20MA":  "✅" if d["above_20"] else "❌",
+                "Sizing":   d["sizing"],
+                "Action":   d["action"],
+            } for d in l15_data]
+            st.dataframe(pd.DataFrame(all_rows), hide_index=True, use_container_width=True)
+
+    # ── TAB 3: SCREENER ───────────────────────────────────────────────────────
+    with tab3:
         if perm == "Red":
             st.error("🔴 RED STATE — No new entries. Results shown for reference only.")
 
@@ -1015,8 +1290,8 @@ def main():
                 all_s = results_df.sort_values(["PASS","2-Speed","3M Ret"], ascending=[False,True,False])
                 st.dataframe(fmt_df(all_s), hide_index=True, use_container_width=True)
 
-    # ── TAB 3: CHARTS ─────────────────────────────────────────────────────────
-    with tab3:
+    # ── TAB 4: CHARTS ─────────────────────────────────────────────────────────
+    with tab4:
         if passes_df.empty:
             st.info("No Full Signal candidates to chart.")
         else:
