@@ -634,23 +634,25 @@ def main():
     [data-testid="stMetricDelta"] svg { display: none; }
 
     /* ── SECTION CARDS (#2550C8) ───────────────────────────────────────────── */
-    /* Primary selector */
+    [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stVerticalBlockBorderWrapper"] > div,
+    [data-testid="stVerticalBlockBorderWrapper"] > div > div,
+    [data-testid="stVerticalBlockBorderWrapper"] > div > div > div {
+        background-color: #2550C8 !important;
+    }
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
         padding: 15px 17px !important;
-        background-color: #2550C8 !important;
         box-shadow: 0 0 0 1px rgba(147,182,250,0.15) !important;
     }
     /* Fallback: Streamlit 1.30+ renamed the wrapper */
     div[class*="stVerticalBlock"][class*="Border"],
-    div[class*="withBorder"] {
+    div[class*="withBorder"],
+    div[class*="stVerticalBlock"][class*="Border"] > div,
+    div[class*="withBorder"] > div {
         border-radius: 12px !important;
         border: 1px solid rgba(147,182,250,0.40) !important;
-        background-color: #2550C8 !important;
-    }
-    /* Inner content area of bordered containers */
-    [data-testid="stVerticalBlockBorderWrapper"] > div > div {
         background-color: #2550C8 !important;
     }
 
