@@ -1208,14 +1208,33 @@ def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
 
     st.subheader(f"✅ Full Signal — {len(passes_df)} candidates")
     if not passes_df.empty:
-        st.dataframe(fmt_df(passes_df), hide_index=True, use_container_width=True)
+        row_h = 35
+        header_h = 40
+        st.dataframe(
+            fmt_df(passes_df),
+            hide_index=True,
+            use_container_width=True,
+            height=len(passes_df) * row_h + header_h,
+        )
+        tickers_str = "  ".join(passes_df["Ticker"].tolist())
+        st.text_area("Copy tickers →", value=tickers_str, height=68, label_visibility="collapsed",
+                     help="Full Signal tickers — copy and paste into Claude")
     else:
         st.info("No stocks passing all Layer 2 filters in the current regime.")
 
     if show_half:
         st.subheader("⚠️ Half Signal — Top 15 Watch List")
         if not half_df.empty:
-            st.dataframe(fmt_df(half_df.head(15)), hide_index=True, use_container_width=True)
+            half_show = half_df.head(15)
+            st.dataframe(
+                fmt_df(half_show),
+                hide_index=True,
+                use_container_width=True,
+                height=len(half_show) * row_h + header_h,
+            )
+            half_tickers_str = "  ".join(half_show["Ticker"].tolist())
+            st.text_area("Copy half-signal tickers →", value=half_tickers_str, height=68,
+                         label_visibility="collapsed", help="Half Signal tickers — copy and paste into Claude")
         else:
             st.info("No half-signal candidates.")
 
