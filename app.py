@@ -1266,25 +1266,23 @@ h4 {
 [data-testid="stMetricDelta"] svg { display: none; }
 
 /* ── SECTION CARDS (#2550C8) ───────────────────────────────────────────── */
-[data-testid="stVerticalBlockBorderWrapper"],
-[data-testid="stVerticalBlockBorderWrapper"] > div,
-[data-testid="stVerticalBlockBorderWrapper"] > div > div,
-[data-testid="stVerticalBlockBorderWrapper"] > div > div > div {
-    background-color: #2550C8 !important;
-}
+/* Outer wrapper — shape and border */
 [data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #2550C8 !important;
     border-radius: 12px !important;
     border: 1px solid rgba(147,182,250,0.40) !important;
     padding: 15px 17px !important;
     box-shadow: 0 0 0 1px rgba(147,182,250,0.15) !important;
 }
-div[class*="stVerticalBlock"][class*="Border"],
-div[class*="withBorder"],
-div[class*="stVerticalBlock"][class*="Border"] > div,
-div[class*="withBorder"] > div {
-    border-radius: 12px !important;
-    border: 1px solid rgba(147,182,250,0.40) !important;
+/* Inner stVerticalBlock — this is the actual rendered background surface */
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
     background-color: #2550C8 !important;
+}
+/* Catch any intermediate div layers between wrapper and stVerticalBlock */
+[data-testid="stVerticalBlockBorderWrapper"] > div,
+[data-testid="stVerticalBlockBorderWrapper"] > div > div {
+    background-color: #2550C8 !important;
+    border-radius: 12px !important;
 }
 
 /* ── DATAFRAMES / TABLES ────────────────────────────────────────────────── */
