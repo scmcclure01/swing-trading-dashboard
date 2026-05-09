@@ -96,6 +96,19 @@ RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary", "Indu
 REFLATION_SECTORS = {"Energy", "Materials"}
 DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
 
+SECTOR_COLORS = {
+    "Energy":                 "#F59E0B",   # amber
+    "Materials":              "#10B981",   # emerald
+    "Industrials":            "#3B82F6",   # blue
+    "Technology":             "#A78BFA",   # violet
+    "Financials":             "#EC4899",   # pink
+    "Consumer Discretionary": "#F97316",   # orange
+    "Consumer Staples":       "#06B6D4",   # cyan
+    "Utilities":              "#EF4444",   # red
+    "Health Care":            "#84CC16",   # lime
+}
+SECTOR_DASH = ["solid", "dash", "dot", "dashdot"]  # overflow fallback
+
 PERM_LIMITS = {
     "Green":  {"max_pos": 20, "risk_lo": 0.75, "risk_hi": 1.00, "heat": 15},
     "Yellow": {"max_pos": 10, "risk_lo": 0.25, "risk_hi": 0.50, "heat": 8},
@@ -625,11 +638,11 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
     ylo   = min(min(all_y) - pad, 98.5)
     yhi   = max(max(all_y) + pad, 101.5)
 
-    color_map = {
-        "Leading":   "#27500A",
-        "Improving": "#93B6FA",
-        "Weakening": "#E07800",
-        "Lagging":   "#CC1111",
+    quad_label_colors = {
+        "LEADING":   "#27500A",
+        "IMPROVING": "#93B6FA",
+        "WEAKENING": "#E07800",
+        "LAGGING":   "#CC1111",
     }
     fill_map = {
         "Leading":   "rgba(39,80,10,0.15)",
@@ -639,31 +652,37 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
     }
 
     shapes = [
-        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=100, y1=yhi,  fillcolor=fill_map["Leading"],   line_width=0, layer="below"),
-        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=100, y1=yhi,  fillcolor=fill_map["Improving"], line_width=0, layer="below"),
-        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=ylo, y1=100,  fillcolor=fill_map["Weakening"], line_width=0, layer="below"),
-        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=ylo, y1=100,  fillcolor=fill_map["Lagging"],   line_width=0, layer="below"),
-        dict(type="line", xref="x", yref="y", x0=xlo, x1=xhi, y0=100, y1=100,  line=dict(color="#6b7280", width=1, dash="dot")),
-        dict(type="line", xref="x", yref="y", x0=100, x1=100, y0=ylo, y1=yhi,  line=dict(color="#6b7280", width=1, dash="dot")),
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=100, y1=yhi, fillcolor=fill_map["Leading"],   line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=100, y1=yhi, fillcolor=fill_map["Improving"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=ylo, y1=100, fillcolor=fill_map["Weakening"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=ylo, y1=100, fillcolor=fill_map["Lagging"],   line_width=0, layer="below"),
+        dict(type="line", xref="x", yref="y", x0=xlo, x1=xhi, y0=100, y1=100, line=dict(color="#6b7280", width=1, dash="dot")),
+        dict(type="line", xref="x", yref="y", x0=100, x1=100, y0=ylo, y1=yhi, line=dict(color="#6b7280", width=1, dash="dot")),
     ]
 
     fig = go.Figure()
     fig.update_layout(shapes=shapes)
 
+    all_sectors = list(SECTOR_COLORS.keys())
     for d in l15_data:
-        color  = color_map[d["quadrant"]]
-        tx, ty = d["trail_x"], d["trail_y"]
+        # Unique color and dash per sector
+        idx        = all_sectors.index(d["sector"]) if d["sector"] in all_sectors else 0
+        color      = list(SECTOR_COLORS.values())[idx % len(SECTOR_COLORS)]
+        dash_style = SECTOR_DASH[idx // len(SECTOR_COLORS)]
+        tx, ty     = d["trail_x"], d["trail_y"]
 
-        # Trailing dots — fade in opacity over time
-        for i in range(len(tx) - 1):
-            opacity = 0.15 + 0.6 * (i / max(len(tx) - 1, 1))
-            fig.add_trace(go.Scatter(
-                x=[tx[i], tx[i+1]], y=[ty[i], ty[i+1]],
-                mode="lines+markers",
-                line=dict(color=color, width=1),
-                marker=dict(size=5, color=color, opacity=opacity),
-                showlegend=False, hoverinfo="skip",
-            ))
+        # Full spline trail — single smooth trace, faded
+        fig.add_trace(go.Scatter(
+            x=tx, y=ty,
+            mode="lines+markers",
+            line=dict(color=color, width=1.5, shape="spline", smoothing=1.3, dash=dash_style),
+            marker=dict(
+                size=[4] * (len(tx) - 1) + [0],   # hide last (drawn separately)
+                color=color,
+                opacity=0.45,
+            ),
+            showlegend=False, hoverinfo="skip",
+        ))
 
         # Current position — large labeled dot
         fig.add_trace(go.Scatter(
@@ -673,7 +692,7 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
             text=[d["etf"]],
             textposition="top center",
             textfont=dict(color="#FFFFFF", size=10),
-            name=d["etf"],
+            name=f"{d['etf']} — {d['quadrant']}",
             hovertemplate=(
                 f"<b>{d['sector']} ({d['etf']})</b><br>"
                 f"RS-Ratio: %{{x:.2f}}<br>"
@@ -683,16 +702,16 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
             ),
         ))
 
-    for text, x, y, xa, ya, c in [
-        ("LEADING",   xhi - 0.05, yhi - 0.05, "right", "top",    color_map["Leading"]),
-        ("IMPROVING", xlo + 0.05, yhi - 0.05, "left",  "top",    color_map["Improving"]),
-        ("WEAKENING", xhi - 0.05, ylo + 0.05, "right", "bottom", color_map["Weakening"]),
-        ("LAGGING",   xlo + 0.05, ylo + 0.05, "left",  "bottom", color_map["Lagging"]),
+    for text, x, y, xa, ya in [
+        ("LEADING",   xhi - 0.05, yhi - 0.05, "right", "top"),
+        ("IMPROVING", xlo + 0.05, yhi - 0.05, "left",  "top"),
+        ("WEAKENING", xhi - 0.05, ylo + 0.05, "right", "bottom"),
+        ("LAGGING",   xlo + 0.05, ylo + 0.05, "left",  "bottom"),
     ]:
         fig.add_annotation(
             text=f"<b>{text}</b>", x=x, y=y,
             xanchor=xa, yanchor=ya, showarrow=False,
-            font=dict(color=c, size=11),
+            font=dict(color=quad_label_colors[text], size=11),
         )
 
     fig.update_layout(
@@ -702,7 +721,8 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
         margin=dict(l=55, r=20, t=30, b=55),
         xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="#374151", zeroline=False, range=[xlo, xhi]),
         yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="#374151", zeroline=False, range=[ylo, yhi]),
-        showlegend=False,
+        showlegend=True,
+        legend=dict(orientation="h", x=0, y=-0.15, bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
     )
     return fig
 
@@ -1171,8 +1191,15 @@ def main():
     with tab2:
         st.caption("Relative Rotation Graph — sector ETFs vs SPY. Weekly data, trailing 8 weeks. Clockwise rotation is normal cycle progression.")
 
+        chart_sectors = st.multiselect(
+            "Sectors to display",
+            options=ALL_SECTORS,
+            default=ALL_SECTORS,
+        )
+        chart_data = [d for d in l15_data if d["sector"] in chart_sectors] if chart_sectors else l15_data
+
         with st.spinner("Building RRG chart..."):
-            rrg_fig = build_rrg_chart(l15_data)
+            rrg_fig = build_rrg_chart(chart_data)
         if rrg_fig:
             st.plotly_chart(rrg_fig, use_container_width=True)
         else:
