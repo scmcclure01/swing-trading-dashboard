@@ -1291,55 +1291,82 @@ def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
                        active_sectors: list, show_half: bool, show_all: bool) -> None:
     """Render the Layer 2 — Screener tab."""
 
+    # Red state bar
     if perm == "Red":
-        st.error("🔴 RED STATE — No new entries. Results shown for reference only.")
-
-    st.caption(f"Sectors: {', '.join(active_sectors)}  ·  Universe: {len(results_df)} stocks")
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Screened",        len(results_df))
-    c2.metric("✅ Full Signal",  len(passes_df))
-    c3.metric("⚠️ Half Signal",  len(half_df))
-    c4.metric("❌ No Trade",     len(results_df[results_df["2-Speed"] == "NO TRADE"]))
-
-    st.divider()
-
-    st.subheader(f"✅ Full Signal — {len(passes_df)} candidates")
-    if not passes_df.empty:
-        row_h = 35
-        header_h = 40
-        st.dataframe(
-            fmt_df(passes_df),
-            hide_index=True,
-            use_container_width=True,
-            height=len(passes_df) * row_h + header_h,
+        st.markdown(
+            _gate_bar_html("Red", "RED STATE — No new entries. Results shown for reference only."),
+            unsafe_allow_html=True,
         )
-        tickers_str = "  ".join(passes_df["Ticker"].tolist())
-        st.text_area("Copy tickers →", value=tickers_str, height=68, label_visibility="collapsed",
-                     help="Full Signal tickers — copy and paste into Claude")
+
+    # ── Stats tile row ────────────────────────────────────────────────────────
+    no_trade = len(results_df[results_df["2-Speed"] == "NO TRADE"])
+    sector_str = ", ".join(active_sectors)
+    stats_html = (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px;">'
+        f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
+        f'Sectors: {sector_str} &nbsp;·&nbsp; Universe: {len(results_df)} stocks</div>'
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
+        + _tile("Screened",    str(len(results_df)), "")
+        + _tile("Full Signal", str(len(passes_df)),  "● Both signals positive", "#27500A")
+        + _tile("Half Signal", str(len(half_df)),    "● Mixed signals",         "#E07800")
+        + _tile("No Trade",    str(no_trade),        "● Both signals negative", "#CC1111")
+        + '</div></div>'
+    )
+    st.markdown(stats_html, unsafe_allow_html=True)
+
+    # ── Full Signal card ──────────────────────────────────────────────────────
+    if not passes_df.empty:
+        st.markdown(
+            _card(f"Full Signal — {len(passes_df)} candidates",
+                  cb_table(fmt_df(passes_df), bordered=False),
+                  pill="✅ Full"),
+            unsafe_allow_html=True,
+        )
+        st.text_area(
+            "Copy tickers",
+            value="  ".join(passes_df["Ticker"].tolist()),
+            height=60,
+            label_visibility="collapsed",
+            help="Full Signal tickers — copy and paste into Claude",
+        )
     else:
-        st.info("No stocks passing all Layer 2 filters in the current regime.")
+        st.markdown(
+            _gate_bar_html("Yellow", "No stocks passing all Layer 2 filters in the current regime."),
+            unsafe_allow_html=True,
+        )
 
+    # ── Half Signal card ──────────────────────────────────────────────────────
     if show_half:
-        st.subheader(f"⚠️ Half Signal — {len(half_df)} candidates")
-        if not half_df.empty:
-            half_show = half_df.head(15)
-            st.dataframe(
-                fmt_df(half_show),
-                hide_index=True,
-                use_container_width=True,
-                height=len(half_show) * row_h + header_h,
+        half_show = half_df.head(15)
+        if not half_show.empty:
+            st.markdown(
+                _card(f"Half Signal — {len(half_df)} candidates",
+                      cb_table(fmt_df(half_show), bordered=False),
+                      pill="⚠️ Half"),
+                unsafe_allow_html=True,
             )
-            half_tickers_str = "  ".join(half_show["Ticker"].tolist())
-            st.text_area("Copy half-signal tickers →", value=half_tickers_str, height=68,
-                         label_visibility="collapsed", help="Half Signal tickers — copy and paste into Claude")
+            st.text_area(
+                "Copy half tickers",
+                value="  ".join(half_show["Ticker"].tolist()),
+                height=60,
+                label_visibility="collapsed",
+                help="Half Signal tickers — copy and paste into Claude",
+            )
         else:
-            st.info("No half-signal candidates.")
+            st.markdown(
+                _gate_bar_html("Yellow", "No half-signal candidates."),
+                unsafe_allow_html=True,
+            )
 
+    # ── Full Universe card ────────────────────────────────────────────────────
     if show_all:
-        with st.expander(f"Full Universe — {len(results_df)} stocks"):
-            all_s = results_df.sort_values(["PASS", "2-Speed", "3M Ret"], ascending=[False, True, False])
-            st.dataframe(fmt_df(all_s), hide_index=True, use_container_width=True)
+        all_s = results_df.sort_values(["PASS", "2-Speed", "3M Ret"], ascending=[False, True, False])
+        st.markdown(
+            _card(f"Full Universe — {len(results_df)} stocks",
+                  cb_table(fmt_df(all_s), bordered=False)),
+            unsafe_allow_html=True,
+        )
 
 
 def _render_charts_tab(passes_df: pd.DataFrame) -> None:
