@@ -886,6 +886,55 @@ def icon(v): return "✅" if v else "❌"
 def macd(v): return "▲" if v else "▼"
 
 
+def cb_table(df: pd.DataFrame, max_height: int | None = None) -> str:
+    """Render a DataFrame as a Classic Blue styled HTML table."""
+    _GREEN  = ("#27500A", "500")
+    _RED    = ("#CC1111", "500")
+    _ORANGE = ("#E07800", "500")
+    _BLUE   = ("#288CFA", "500")
+    _DARK   = ("#103766", "400")
+
+    def _color(val: str):
+        s = str(val)
+        if any(x in s for x in ["✅", "Leading", "Positive", "Clear", "Open", "Rising",
+                                  "OK", "🟢", "Phase 2", "Confirmed", "GREEN"]):
+            return _GREEN
+        if any(x in s for x in ["❌", "Lagging", "Negative", "FLAG", "Closed",
+                                  "Declining", "🔴", "OVERRIDE", "ACTIVE", "Critical"]):
+            return _RED
+        if any(x in s for x in ["⚠️", "Mixed", "Weakening", "Elevated", "pressure", "🟡"]):
+            return _ORANGE
+        if any(x in s for x in ["🔵", "Improving", "Phase 1", "Early"]):
+            return _BLUE
+        return _DARK
+
+    TH  = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
+           " text-align: left; white-space: nowrap;")
+    TD_BASE = "padding: 8px 12px; font-size: 13px; border-top: 0.5px solid rgba(16,55,102,0.09);"
+
+    cols = list(df.columns)
+    header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
+
+    rows_html = ""
+    for _, row in df.iterrows():
+        cells = ""
+        for col in cols:
+            val = row[col]
+            color, weight = _color(val)
+            cells += (f'<td style="{TD_BASE} color: {color}; font-weight: {weight};">'
+                      f'{val}</td>')
+        rows_html += f"<tr>{cells}</tr>"
+
+    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
+    return (
+        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
+        f'<table style="width: 100%; border-collapse: collapse; background: #FFFFFF;">'
+        f'<thead><tr style="background: #EEF3FA;">{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        f'</table></div><div style="margin-bottom:8px"></div>'
+    )
+
+
 def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Format a screener DataFrame for display:
@@ -957,7 +1006,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                         "_sort":  v["rs_3m"],
                     })
                 sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
-                st.dataframe(sr_df, hide_index=True, use_container_width=True, height=340)
+                st.markdown(cb_table(sr_df, max_height=340), unsafe_allow_html=True)
 
         st.write("")
 
@@ -980,7 +1029,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                      f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
                  ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
             ]
-            st.dataframe(pd.DataFrame(bond_rows), hide_index=True, use_container_width=True)
+            st.markdown(cb_table(pd.DataFrame(bond_rows)), unsafe_allow_html=True)
 
         st.write("")
 
@@ -993,7 +1042,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                     {"Phase": "🔵 Phase 1 — Early",     "ETFs": ", ".join(d["etf"] for d in improving) or "None"},
                     {"Phase": "🟢 Phase 2 — Confirmed", "ETFs": ", ".join(d["etf"] for d in leading)   or "None"},
                 ]
-                st.dataframe(pd.DataFrame(flow_rows), hide_index=True, use_container_width=True)
+                st.markdown(cb_table(pd.DataFrame(flow_rows)), unsafe_allow_html=True)
                 st.caption("Full detail in the Layer 1.5 tab.")
             else:
                 st.info("RRG data unavailable.")
@@ -1010,7 +1059,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                 {"Signal": "ROC 126 (6-Month)", "Value": pct(l0["spy_ret_6m"]),  "Status": "✅ Positive" if roc6_pos else "❌ Negative"},
                 {"Signal": "Gate",              "Value": "",                       "Status": gate},
             ]
-            st.dataframe(pd.DataFrame(spy_rows), hide_index=True, use_container_width=True)
+            st.markdown(cb_table(pd.DataFrame(spy_rows)), unsafe_allow_html=True)
 
         st.write("")
 
@@ -1027,7 +1076,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                     "Threshold": ind["threshold"],
                     "Status":    "✅ OK" if ind["ok"] else "⚠️ FLAG",
                 } for ind in rec_indicators]
-                st.dataframe(pd.DataFrame(rec_rows), hide_index=True, use_container_width=True)
+                st.markdown(cb_table(pd.DataFrame(rec_rows)), unsafe_allow_html=True)
                 if   rec_flags == 0: st.success("Clear — full risk operations.")
                 elif rec_flags <= 2: st.warning(f"{rec_flags} indicator(s) flagging — elevated caution.")
                 else:                st.error(  f"{rec_flags} indicators flagging — reduce risk.")
@@ -1044,7 +1093,7 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                 {"Gate": "Taylor Rule",               "Status": st.session_state.taylor_rule,                                                                     "Effect": "Informational"},
                 {"Gate": "Drawdown from Peak",        "Status": st.session_state.drawdown_state,                                                                  "Effect": "Informs risk scaling"},
             ]
-            st.dataframe(pd.DataFrame(gate_rows), hide_index=True, use_container_width=True)
+            st.markdown(cb_table(pd.DataFrame(gate_rows)), unsafe_allow_html=True)
 
 
 def _render_layer15_tab(l15_data: list) -> None:
@@ -1133,7 +1182,7 @@ def _render_layer15_tab(l15_data: list) -> None:
                         "Sizing":      sizing,
                         "Risk %":      risk_pct,
                     })
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
             else:
                 st.info("No Improving or Leading sectors currently.")
 
@@ -1156,7 +1205,7 @@ def _render_layer15_tab(l15_data: list) -> None:
                         "Flow Signal": flow_strength,
                         "Action":      "Exit review — outflows" if flow_strength == "Outflows" else d["action"],
                     })
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
             else:
                 st.success("No sectors in Weakening quadrant.")
 
@@ -1184,7 +1233,7 @@ def _render_layer15_tab(l15_data: list) -> None:
                 "Sizing":      sizing,
                 "Action":      d["action"],
             })
-        st.dataframe(pd.DataFrame(all_rows), hide_index=True, use_container_width=True)
+        st.markdown(cb_table(pd.DataFrame(all_rows)), unsafe_allow_html=True)
 
 
 def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
