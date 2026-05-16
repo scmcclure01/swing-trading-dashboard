@@ -886,8 +886,10 @@ def icon(v): return "✅" if v else "❌"
 def macd(v): return "▲" if v else "▼"
 
 
-def cb_table(df: pd.DataFrame, max_height: int | None = None) -> str:
-    """Render a DataFrame as a Classic Blue styled HTML table."""
+def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = True) -> str:
+    """Render a DataFrame as a Classic Blue styled HTML table.
+    bordered=False omits the outer container — use when the table sits inside a _card().
+    """
     _GREEN  = ("#27500A", "500")
     _RED    = ("#CC1111", "500")
     _ORANGE = ("#E07800", "500")
@@ -908,11 +910,11 @@ def cb_table(df: pd.DataFrame, max_height: int | None = None) -> str:
             return _BLUE
         return _DARK
 
-    TH  = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
-           " text-align: left; white-space: nowrap;")
+    TH      = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
+               " text-align: left; white-space: nowrap;")
     TD_BASE = "padding: 8px 12px; font-size: 13px; border-top: 0.5px solid rgba(16,55,102,0.09);"
 
-    cols = list(df.columns)
+    cols   = list(df.columns)
     header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
 
     rows_html = ""
@@ -925,13 +927,68 @@ def cb_table(df: pd.DataFrame, max_height: int | None = None) -> str:
                       f'{val}</td>')
         rows_html += f"<tr>{cells}</tr>"
 
-    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
-    return (
-        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
+    inner = (
         f'<table style="width: 100%; border-collapse: collapse; background: #FFFFFF;">'
         f'<thead><tr style="background: #EEF3FA;">{header}</tr></thead>'
         f'<tbody>{rows_html}</tbody>'
-        f'</table></div><div style="margin-bottom:8px"></div>'
+        f'</table>'
+    )
+    if not bordered:
+        return inner
+    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
+    return (
+        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
+        f'{inner}</div><div style="margin-bottom:8px"></div>'
+    )
+
+
+def _card(heading: str, inner_html: str, pill: str = "") -> str:
+    """White card with uppercase heading, optional pill label, and arbitrary inner HTML."""
+    pill_html = (
+        f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
+        f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
+        if pill else ""
+    )
+    return (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px; overflow:hidden;">'
+        f'<div style="display:flex; align-items:center; justify-content:space-between;'
+        f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
+        f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+        f' letter-spacing:0.04em;">{heading}</span>{pill_html}</div>'
+        f'{inner_html}</div>'
+    )
+
+
+def _gate_bar_html(perm: str, text: str) -> str:
+    """Render the permission state gate bar."""
+    cfg = {
+        "Green":  ("#D6F0D6", "rgba(29,122,42,0.30)",  "#1D7A2A", "#173404"),
+        "Yellow": ("#FFF3D6", "rgba(224,120,0,0.30)",   "#E07800", "#412402"),
+        "Red":    ("#FFE4E4", "rgba(204,17,17,0.30)",   "#CC1111", "#501313"),
+    }
+    bg, border, dot_c, text_c = cfg.get(perm, cfg["Green"])
+    return (
+        f'<div style="background:{bg}; border-radius:9px; border:0.5px solid {border};'
+        f' padding:10px 16px; display:flex; align-items:center; gap:10px; margin-bottom:10px;">'
+        f'<div style="width:9px; height:9px; border-radius:50%; background:{dot_c}; flex-shrink:0;"></div>'
+        f'<span style="font-size:13px; font-weight:500; color:{text_c};">{text}</span>'
+        f'</div>'
+    )
+
+
+def _tile(label: str, value: str, signal: str = "", signal_color: str = "#5A7BAA") -> str:
+    """Single metric tile for the header row."""
+    sig_html = (
+        f'<div style="font-size:11px; font-weight:500; color:{signal_color}; margin-top:3px;">{signal}</div>'
+        if signal else ""
+    )
+    return (
+        f'<div style="background:#EEF3FA; border-radius:9px; border:0.5px solid rgba(16,55,102,0.15);'
+        f' padding:10px 12px;">'
+        f'<div style="font-size:11px; font-weight:400; color:#5A7BAA; margin-bottom:2px;">{label}</div>'
+        f'<div style="font-size:17px; font-weight:500; color:#103766;">{value}</div>'
+        f'{sig_html}</div>'
     )
 
 
@@ -963,137 +1020,130 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
                          limits: dict, l15_data: list) -> None:
     """Render the combined Layer 0 & 1 — Macro Regime + Permission State tab."""
 
-    roc1_pos     = l0["spy_ret_1m"] > 0
-    roc6_pos     = l0["spy_ret_6m"] > 0
-    spy_signal   = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
-    liq_override = bool(l0.get("liquidity_tighten")) or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
-    tlt_dir      = l0.get("tlt_direction", "N/A")
-    vix_v        = l0.get("vix")
-    hyg_r        = l0.get("hyg_ief_ratio")
-    eps_signal   = st.session_state.eps_signal
+    roc1_pos      = l0["spy_ret_1m"] > 0
+    roc6_pos      = l0["spy_ret_6m"] > 0
+    spy_signal    = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
+    liq_override  = bool(l0.get("liquidity_tighten")) or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
+    tlt_dir       = l0.get("tlt_direction", "N/A")
+    vix_v         = l0.get("vix")
+    hyg_r         = l0.get("hyg_ief_ratio")
+    eps_signal    = st.session_state.eps_signal
     eps_declining = "Declining" in eps_signal
 
-    # ── Layer 1 output: Permission state banner (the answer) ─────────────────
-    banner = {
-        "Green":  f"🟢  GREEN — FULL  |  Max {limits['max_pos']} positions  |  Risk {limits['risk_lo']}–{limits['risk_hi']}%/trade  |  {limits['heat']}% max heat  |  {SETUP_STYLE['Green']}",
-        "Yellow": f"🟡  YELLOW — SELECTIVE  |  Max {limits['max_pos_label']} positions  |  Risk {limits['risk_lo']}–{limits['risk_hi']}%/trade  |  {limits['heat']}% max heat  |  {SETUP_STYLE['Yellow']}",
-        "Red":    f"🔴  RED — CAPITAL PROTECTION  |  Max {limits['max_pos_label']} positions  |  No new entries  |  {limits['heat']}% max heat",
-    }[perm]
-    getattr(st, {"Green": "success", "Yellow": "warning", "Red": "error"}[perm])(f"**{banner}**")
+    # ── Build Sector RS table ─────────────────────────────────────────────────
+    sr = l0.get("sector_rs", {})
+    if sr:
+        sr_rows = []
+        for sec, v in sr.items():
+            emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
+            sr_rows.append({
+                "Sector": sec, "ETF": v["etf"],
+                "Price":  f"${v['price']:.2f}",
+                "1M RS":  pct(v["rs_1m"]),
+                "3M RS":  pct(v["rs_3m"]),
+                "RS Hi":  icon(v["rs_new_hi"]),
+                "Status": f"{emoji} {v['trend']}",
+                "_sort":  v["rs_3m"],
+            })
+        sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
+        sector_rs_html = cb_table(sr_df, bordered=False)
+    else:
+        sector_rs_html = "<p style='color:#5A7BAA; font-size:13px;'>Sector data unavailable.</p>"
 
-    st.divider()
+    # ── Build Bond & Liquidity table ──────────────────────────────────────────
+    bond_rows = [
+        {"Signal": "TLT Direction (4-week)",
+         "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
+        {"Signal": "TLT vs 50d MA",
+         "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
+        {"Signal": "Bond/SPY Regime Signal",
+         "Value": l0.get("tlt_spy_signal", "N/A")},
+        {"Signal": "HYG/IEF Credit Spread",
+         "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Stable'})" if hyg_r else "N/A"},
+        {"Signal": "VIX",
+         "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
+        {"Signal": f"Fed Net Liquidity ({l0.get('fnl_as_of', '')})",
+         "Value": (
+             f"${l0['fnl_current']:,.1f}B  |  4-week: ${l0['fnl_change_4w']:+.1f}B  |  "
+             f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
+         ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
+    ]
+    bond_html = cb_table(pd.DataFrame(bond_rows), bordered=False)
 
-    col_l, col_r = st.columns(2, gap="large")
+    # ── Build Sector Flow preview table ──────────────────────────────────────
+    if l15_data:
+        improving = [d for d in l15_data if d["quadrant"] == "Improving"]
+        leading   = [d for d in l15_data if d["quadrant"] == "Leading"]
+        flow_rows = [
+            {"Phase": "🔵 Phase 1 — Early",     "ETFs": ", ".join(d["etf"] for d in improving) or "None"},
+            {"Phase": "🟢 Phase 2 — Confirmed", "ETFs": ", ".join(d["etf"] for d in leading)   or "None"},
+        ]
+        flow_html = cb_table(pd.DataFrame(flow_rows), bordered=False)
+        flow_html += '<p style="font-size:11px; color:#5A7BAA; margin-top:6px;">Full detail in the Layer 1.5 tab.</p>'
+    else:
+        flow_html = "<p style='color:#5A7BAA; font-size:13px;'>RRG data unavailable.</p>"
 
-    # ── LEFT: Layer 0 — Regime Signals ───────────────────────────────────────
-    with col_l:
-        st.markdown("### Layer 0 — Regime Signals")
+    # ── Build SPY Two-Speed table ─────────────────────────────────────────────
+    gate_status = ("✅ Both positive — gate open" if spy_signal == "GREEN"
+                   else "❌ Both negative — Red state" if spy_signal == "RED"
+                   else "⚠️ Mixed — Yellow pressure")
+    spy_rows = [
+        {"Signal": "ROC 21 (1-Month)",  "Value": pct(l0["spy_ret_1m"]),  "Status": "✅ Positive" if roc1_pos else "❌ Negative"},
+        {"Signal": "ROC 126 (6-Month)", "Value": pct(l0["spy_ret_6m"]),  "Status": "✅ Positive" if roc6_pos else "❌ Negative"},
+        {"Signal": "Gate",              "Value": "",                       "Status": gate_status},
+    ]
+    spy_html = cb_table(pd.DataFrame(spy_rows), bordered=False)
 
-        # Sector RS
-        with st.expander("Sector Relative Strength vs SPY", expanded=True):
-            sr = l0.get("sector_rs", {})
-            if sr:
-                sr_rows = []
-                for sec, v in sr.items():
-                    emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
-                    sr_rows.append({
-                        "Sector": sec, "ETF": v["etf"],
-                        "Price":  f"${v['price']:.2f}",
-                        "1M RS":  pct(v["rs_1m"]),
-                        "3M RS":  pct(v["rs_3m"]),
-                        "RS Hi":  icon(v["rs_new_hi"]),
-                        "Status": f"{emoji} {v['trend']}",
-                        "_sort":  v["rs_3m"],
-                    })
-                sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
-                st.markdown(cb_table(sr_df, max_height=340), unsafe_allow_html=True)
+    # ── Build Recession Composite table ──────────────────────────────────────
+    if "error" in fred_data:
+        rec_html = f"<p style='color:#5A7BAA; font-size:13px;'>{fred_data['error']}</p>"
+    else:
+        rec_rows = [{
+            "Indicator": ind["name"],
+            "Value":     ind["value"],
+            "As of":     ind["as_of"],
+            "Threshold": ind["threshold"],
+            "Status":    "✅ OK" if ind["ok"] else "⚠️ FLAG",
+        } for ind in rec_indicators]
+        flag_text = ("Clear — full risk operations." if rec_flags == 0
+                     else f"{rec_flags}/{rec_total} indicator(s) flagging.")
+        flag_color_css = "#27500A" if rec_flags == 0 else ("#E07800" if rec_flags <= 2 else "#CC1111")
+        rec_html = (cb_table(pd.DataFrame(rec_rows), bordered=False)
+                    + f'<p style="font-size:11px; color:{flag_color_css}; font-weight:500; margin-top:6px;">{flag_text}</p>')
 
-        st.write("")
+    # ── Build Gate Summary table ──────────────────────────────────────────────
+    gate_rows = [
+        {"Gate": "SPY both positive",  "Status": "✅ Open" if (roc1_pos and roc6_pos) else ("❌ Closed" if spy_signal == "RED" else "⚠️ Mixed"),    "Effect": "Required for Green"},
+        {"Gate": "Liquidity override", "Status": "🔴 ACTIVE" if liq_override else "✅ Clear",                                                        "Effect": "Forces Red if active"},
+        {"Gate": "Recession composite","Status": "🔴 Critical" if rec_flags >= 4 else ("⚠️ Elevated" if rec_flags >= 2 else "✅ Clear"),             "Effect": "≥4 flags → Red; 2–3 → Yellow"},
+        {"Gate": "EPS Revisions",      "Status": f"{'⚠️' if eps_declining else '✅'} {eps_signal}",                                                  "Effect": "Declining → Yellow pressure"},
+        {"Gate": "Taylor Rule",        "Status": st.session_state.taylor_rule,                                                                        "Effect": "Informational"},
+        {"Gate": "Drawdown from Peak", "Status": st.session_state.drawdown_state,                                                                     "Effect": "Informs risk scaling"},
+    ]
+    gate_sum_html = cb_table(pd.DataFrame(gate_rows), bordered=False)
 
-        # Bond & Liquidity
-        with st.expander("Bond & Liquidity", expanded=True):
-            bond_rows = [
-                {"Signal": "TLT Direction (4-week)",
-                 "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
-                {"Signal": "TLT vs 50d MA",
-                 "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
-                {"Signal": "Bond/SPY Regime Signal",
-                 "Value": l0.get("tlt_spy_signal", "N/A")},
-                {"Signal": "HYG/IEF Credit Spread",
-                 "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Stable'})" if hyg_r else "N/A"},
-                {"Signal": "VIX",
-                 "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
-                {"Signal": f"Fed Net Liquidity ({l0.get('fnl_as_of', '')})",
-                 "Value": (
-                     f"${l0['fnl_current']:,.1f}B  |  4-week: ${l0['fnl_change_4w']:+.1f}B  |  "
-                     f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
-                 ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
-            ]
-            st.markdown(cb_table(pd.DataFrame(bond_rows)), unsafe_allow_html=True)
+    # ── Assemble full two-column HTML layout ──────────────────────────────────
+    rec_pill = f"{'🟢' if rec_flags==0 else '🟡' if rec_flags<=2 else '🔴'} {rec_flags}/{rec_total}"
+    full_html = (
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
 
-        st.write("")
+        # ── Left: Layer 0 ──────────────────────────────────────────────────
+        '<div>'
+        + _card("Sector Relative Strength vs SPY", sector_rs_html)
+        + _card("Bond &amp; Liquidity", bond_html)
+        + _card("Sector Flow Momentum", flow_html, pill="L1.5 Preview")
+        + '</div>'
 
-        # Sector Flow Momentum preview
-        with st.expander("Sector Flow Momentum (L1.5 Preview)", expanded=True):
-            if l15_data:
-                improving = [d for d in l15_data if d["quadrant"] == "Improving"]
-                leading   = [d for d in l15_data if d["quadrant"] == "Leading"]
-                flow_rows = [
-                    {"Phase": "🔵 Phase 1 — Early",     "ETFs": ", ".join(d["etf"] for d in improving) or "None"},
-                    {"Phase": "🟢 Phase 2 — Confirmed", "ETFs": ", ".join(d["etf"] for d in leading)   or "None"},
-                ]
-                st.markdown(cb_table(pd.DataFrame(flow_rows)), unsafe_allow_html=True)
-                st.caption("Full detail in the Layer 1.5 tab.")
-            else:
-                st.info("RRG data unavailable.")
+        # ── Right: Layer 1 ─────────────────────────────────────────────────
+        '<div>'
+        + _card("SPY Two-Speed Trend", spy_html)
+        + _card("Recession Composite", rec_html, pill=rec_pill)
+        + _card("Gate Summary", gate_sum_html)
+        + '</div>'
 
-    # ── RIGHT: Layer 1 — Permission Gates ────────────────────────────────────
-    with col_r:
-        st.markdown("### Layer 1 — Permission Gates")
-
-        # SPY Two-Speed
-        with st.expander("SPY Two-Speed Trend", expanded=True):
-            gate = "✅ Both positive — gate open" if spy_signal == "GREEN" else ("❌ Both negative — Red state" if spy_signal == "RED" else "⚠️ Mixed — Yellow pressure")
-            spy_rows = [
-                {"Signal": "ROC 21 (1-Month)",  "Value": pct(l0["spy_ret_1m"]),  "Status": "✅ Positive" if roc1_pos else "❌ Negative"},
-                {"Signal": "ROC 126 (6-Month)", "Value": pct(l0["spy_ret_6m"]),  "Status": "✅ Positive" if roc6_pos else "❌ Negative"},
-                {"Signal": "Gate",              "Value": "",                       "Status": gate},
-            ]
-            st.markdown(cb_table(pd.DataFrame(spy_rows)), unsafe_allow_html=True)
-
-        st.write("")
-
-        # Recession Composite
-        flag_color = "🟢" if rec_flags == 0 else ("🟡" if rec_flags <= 2 else "🔴")
-        with st.expander(f"Recession Composite  {flag_color} {rec_flags} / {rec_total}", expanded=True):
-            if "error" in fred_data:
-                st.info(f"ℹ️ {fred_data['error']}")
-            else:
-                rec_rows = [{
-                    "Indicator": ind["name"],
-                    "Value":     ind["value"],
-                    "As of":     ind["as_of"],
-                    "Threshold": ind["threshold"],
-                    "Status":    "✅ OK" if ind["ok"] else "⚠️ FLAG",
-                } for ind in rec_indicators]
-                st.markdown(cb_table(pd.DataFrame(rec_rows)), unsafe_allow_html=True)
-                if   rec_flags == 0: st.success("Clear — full risk operations.")
-                elif rec_flags <= 2: st.warning(f"{rec_flags} indicator(s) flagging — elevated caution.")
-                else:                st.error(  f"{rec_flags} indicators flagging — reduce risk.")
-
-        st.write("")
-
-        # Manual signals + state gate summary
-        with st.expander("Gate Summary", expanded=True):
-            gate_rows = [
-                {"Gate": "SPY both positive",        "Status": "✅ Open" if (roc1_pos and roc6_pos) else ("❌ Closed" if spy_signal == "RED" else "⚠️ Mixed"),  "Effect": "Required for Green"},
-                {"Gate": "Liquidity override",        "Status": "🔴 ACTIVE" if liq_override else "✅ Clear",                                                     "Effect": "Forces Red if active"},
-                {"Gate": "Recession composite",       "Status": "🔴 Critical" if rec_flags >= 4 else ("⚠️ Elevated" if rec_flags >= 2 else "✅ Clear"),           "Effect": "≥4 flags → Red; 2–3 → Yellow"},
-                {"Gate": "EPS Revisions",             "Status": f"{'⚠️' if eps_declining else '✅'} {eps_signal}",                                               "Effect": "Declining → Yellow pressure"},
-                {"Gate": "Taylor Rule",               "Status": st.session_state.taylor_rule,                                                                     "Effect": "Informational"},
-                {"Gate": "Drawdown from Peak",        "Status": st.session_state.drawdown_state,                                                                  "Effect": "Informs risk scaling"},
-            ]
-            st.markdown(cb_table(pd.DataFrame(gate_rows)), unsafe_allow_html=True)
+        '</div>'
+    )
+    st.markdown(full_html, unsafe_allow_html=True)
 
 
 def _render_layer15_tab(l15_data: list) -> None:
@@ -1602,35 +1652,56 @@ def main():
     half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].sort_values("3M Ret", ascending=False)
 
     # ── PAGE HEADER ───────────────────────────────────────────────────────────
-    st.markdown("<div style='padding-top: 1rem;'></div>", unsafe_allow_html=True)
-    st.markdown("<h1 style='font-size: 28px; font-weight: 500; color: #103766; margin-bottom: 2px;'>Swing Trading Framework</h1>", unsafe_allow_html=True)
-    st.caption(f"{datetime.now().strftime('%A, %B %d, %Y')}")
+    liq_override = l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Regime",        regime)
-    c2.metric("Permission",    perm)
-    c3.metric("SPY",           f"${l0['spy_price']:.2f}")
-    c4.metric("Max Positions", limits["max_pos_label"])
-    c5.metric("Risk / Trade",  f"{limits['risk_lo']}–{limits['risk_hi']}%" if limits["risk_hi"] > 0 else "No new trades")
-    c6.metric("Max Heat",      f"{limits['heat']}%")
+    # Signal colors for tiles
+    regime_color = "#27500A" if regime in ("Risk-on", "Reflation") else ("#CC1111" if regime == "Stagflation" else "#5A7BAA")
+    perm_color   = {"Green": "#27500A", "Yellow": "#E07800", "Red": "#CC1111"}.get(perm, "#5A7BAA")
+    spy_color    = "#27500A" if l0["spy_ret_1m"] > 0 else "#CC1111"
+    risk_str     = f"{limits['risk_lo']}–{limits['risk_hi']}%/trade" if limits["risk_hi"] > 0 else "No new trades"
 
-    if   perm == "Green":  st.success(f"🟢 **GREEN STATE** — Full deployment. {SETUP_STYLE['Green']}. {limits['max_pos_label']} positions.")
-    elif perm == "Yellow": st.warning(f"🟡 **YELLOW STATE** — Selective. {SETUP_STYLE['Yellow']}. {limits['max_pos_label']} positions max.")
-    else:                  st.error(  f"🔴 **RED STATE** — {SETUP_STYLE['Red']}. {limits['max_pos_label']} positions max.")
+    tiles_html = (
+        f'<div style="display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin-bottom:10px;">'
+        + _tile("Regime",        regime,                        f"● {l0.get('regime_detail', regime)}", regime_color)
+        + _tile("Permission",    perm,                          f"● {'Full' if perm=='Green' else 'Selective' if perm=='Yellow' else 'Protection'}", perm_color)
+        + _tile("SPY",           f"${l0['spy_price']:.2f}",    f"{'+' if l0['spy_ret_1m']>0 else ''}{l0['spy_ret_1m']*100:.1f}% 1M", spy_color)
+        + _tile("Max Positions", str(limits["max_pos_label"]), "")
+        + _tile("Risk / Trade",  risk_str,                      "")
+        + _tile("Max Heat",      f"{limits['heat']}%",          "")
+        + "</div>"
+    )
 
-    if l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE":
+    # Gate bar
+    gate_texts = {
+        "Green":  f"GREEN STATE — Full deployment. Momentum breakouts. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
+        "Yellow": f"YELLOW STATE — Selective entry. {SETUP_STYLE['Yellow']}. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
+        "Red":    f"RED STATE — Capital protection. No new entries. {limits['max_pos_label']} positions max · {limits['heat']}% max heat.",
+    }
+    gate_bar = _gate_bar_html(perm, gate_texts[perm])
+
+    # Warning bars
+    warn_bars = ""
+    if liq_override:
         reasons = []
-        if l0.get("liquidity_tighten"):
-            reasons.append("HYG/IEF ratio declining")
-        if l0.get("fnl_signal") == "OVERRIDE ACTIVE":
-            reasons.append(f"Fed Net Liquidity −${abs(l0.get('fnl_change_4w', 0)):.0f}B (4-week)")
-        st.warning(f"⚠️ Liquidity override active — {'; '.join(reasons)}. Reduce exposure immediately.")
+        if l0.get("liquidity_tighten"):      reasons.append("HYG/IEF declining")
+        if l0.get("fnl_signal") == "OVERRIDE ACTIVE": reasons.append(f"Fed Net Liquidity −${abs(l0.get('fnl_change_4w', 0)):.0f}B (4-week)")
+        warn_bars += _gate_bar_html("Red", f"Liquidity override active — {'; '.join(reasons)}. Reduce exposure immediately.")
     if rec_flags >= 3:
-        st.error(f"⚠️ Recession composite elevated: {rec_flags}/{rec_total} indicators flagging.")
+        warn_bars += _gate_bar_html("Red",    f"Recession composite elevated: {rec_flags}/{rec_total} indicators flagging.")
     elif rec_flags >= 1:
-        st.warning(f"⚠️ Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
+        warn_bars += _gate_bar_html("Yellow", f"Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
 
-    st.divider()
+    date_str = datetime.now().strftime("%A, %B %d, %Y")
+    header_html = (
+        f'<div style="padding-top:1rem; margin-bottom:4px;">'
+        f'<span style="font-size:28px; font-weight:500; color:#103766;">Swing Trading Framework</span>'
+        f'<span style="font-size:12px; font-weight:400; color:#5A7BAA; margin-left:14px;">{date_str}</span>'
+        f'</div>'
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px;">{tiles_html}</div>'
+        f'{gate_bar}{warn_bars}'
+    )
+    st.markdown(header_html, unsafe_allow_html=True)
 
     # ── TABS ──────────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4 = st.tabs([
