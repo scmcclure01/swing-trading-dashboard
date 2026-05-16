@@ -758,19 +758,19 @@ def build_chart(ticker: str):
         fig.add_annotation(
             text=f"<b>{label}</b>", xref="paper", yref="paper",
             x=x, y=y, showarrow=False,
-            font=dict(color="#d1d5db", size=11),
+            font=dict(color="#5A7BAA", size=11),
             xanchor="left", yanchor="top", bgcolor="rgba(0,0,0,0)",
         )
 
     fig.update_layout(
-        height=750, paper_bgcolor="#111827", plot_bgcolor="#1f2937",
-        font=dict(color="#d1d5db", size=11), margin=dict(l=50, r=20, t=20, b=20),
+        height=750, paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
+        font=dict(color="#103766", size=11), margin=dict(l=50, r=20, t=20, b=20),
         xaxis_rangeslider_visible=False,
         legend=dict(orientation="h", x=0, y=1.01, bgcolor="rgba(0,0,0,0)"),
     )
     for i in range(1, 6):
-        fig.update_xaxes(gridcolor="#374151", row=i, col=1)
-        fig.update_yaxes(gridcolor="#374151", row=i, col=1)
+        fig.update_xaxes(gridcolor="rgba(16,55,102,0.10)", row=i, col=1)
+        fig.update_yaxes(gridcolor="rgba(16,55,102,0.10)", row=i, col=1)
     fig.update_yaxes(range=[0, 100], row=4, col=1)
     return fig
 
@@ -795,7 +795,7 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
 
     quad_label_colors = {
         "LEADING":   "#27500A",
-        "IMPROVING": "#93B6FA",
+        "IMPROVING": "#288CFA",
         "WEAKENING": "#E07800",
         "LAGGING":   "#CC1111",
     }
@@ -838,10 +838,10 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=[d["rs_ratio"]], y=[d["rs_momentum"]],
             mode="markers+text",
-            marker=dict(size=14, color=color, line=dict(color="#FFFFFF", width=1.5)),
+            marker=dict(size=14, color=color, line=dict(color="#EEF3FA", width=1.5)),
             text=[d["etf"]],
             textposition="top center",
-            textfont=dict(color="#FFFFFF", size=10),
+            textfont=dict(color="#103766", size=10),
             name=f"{d['etf']} — {d['quadrant']}",
             hovertemplate=(
                 f"<b>{d['sector']} ({d['etf']})</b><br>"
@@ -866,11 +866,11 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
 
     fig.update_layout(
         height=560,
-        paper_bgcolor="#111827", plot_bgcolor="#1f2937",
-        font=dict(color="#d1d5db", size=11),
+        paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
+        font=dict(color="#103766", size=11),
         margin=dict(l=55, r=20, t=30, b=55),
-        xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="#374151", zeroline=False, range=[xlo, xhi]),
-        yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="#374151", zeroline=False, range=[ylo, yhi]),
+        xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[xlo, xhi]),
+        yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[ylo, yhi]),
         showlegend=True,
         legend=dict(orientation="h", x=0, y=-0.15, bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
     )
@@ -1290,54 +1290,54 @@ html, body, .stApp,
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 [data-testid="stMainBlockContainer"],
-.main, .main > div { background-color: #060C1C !important; }
+.main, .main > div { background-color: #EEF3FA !important; }
 .block-container {
     padding-top: 1.25rem !important;
-    background-color: #060C1C !important;
+    background-color: #EEF3FA !important;
     max-width: 100% !important;
 }
 
 /* ── SIDEBAR ───────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"],
 [data-testid="stSidebar"] > div {
-    background-color: #0D1B42 !important;
-    border-right: 1px solid rgba(147,182,250,0.30) !important;
+    background-color: #D6E8FA !important;
+    border-right: 1px solid rgba(16,55,102,0.15) !important;
 }
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] label,
-[data-testid="stSidebar"] span { color: #93B6FA !important; }
+[data-testid="stSidebar"] span { color: #5A7BAA !important; }
 [data-testid="stSidebar"] h1,
 [data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3   { color: #FFFFFF !important; }
+[data-testid="stSidebar"] h3   { color: #103766 !important; }
 
 /* ── HEADINGS ──────────────────────────────────────────────────────────── */
-h2 { color: #FFFFFF !important; font-weight: 500 !important; font-size: 18px !important; }
-h3 { color: #FFFFFF !important; font-weight: 500 !important; }
+h2 { color: #103766 !important; font-weight: 500 !important; font-size: 18px !important; }
+h3 { color: #103766 !important; font-weight: 500 !important; }
 [data-testid="stCaptionContainer"] p,
-[data-testid="stCaptionContainer"] { color: #5A78C0 !important; font-size: 11px !important; }
+[data-testid="stCaptionContainer"] { color: #5A7BAA !important; font-size: 11px !important; }
 h4 {
-    color: #93B6FA !important;
+    color: #5A7BAA !important;
     font-size: 11px !important;
     font-weight: 500 !important;
     letter-spacing: 0.04em !important;
     text-transform: uppercase !important;
-    border-bottom: 1px solid rgba(147,182,250,0.30) !important;
+    border-bottom: 1px solid rgba(16,55,102,0.15) !important;
     padding-bottom: 7px !important;
     margin-top: 2px !important;
     margin-bottom: 12px !important;
 }
 
-/* ── METRIC PANELS (#D8E6FF) ───────────────────────────────────────────── */
+/* ── METRIC PANELS ─────────────────────────────────────────────────────── */
 [data-testid="stMetric"] {
-    background: #D8E6FF !important;
-    border: 1px solid rgba(147,182,250,0.50) !important;
+    background: #FFFFFF !important;
+    border: 1px solid rgba(16,55,102,0.15) !important;
     border-radius: 9px !important;
     padding: 10px 12px !important;
 }
 [data-testid="stMetricLabel"] > div,
 [data-testid="stMetricLabel"] p {
     font-size: 11px !important;
-    color: #3A5EAA !important;
+    color: #5A7BAA !important;
     font-weight: 400 !important;
     letter-spacing: 0.02em !important;
     text-transform: none !important;
@@ -1345,31 +1345,27 @@ h4 {
 [data-testid="stMetricValue"] > div {
     font-size: 17px !important;
     font-weight: 500 !important;
-    color: #1D3B93 !important;
+    color: #103766 !important;
 }
-[data-testid="stMetricDelta"] { color: #3B6D11 !important; font-size: 11px !important; }
+[data-testid="stMetricDelta"] { color: #1D7A2A !important; font-size: 11px !important; }
 [data-testid="stMetricDelta"] svg { display: none; }
 
-/* ── EXPANDER CARDS (#2550C8) ──────────────────────────────────────────── */
-/* Expanders use secondaryBackgroundColor automatically — just style shape  */
+/* ── EXPANDER CARDS ────────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
-    border: 1px solid rgba(147,182,250,0.40) !important;
+    border: 1px solid rgba(16,55,102,0.15) !important;
     border-radius: 12px !important;
-    box-shadow: 0 0 0 1px rgba(147,182,250,0.10) !important;
+    box-shadow: 0 0 0 1px rgba(16,55,102,0.06) !important;
 }
-/* Header label */
 [data-testid="stExpander"] details summary p {
-    color: #93B6FA !important;
+    color: #5A7BAA !important;
     font-size: 11px !important;
     font-weight: 500 !important;
     letter-spacing: 0.04em !important;
     text-transform: uppercase !important;
 }
-/* Toggle arrow */
-[data-testid="stExpanderToggleIcon"] svg { color: #93B6FA !important; }
-/* Separator line below header */
+[data-testid="stExpanderToggleIcon"] svg { color: #5A7BAA !important; }
 [data-testid="stExpander"] details summary {
-    border-bottom: 1px solid rgba(147,182,250,0.25) !important;
+    border-bottom: 1px solid rgba(16,55,102,0.12) !important;
     padding-bottom: 8px !important;
 }
 
@@ -1380,33 +1376,33 @@ h4 {
 /* ── ALERT BOXES ────────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
     border-radius: 9px !important;
-    border: 1px solid rgba(147,182,250,0.30) !important;
+    border: 1px solid rgba(16,55,102,0.15) !important;
 }
 
 /* ── TABS ───────────────────────────────────────────────────────────────── */
-[data-baseweb="tab-list"]           { background-color: transparent !important; border-bottom: 1px solid rgba(147,182,250,0.20) !important; }
-[data-baseweb="tab"]                { color: #93B6FA !important; font-weight: 400 !important; }
+[data-baseweb="tab-list"]           { background-color: transparent !important; border-bottom: 1px solid rgba(16,55,102,0.15) !important; }
+[data-baseweb="tab"]                { color: #5A7BAA !important; font-weight: 400 !important; }
 [aria-selected="true"][data-baseweb="tab"] {
-    color: #FFFFFF !important;
-    border-bottom: 2px solid #93B6FA !important;
+    color: #103766 !important;
+    border-bottom: 2px solid #288CFA !important;
     font-weight: 500 !important;
 }
 
 /* ── MISC ───────────────────────────────────────────────────────────────── */
-hr { border-color: rgba(147,182,250,0.25) !important; margin: 0.75rem 0 !important; }
-p  { color: #FFFFFF !important; }
+hr { border-color: rgba(16,55,102,0.15) !important; margin: 0.75rem 0 !important; }
+p  { color: #103766 !important; }
 
-/* ── TEXT ON LIGHT PANELS (#D8E6FF) ────────────────────────────────────── */
+/* ── METRIC TEXT ────────────────────────────────────────────────────────── */
 [data-testid="stMetric"] p,
 [data-testid="stMetric"] label,
-[data-testid="stMetric"] span    { color: #3A5EAA !important; }
+[data-testid="stMetric"] span    { color: #5A7BAA !important; }
 [data-testid="stMetricLabel"] > div,
-[data-testid="stMetricLabel"] p  { color: #3A5EAA !important; }
-[data-testid="stMetricValue"] > div { color: #1D3B93 !important; }
+[data-testid="stMetricLabel"] p  { color: #5A7BAA !important; }
+[data-testid="stMetricValue"] > div { color: #103766 !important; }
 
 /* ── SIDEBAR WIDGETS ────────────────────────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div     { border-color: rgba(147,182,250,0.30) !important; }
-[data-testid="stNumberInput"] > div > div > input { border-color: rgba(147,182,250,0.30) !important; }
+[data-testid="stSelectbox"] > div > div     { border-color: rgba(16,55,102,0.20) !important; }
+[data-testid="stNumberInput"] > div > div > input { border-color: rgba(16,55,102,0.20) !important; }
 </style>
 """
 
