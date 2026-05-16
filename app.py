@@ -1004,19 +1004,11 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
         # SPY Two-Speed
         with st.expander("SPY Two-Speed Trend", expanded=True):
-            s1, s2 = st.columns(2)
-            with s1:
-                st.metric(
-                    "ROC 21 (1-Month)", pct(l0["spy_ret_1m"]),
-                    delta="Positive ✅" if roc1_pos else "Negative ❌",
-                    delta_color="normal" if roc1_pos else "inverse",
-                )
-            with s2:
-                st.metric(
-                    "ROC 126 (6-Month)", pct(l0["spy_ret_6m"]),
-                    delta="Positive ✅" if roc6_pos else "Negative ❌",
-                    delta_color="normal" if roc6_pos else "inverse",
-                )
+            spy_rows = [
+                {"Signal": "ROC 21 (1-Month)",  "Value": pct(l0["spy_ret_1m"]),  "Status": "✅ Positive" if roc1_pos else "❌ Negative"},
+                {"Signal": "ROC 126 (6-Month)", "Value": pct(l0["spy_ret_6m"]),  "Status": "✅ Positive" if roc6_pos else "❌ Negative"},
+            ]
+            st.dataframe(pd.DataFrame(spy_rows), hide_index=True, use_container_width=True)
             if   spy_signal == "GREEN": st.success("✅ Both positive → SPY gate open")
             elif spy_signal == "RED":   st.error(  "❌ Both negative → Red state")
             else:                       st.warning("⚠️ Mixed → Yellow pressure")
