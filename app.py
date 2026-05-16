@@ -1292,7 +1292,7 @@ html, body, .stApp,
 [data-testid="stMainBlockContainer"],
 .main, .main > div { background-color: #EEF3FA !important; }
 .block-container {
-    padding-top: 1.25rem !important;
+    padding-top: 2rem !important;
     background-color: #EEF3FA !important;
     max-width: 100% !important;
 }
@@ -1553,7 +1553,8 @@ def main():
     half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].sort_values("3M Ret", ascending=False)
 
     # ── PAGE HEADER ───────────────────────────────────────────────────────────
-    st.markdown("## Swing Trading Framework")
+    st.markdown("<div style='padding-top: 1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='font-size: 28px; font-weight: 500; color: #103766; margin-bottom: 2px;'>Swing Trading Framework</h1>", unsafe_allow_html=True)
     st.caption(f"{datetime.now().strftime('%A, %B %d, %Y')}")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
