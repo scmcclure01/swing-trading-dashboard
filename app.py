@@ -1048,6 +1048,118 @@ def _render_layer0_tab(l0: dict, fred_data: dict, rec_indicators: list,
         else:                  st.error(rules_text)
 
 
+def _render_layer1_tab(l0: dict, perm: str, limits: dict,
+                       rec_flags: int, rec_total: int, eps_signal: str) -> None:
+    """Render the Layer 1 — Permission State tab."""
+
+    roc1_pos     = l0.get("spy_ret_1m", 0) > 0
+    roc6_pos     = l0.get("spy_ret_6m", 0) > 0
+    liq_override = bool(l0.get("liquidity_tighten")) or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
+    eps_declining = "Declining" in eps_signal
+
+    # ── State banner ──────────────────────────────────────────────────────────
+    state_color = {"Green": "success", "Yellow": "warning", "Red": "error"}[perm]
+    banner = {
+        "Green":  f"🟢  GREEN — FULL  |  Max {limits['max_pos']} positions  |  Risk {limits['risk_lo']}–{limits['risk_hi']}%/trade  |  {limits['heat']}% max heat",
+        "Yellow": f"🟡  YELLOW — SELECTIVE  |  Max {limits['max_pos_label']} positions  |  Risk {limits['risk_lo']}–{limits['risk_hi']}%/trade  |  {limits['heat']}% max heat",
+        "Red":    f"🔴  RED — CAPITAL PROTECTION  |  Max {limits['max_pos_label']} positions  |  No new entries  |  {limits['heat']}% max heat",
+    }[perm]
+    getattr(st, state_color)(f"**{banner}**")
+
+    st.write("")
+
+    col_l, col_r = st.columns(2, gap="medium")
+
+    with col_l:
+        # ── SPY Two-Speed Gate ────────────────────────────────────────────────
+        with st.expander("Gate 1 — SPY Two-Speed Trend", expanded=True):
+            s1, s2 = st.columns(2)
+            with s1:
+                st.metric(
+                    "ROC 21 (1-Month)", pct(l0.get("spy_ret_1m", 0)),
+                    delta="✅ Positive" if roc1_pos else "❌ Negative",
+                    delta_color="normal" if roc1_pos else "inverse",
+                )
+            with s2:
+                st.metric(
+                    "ROC 126 (6-Month)", pct(l0.get("spy_ret_6m", 0)),
+                    delta="✅ Positive" if roc6_pos else "❌ Negative",
+                    delta_color="normal" if roc6_pos else "inverse",
+                )
+            if roc1_pos and roc6_pos:
+                st.success("✅ Both positive → SPY gate **OPEN**")
+            elif not roc1_pos and not roc6_pos:
+                st.error("❌ Both negative → SPY gate **CLOSED** — Red state")
+            else:
+                st.warning("⚠️ Mixed signals → SPY gate **PARTIAL** — Yellow pressure")
+
+        st.write("")
+
+        # ── Liquidity Gate ────────────────────────────────────────────────────
+        with st.expander("Gate 2 — Liquidity Override", expanded=True):
+            hyg = l0.get("liquidity_tighten", False)
+            fnl = l0.get("fnl_signal", "N/A")
+            if liq_override:
+                st.error("🔴 **LIQUIDITY OVERRIDE ACTIVE** — Reduce exposure immediately regardless of SPY signals")
+            else:
+                st.success("✅ No liquidity override — HYG/IEF stable, Fed Net Liquidity within threshold")
+            gate_rows = [
+                {"Check": "HYG/IEF Credit Spreads", "Status": "⚠️ Widening — override" if hyg else "✅ Stable"},
+                {"Check": "Fed Net Liquidity (4-wk Δ)", "Status": fnl},
+                {"Check": "Override Threshold", "Status": "> −$200B 4-week drop"},
+            ]
+            st.dataframe(gate_rows, use_container_width=True, hide_index=True)
+
+    with col_r:
+        # ── Recession / EPS Gates ─────────────────────────────────────────────
+        with st.expander("Gate 3 — Recession Composite & EPS", expanded=True):
+            r1, r2 = st.columns(2)
+            with r1:
+                rc_color = "inverse" if rec_flags >= 2 else "normal"
+                st.metric("Recession Flags", f"{rec_flags} / {rec_total}",
+                          delta="⚠️ Elevated" if rec_flags >= 2 else "✅ Clear",
+                          delta_color=rc_color)
+            with r2:
+                eps_color = "inverse" if eps_declining else "normal"
+                st.metric("EPS Signal", eps_signal,
+                          delta="⚠️ Declining" if eps_declining else "✅ OK",
+                          delta_color=eps_color)
+            if rec_flags >= 4:
+                st.error("❌ Recession composite critical → Red state")
+            elif rec_flags >= 2:
+                st.warning("⚠️ Recession composite elevated → Yellow pressure")
+            else:
+                st.success("✅ Recession composite clear")
+
+        st.write("")
+
+        # ── Week's Operating Rules ────────────────────────────────────────────
+        with st.expander("Week's Operating Rules", expanded=True):
+            rules = [
+                {"Parameter": "Permission State",  "Value": perm},
+                {"Parameter": "Max Positions",     "Value": limits["max_pos_label"]},
+                {"Parameter": "Risk per Trade",    "Value": f"{limits['risk_lo']}–{limits['risk_hi']}%"},
+                {"Parameter": "Max Portfolio Heat","Value": f"{limits['heat']}%"},
+                {"Parameter": "Entry Style",       "Value": SETUP_STYLE[perm]},
+            ]
+            st.dataframe(rules, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ── State determination logic ─────────────────────────────────────────────
+    st.subheader("State Determination")
+    det_rows = [
+        {"Condition": "Both SPY signals positive",       "Met": "✅" if (roc1_pos and roc6_pos) else "❌",  "Effect": "Required for Green"},
+        {"Condition": "Liquidity override active",       "Met": "🔴 YES" if liq_override else "✅ No",       "Effect": "Forces Red if active"},
+        {"Condition": "Recession flags ≥ 4",             "Met": "🔴 YES" if rec_flags >= 4 else "✅ No",     "Effect": "Forces Red if triggered"},
+        {"Condition": "Recession flags 2–3 OR EPS declining OR SPY mixed",
+                                                         "Met": "⚠️ YES" if (rec_flags >= 2 or eps_declining or not roc1_pos or not roc6_pos) else "✅ No",
+                                                         "Effect": "Forces Yellow if triggered"},
+        {"Condition": "All gates clear",                 "Met": "✅" if perm == "Green" else "❌",           "Effect": "Green state"},
+    ]
+    st.dataframe(det_rows, use_container_width=True, hide_index=True)
+
+
 def _render_layer15_tab(l15_data: list) -> None:
     """
     Render the Layer 1.5 — Sector Rotation tab.
@@ -1588,8 +1700,9 @@ def main():
     st.divider()
 
     # ── TABS ──────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Layer 0 — Macro",
+        "🟢 Layer 1 — Permission State",
         "🔀 Layer 1.5 — Sector Rotation",
         "🔍 Layer 2 — Screener",
         "📈 Charts",
@@ -1599,12 +1712,15 @@ def main():
         _render_layer0_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l15_data)
 
     with tab2:
-        _render_layer15_tab(l15_data)
+        _render_layer1_tab(l0, perm, limits, rec_flags, rec_total, st.session_state.eps_signal)
 
     with tab3:
-        _render_layer2_tab(results_df, passes_df, half_df, perm, active_sectors, show_half, show_all)
+        _render_layer15_tab(l15_data)
 
     with tab4:
+        _render_layer2_tab(results_df, passes_df, half_df, perm, active_sectors, show_half, show_all)
+
+    with tab5:
         _render_charts_tab(passes_df)
 
 
