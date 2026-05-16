@@ -1563,7 +1563,7 @@ def main():
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Regime",        regime)
     c2.metric("Permission",    perm)
-    c3.metric("SPY",           f"${l0['spy_price']:.2f}", f"{l0['spy_ret_1m']*100:+.1f}% 1M")
+    c3.metric("SPY",           f"${l0['spy_price']:.2f}")
     c4.metric("Max Positions", limits["max_pos_label"])
     c5.metric("Risk / Trade",  f"{limits['risk_lo']}–{limits['risk_hi']}%" if limits["risk_hi"] > 0 else "No new trades")
     c6.metric("Max Heat",      f"{limits['heat']}%")
