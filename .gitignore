@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# macOS
+.DS_Store
+.~lock.*
+~$*
+
+# Sensitive / local only
+*.json
+trade_journal.md
+screening_log.md
+
+# Large files
+*.xlsx
+*.docx
+*.pdf

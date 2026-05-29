@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Layer 0 — Macro Regime Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+
+  .header { background: #1e293b; border-bottom: 1px solid #334155; padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 1.2rem; font-weight: 700; color: #f8fafc; }
+  .header-date { color: #94a3b8; font-size: 0.8rem; }
+
+  .layout { display: grid; grid-template-columns: 1fr 340px; gap: 20px; padding: 20px 28px; max-width: 1400px; margin: 0 auto; }
+
+  .section { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .section-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 14px; }
+
+  .signal-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .signal-label { color: #94a3b8; width: 200px; flex-shrink: 0; font-size: 0.82rem; }
+  .signal-label small { display: block; color: #475569; font-size: 0.72rem; margin-top: 1px; }
+
+  select, input[type="number"] {
+    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    padding: 6px 10px; border-radius: 6px; font-size: 0.82rem;
+    outline: none; cursor: pointer;
+  }
+  select:focus, input[type="number"]:focus { border-color: #3b82f6; }
+  input[type="number"] { width: 90px; }
+
+  .badge { padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+
+  /* Output panel */
+  .output-panel { position: sticky; top: 20px; }
+
+  .permission-box { border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 16px; border: 2px solid; }
+  .permission-box .perm-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; opacity: 0.7; }
+  .permission-box .perm-state { font-size: 2.2rem; font-weight: 800; }
+  .permission-box .perm-rules { font-size: 0.78rem; margin-top: 10px; opacity: 0.85; line-height: 1.6; }
+
+  .perm-green  { background: #052e16; border-color: #22c55e; color: #22c55e; }
+  .perm-yellow { background: #1c1a10; border-color: #f59e0b; color: #f59e0b; }
+  .perm-red    { background: #1f0909; border-color: #ef4444; color: #ef4444; }
+  .perm-override { background: #1a0a2e; border-color: #a855f7; color: #a855f7; }
+
+  .regime-box { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .regime-name { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+  .regime-desc { font-size: 0.78rem; color: #94a3b8; line-height: 1.5; }
+
+  .sector-bias { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .sector-tag { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin: 3px; }
+  .sector-favor  { background: #14532d; color: #86efac; }
+  .sector-avoid  { background: #450a0a; color: #fca5a5; }
+  .sector-neutral { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+
+  .flags { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; }
+  .flag { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 0.78rem; line-height: 1.4; }
+  .flag-warn   { background: #1c1a10; border-left: 3px solid #f59e0b; color: #fde68a; }
+  .flag-danger { background: #1f0909; border-left: 3px solid #ef4444; color: #fca5a5; }
+  .flag-ok     { background: #052e16; border-left: 3px solid #22c55e; color: #86efac; }
+  .flag-info   { background: #0c1a3a; border-left: 3px solid #3b82f6; color: #93c5fd; }
+
+  .entry-style { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .entry-style .es-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 6px; }
+  .entry-style .es-value { font-size: 0.85rem; color: #e2e8f0; font-weight: 600; }
+
+  .recession-meter { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .rec-dot { width: 14px; height: 14px; border-radius: 50%; background: #1e293b; border: 1px solid #334155; transition: background 0.2s; }
+  .rec-dot.active-0 { background: #22c55e; }
+  .rec-dot.active-1 { background: #f59e0b; }
+  .rec-dot.active-2 { background: #ef4444; }
+
+  .divider { border: none; border-top: 1px solid #1e293b; margin: 6px 0; }
+
+  .last-updated { font-size: 0.72rem; color: #475569; text-align: center; margin-top: 10px; }
+  .save-btn { width: 100%; padding: 10px; background: #1d4ed8; color: #fff; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin-top: 10px; }
+  .save-btn:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚙ Layer 0 — Macro Regime Dashboard</h1>
+  <span class="header-date" id="header-date"></span>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT: INPUTS -->
+  <div class="inputs-col">
+
+    <!-- SIGNAL 1: SPY TWO-SPEED -->
+    <div class="section">
+      <div class="section-title">Signal 1 — SPY Two-Speed Trend</div>
+
+      <div class="signal-row">
+        <div class="signal-label">SPY 1-Month Return<small>21-day price return</small></div>
+        <select id="spy1m" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="pos">Positive ▲</option>
+          <option value="neg">Negative ▼</option>
+        </select>
+      </div>
+      <div class="signal-row">
+        <div class="signal-label">SPY 6-Month Return<small>126-day price return</small></div>
+        <select id="spy6m" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="pos">Positive ▲</option>
+          <option value="neg">Negative ▼</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SIGNAL 2: SECTOR RS -->
+    <div class="section">
+      <div class="section-title">Signal 2 — Sector Relative Strength (outperforming SPY last 4 weeks)</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xle" onchange="update()"> XLE Energy</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlb" onchange="update()"> XLB Materials</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xli" onchange="update()"> XLI Industrials</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlk" onchange="update()"> XLK Technology</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xly" onchange="update()"> XLY Discretionary</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlf" onchange="update()"> XLF Financials</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlu" onchange="update()"> XLU Utilities</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlp" onchange="update()"> XLP Staples</label>
+        <label style="display:flex;align-items:center;gap:5px;color:#cbd5e1;font-size:0.82rem"><input type="checkbox" id="s_xlv" onchange="update()"> XLV Health Care</label>
+      </div>
+    </div>
+
+    <!-- SIGNAL 3: BOND MARKET -->
+    <div class="section">
+      <div class="section-title">Signal 3 — Bond Market (TLT vs SPY)</div>
+      <div class="signal-row">
+        <div class="signal-label">TLT Direction<small>Is TLT rising or falling?</small></div>
+        <select id="tlt" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="rising">Rising ▲</option>
+          <option value="falling">Falling ▼</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SIGNAL 4: LIQUIDITY -->
+    <div class="section">
+      <div class="section-title">Signal 4 — Liquidity Check (Override)</div>
+      <div class="signal-row">
+        <div class="signal-label">Fed posture<small>Hiking, cutting, or on hold?</small></div>
+        <select id="fed" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="cutting">Cutting / Dovish</option>
+          <option value="hold">On Hold / Neutral</option>
+          <option value="hiking">Hiking / Hawkish</option>
+        </select>
+      </div>
+      <div class="signal-row">
+        <div class="signal-label">HYG/IEF Credit Spread<small>Ratio rising = tightening</small></div>
+        <select id="hyg" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="stable">Stable / Tightening (risk-on)</option>
+          <option value="widening">Widening (caution)</option>
+          <option value="rapidly">Widening Rapidly (override)</option>
+        </select>
+      </div>
+      <div class="signal-row">
+        <div class="signal-label">Fed Net Liquidity trend<small>TradingView: Fed Net Liquidity</small></div>
+        <select id="netliq" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="rising">Rising (tailwind)</option>
+          <option value="flat">Flat / Neutral</option>
+          <option value="falling">Falling (headwind)</option>
+          <option value="falling200">Fallen >$200B in 4 weeks (override)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SIGNAL 5: RECESSION COMPOSITE -->
+    <div class="section">
+      <div class="section-title">Signal 5 — Recession Probability Composite (check FRED monthly)</div>
+      <div style="color:#64748b;font-size:0.75rem;margin-bottom:10px;">Check each model — how many are currently in recession territory?</div>
+
+      <div class="signal-row"><div class="signal-label">Chauvet-Piger (FRED: RECPROUSM156N)<small>Above 50% = signal</small></div><select id="rec1" onchange="update()"><option value="0">Below 50% — clear</option><option value="1">Above 50% — triggered</option></select></div>
+      <div class="signal-row"><div class="signal-label">Sahm Rule (FRED: SAHMREALTIME)<small>≥ 0.50 = triggered</small></div><select id="rec2" onchange="update()"><option value="0">Below 0.50 — clear</option><option value="1">≥ 0.50 — triggered</option></select></div>
+      <div class="signal-row"><div class="signal-label">CFNAI 3M MA (FRED: CFNAIMA3)<small>Below -0.70 = signal</small></div><select id="rec3" onchange="update()"><option value="0">Above -0.70 — clear</option><option value="1">Below -0.70 — triggered</option></select></div>
+      <div class="signal-row"><div class="signal-label">10Y-3M Yield Curve (FRED: T10Y3M)<small>Inverted and steepening = warning</small></div><select id="rec4" onchange="update()"><option value="0">Positive — clear</option><option value="1">Inverted — warning</option></select></div>
+      <div class="signal-row"><div class="signal-label">Conference Board LEI<small>6 months declining + diffusion &lt;50</small></div><select id="rec5" onchange="update()"><option value="0">Not triggered — clear</option><option value="1">Triggered — warning</option></select></div>
+    </div>
+
+    <!-- SIGNAL 6: FACTSET EARNINGS REVISIONS -->
+    <div class="section">
+      <div class="section-title">Signal 6 — FactSet Earnings Revision Direction (insight.factset.com — weekly)</div>
+      <div class="signal-row">
+        <div class="signal-label">Forward EPS revision trend<small>S&P 500 forward estimates</small></div>
+        <select id="eps" onchange="update()">
+          <option value="">-- select --</option>
+          <option value="up3">Revised UP 3+ weeks in a row</option>
+          <option value="up">Revised UP 1-2 weeks</option>
+          <option value="flat">Flat (within ±0.5%)</option>
+          <option value="down">Revised DOWN 1 week</option>
+          <option value="down2">Revised DOWN 2+ weeks in a row</option>
+          <option value="downsharp">Revised DOWN sharply (>2% in one week)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SIGNAL 7: TAYLOR RULE (MONTHLY) -->
+    <div class="section">
+      <div class="section-title">Signal 7 — Taylor Rule Deviation (Atlanta Fed — monthly after CPI/PCE)</div>
+      <div class="signal-row">
+        <div class="signal-label">Taylor Rule gap<small>Implied rate vs actual fed funds rate</small></div>
+        <select id="taylor" onchange="update()">
+          <option value="neutral">Near zero — Fed approximately on target</option>
+          <option value="loose">Positive gap >1% — Fed too loose (hawkish risk)</option>
+          <option value="tight">Negative gap >1% — Fed too tight (dovish potential)</option>
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: OUTPUT PANEL -->
+  <div class="output-panel">
+
+    <div class="permission-box perm-yellow" id="perm-box">
+      <div class="perm-label">Permission State</div>
+      <div class="perm-state" id="perm-state">—</div>
+      <div class="perm-rules" id="perm-rules">Complete inputs to determine state</div>
+    </div>
+
+    <div class="regime-box">
+      <div class="section-title">Regime</div>
+      <div class="regime-name" id="regime-name">—</div>
+      <div class="regime-desc" id="regime-desc">—</div>
+    </div>
+
+    <div class="entry-style">
+      <div class="es-label">Entry Style Bias</div>
+      <div class="es-value" id="entry-style">—</div>
+    </div>
+
+    <div class="sector-bias">
+      <div class="section-title">Sector Bias</div>
+      <div id="sector-favor-label" style="font-size:0.72rem;color:#64748b;margin-bottom:4px;">FAVOR</div>
+      <div id="sector-favor"></div>
+      <div id="sector-avoid-label" style="font-size:0.72rem;color:#64748b;margin-top:8px;margin-bottom:4px;">AVOID / REDUCE</div>
+      <div id="sector-avoid"></div>
+    </div>
+
+    <div class="flags">
+      <div class="section-title">Active Flags</div>
+      <div id="flags-list"><div class="flag flag-info">Complete inputs above to see flags.</div></div>
+    </div>
+
+    <div class="last-updated" id="last-updated"></div>
+    <button class="save-btn" onclick="saveState()">💾 Save Current State</button>
+
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+function getInputs() {
+  return {
+    spy1m:   document.getElementById('spy1m').value,
+    spy6m:   document.getElementById('spy6m').value,
+    tlt:     document.getElementById('tlt').value,
+    fed:     document.getElementById('fed').value,
+    hyg:     document.getElementById('hyg').value,
+    netliq:  document.getElementById('netliq').value,
+    rec1:    parseInt(document.getElementById('rec1').value),
+    rec2:    parseInt(document.getElementById('rec2').value),
+    rec3:    parseInt(document.getElementById('rec3').value),
+    rec4:    parseInt(document.getElementById('rec4').value),
+    rec5:    parseInt(document.getElementById('rec5').value),
+    eps:     document.getElementById('eps').value,
+    taylor:  document.getElementById('taylor').value,
+    s_xle:   document.getElementById('s_xle').checked,
+    s_xlb:   document.getElementById('s_xlb').checked,
+    s_xli:   document.getElementById('s_xli').checked,
+    s_xlk:   document.getElementById('s_xlk').checked,
+    s_xly:   document.getElementById('s_xly').checked,
+    s_xlf:   document.getElementById('s_xlf').checked,
+    s_xlu:   document.getElementById('s_xlu').checked,
+    s_xlp:   document.getElementById('s_xlp').checked,
+    s_xlv:   document.getElementById('s_xlv').checked,
+  };
+}
+
+// ── MAIN UPDATE ────────────────────────────────────────────────────────────
+function update() {
+  const i = getInputs();
+  const flags = [];
+
+  // ── LIQUIDITY OVERRIDE check ──────────────────────────────────────────
+  const liquidityOverride =
+    i.fed === 'hiking' ||
+    i.hyg === 'rapidly' ||
+    i.netliq === 'falling200';
+
+  // ── RECESSION COMPOSITE ───────────────────────────────────────────────
+  const recCount = i.rec1 + i.rec2 + i.rec3 + i.rec4 + i.rec5;
+
+  // ── SPY PERMISSION STATE ──────────────────────────────────────────────
+  let permission = '—';
+  if (i.spy1m && i.spy6m) {
+    if (i.spy1m === 'pos' && i.spy6m === 'pos') permission = 'Green';
+    else if (i.spy1m === 'neg' && i.spy6m === 'neg') permission = 'Red';
+    else permission = 'Yellow';
+  }
+
+  // Recession composite override
+  if (recCount >= 4) {
+    if (permission === 'Green') permission = 'Yellow';
+    flags.push({ type: 'warn', text: `Recession composite: ${recCount}/5 models triggered — treat as Yellow/Red regardless of SPY trend. Pullback entries only.` });
+  } else if (recCount >= 2) {
+    flags.push({ type: 'warn', text: `Recession composite: ${recCount}/5 models triggered — reduce max positions 25%, tighten stops.` });
+  }
+
+  // Liquidity override trumps everything
+  if (liquidityOverride) permission = 'Override';
+
+  // ── REGIME (from sector RS) ───────────────────────────────────────────
+  const inflationary = i.s_xle || i.s_xlb || i.s_xli;
+  const riskOn       = i.s_xlk || i.s_xly || i.s_xlf;
+  const defensive    = i.s_xlu || i.s_xlp || i.s_xlv;
+
+  let regime = '—';
+  let regimeDesc = '—';
+  let entryStyle = '—';
+  let favorSectors = [];
+  let avoidSectors = [];
+
+  if (liquidityOverride) {
+    regime = 'Liquidity Override';
+    regimeDesc = 'Tightening liquidity overrides all other signals. Cash is a position.';
+    entryStyle = 'No new longs. Reduce exposure immediately.';
+    favorSectors = ['Cash', 'SH/PSQ (10-20%)', 'TLT (if deflationary)'];
+    avoidSectors = ['All equity longs'];
+  } else if (inflationary && riskOn) {
+    regime = 'Transitional / Mixed';
+    regimeDesc = 'Both cyclical and growth sectors leading. Regime may be rotating.';
+    entryStyle = 'Selective. Favor strongest RS names only. Watch for rotation.';
+    favorSectors = ['Energy', 'Materials', 'Technology', 'Financials'];
+    avoidSectors = ['Utilities', 'Staples'];
+  } else if (inflationary && !riskOn) {
+    regime = 'Reflation';
+    regimeDesc = 'Growth rising, inflation rising. Energy, Materials, Industrials lead.';
+    entryStyle = 'Momentum in energy/commodities. Mean-reversion in tech. Rotate to commodity/industrial.';
+    favorSectors = ['Energy (XLE)', 'Materials (XLB)', 'Industrials (XLI)'];
+    avoidSectors = ['Utilities', 'Staples', 'Rate-sensitive longs'];
+  } else if (riskOn && !inflationary) {
+    regime = 'Risk-On';
+    regimeDesc = 'Growth rising, inflation falling. Tech, Discretionary, Financials lead.';
+    entryStyle = 'Buy breakouts aggressively. Hold winners longer. Full momentum bias.';
+    favorSectors = ['Technology (XLK)', 'Discretionary (XLY)', 'Financials (XLF)'];
+    avoidSectors = ['Utilities', 'Staples', 'Energy'];
+  } else if (defensive && !riskOn && !inflationary) {
+    regime = 'Deflation / Defensive';
+    regimeDesc = 'Growth falling, inflation falling. Reduce exposure. Defensive sectors only.';
+    entryStyle = 'Mean-reversion traps everywhere. Smaller positions, tighter stops. Do not chase.';
+    favorSectors = ['Staples (XLP)', 'Utilities (XLU)', 'Health Care (XLV)', 'TLT'];
+    avoidSectors = ['Energy', 'Materials', 'Growth / Cyclicals'];
+  } else if (!i.s_xle && !i.s_xlb && !i.s_xli && !i.s_xlk && !i.s_xly && !i.s_xlf && !i.s_xlu && !i.s_xlp && !i.s_xlv) {
+    regime = '—';
+  } else {
+    regime = 'Stagflation / Mixed';
+    regimeDesc = 'Worst regime. Growth falling, inflation rising. Almost nothing works on the long side.';
+    entryStyle = 'Cash is a position. 3-5 strongest names only or move to 100% cash.';
+    favorSectors = ['Cash', 'Commodities', 'GLD'];
+    avoidSectors = ['Broad equities'];
+  }
+
+  // ── BOND CONFIRMATION FLAGS ───────────────────────────────────────────
+  if (i.tlt === 'falling' && i.spy1m === 'pos') {
+    flags.push({ type: 'info', text: 'TLT falling + SPY rising → Reflation confirmed.' });
+  } else if (i.tlt === 'rising' && i.spy1m === 'pos') {
+    flags.push({ type: 'info', text: 'TLT rising + SPY rising → Risk-on confirmed.' });
+  } else if (i.tlt === 'rising' && i.spy1m === 'neg') {
+    flags.push({ type: 'danger', text: 'TLT rising + SPY falling → Deflationary recession. Reduce significantly.' });
+  } else if (i.tlt === 'falling' && i.spy1m === 'neg') {
+    flags.push({ type: 'danger', text: 'TLT falling + SPY falling → Stagflation / liquidity crisis. Emergency reduce.' });
+  }
+
+  // ── LIQUIDITY FLAGS ───────────────────────────────────────────────────
+  if (i.fed === 'hiking') flags.push({ type: 'danger', text: 'Fed hiking — liquidity override active. Reduce exposure regardless of other signals.' });
+  if (i.hyg === 'rapidly') flags.push({ type: 'danger', text: 'Credit spreads widening rapidly — cut exposure immediately.' });
+  if (i.hyg === 'widening') flags.push({ type: 'warn', text: 'Credit spreads widening — caution. Watch for escalation.' });
+  if (i.netliq === 'falling200') flags.push({ type: 'danger', text: 'Fed Net Liquidity down >$200B in 4 weeks — liquidity override active.' });
+  if (i.netliq === 'falling') flags.push({ type: 'warn', text: 'Fed Net Liquidity declining — headwind building. Monitor.' });
+
+  // ── EARNINGS REVISION FLAGS ───────────────────────────────────────────
+  if (i.eps === 'up3') flags.push({ type: 'ok', text: 'EPS revisions UP 3+ weeks — confirms risk-on bias. Full exposure appropriate.' });
+  if (i.eps === 'down2') flags.push({ type: 'warn', text: 'EPS revisions DOWN 2+ weeks — reduce conviction on new longs. Tighten stops.' });
+  if (i.eps === 'downsharp') flags.push({ type: 'danger', text: 'EPS revised DOWN sharply (>2% in one week) — reduce max positions immediately.' });
+
+  // ── TAYLOR RULE FLAGS ─────────────────────────────────────────────────
+  if (i.taylor === 'loose') flags.push({ type: 'warn', text: 'Taylor Rule: Fed too loose — hawkish surprise risk. Reduce rate-sensitive longs.' });
+  if (i.taylor === 'tight') flags.push({ type: 'info', text: 'Taylor Rule: Fed too tight — dovish surprise potential. Favors risk-on positioning.' });
+
+  if (flags.length === 0) flags.push({ type: 'ok', text: 'No active flags.' });
+
+  // ── RENDER ────────────────────────────────────────────────────────────
+  const box = document.getElementById('perm-box');
+  const stateEl = document.getElementById('perm-state');
+  const rulesEl = document.getElementById('perm-rules');
+
+  box.className = 'permission-box';
+  if (permission === 'Green') {
+    box.classList.add('perm-green');
+    rulesEl.textContent = 'Up to 20 positions · 0.75–1.0% risk/trade · Momentum bias';
+  } else if (permission === 'Yellow') {
+    box.classList.add('perm-yellow');
+    rulesEl.textContent = '8–12 positions · 0.25–0.5% risk/trade · Selective entries only';
+  } else if (permission === 'Red') {
+    box.classList.add('perm-red');
+    rulesEl.textContent = '3–5 positions max · No new entries · Protect capital';
+  } else if (permission === 'Override') {
+    box.classList.add('perm-override');
+    rulesEl.textContent = 'Liquidity override active · Reduce exposure immediately · Cash is a position';
+  } else {
+    box.classList.add('perm-yellow');
+    rulesEl.textContent = 'Complete SPY inputs above';
+  }
+  stateEl.textContent = permission;
+
+  document.getElementById('regime-name').textContent = regime;
+  document.getElementById('regime-desc').textContent = regimeDesc;
+  document.getElementById('entry-style').textContent = entryStyle;
+
+  document.getElementById('sector-favor').innerHTML = favorSectors.map(s =>
+    `<span class="sector-tag sector-favor">${s}</span>`).join('') || '<span class="sector-tag sector-neutral">—</span>';
+  document.getElementById('sector-avoid').innerHTML = avoidSectors.map(s =>
+    `<span class="sector-tag sector-avoid">${s}</span>`).join('') || '<span class="sector-tag sector-neutral">—</span>';
+
+  document.getElementById('flags-list').innerHTML = flags.map(f =>
+    `<div class="flag flag-${f.type}">${f.text}</div>`).join('');
+}
+
+// ── SAVE / LOAD STATE ──────────────────────────────────────────────────────
+function saveState() {
+  const inputs = getInputs();
+  const state  = { inputs, savedAt: new Date().toISOString() };
+  localStorage.setItem('layer0_state', JSON.stringify(state));
+  document.getElementById('last-updated').textContent =
+    'Saved: ' + new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  alert('State saved. It will reload automatically next time you open this dashboard.');
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('layer0_state');
+    if (!saved) return;
+    const { inputs, savedAt } = JSON.parse(saved);
+    const i = inputs;
+    document.getElementById('spy1m').value  = i.spy1m  || '';
+    document.getElementById('spy6m').value  = i.spy6m  || '';
+    document.getElementById('tlt').value    = i.tlt    || '';
+    document.getElementById('fed').value    = i.fed    || '';
+    document.getElementById('hyg').value    = i.hyg    || '';
+    document.getElementById('netliq').value = i.netliq || '';
+    document.getElementById('eps').value    = i.eps    || '';
+    document.getElementById('taylor').value = i.taylor || 'neutral';
+    ['rec1','rec2','rec3','rec4','rec5'].forEach(id => {
+      if (i[id] !== undefined) document.getElementById(id).value = i[id];
+    });
+    ['s_xle','s_xlb','s_xli','s_xlk','s_xly','s_xlf','s_xlu','s_xlp','s_xlv'].forEach(id => {
+      if (i[id] !== undefined) document.getElementById(id).checked = i[id];
+    });
+    const d = new Date(savedAt);
+    document.getElementById('last-updated').textContent =
+      'Last saved: ' + d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    update();
+  } catch(e) {}
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+document.getElementById('header-date').textContent =
+  new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+loadState();
+update();
+</script>
+</body>
+</html>

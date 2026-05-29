@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Layer 0 — Macro Dashboard</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; background: #f1f5f9; color: #0f172a; padding: 14px; min-height: 100vh; }
+  .card { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #64748b; margin-bottom: 5px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  select { width: 100%; padding: 6px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; }
+  select:focus { outline: none; border-color: #2563eb; }
+  select.needs-check { border-color: #f59e0b; background: #fffbeb; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f1f5f9; }
+  .toggle-row:last-child { border-bottom: none; }
+  .badge-btn { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; cursor: pointer; border: none; }
+  .badge-btn.ok { background: #d1fae5; color: #065f46; }
+  .badge-btn.signal { background: #fecaca; color: #991b1b; }
+  .auto-val { font-size: 11px; color: #2563eb; font-weight: 600; margin-left: 6px; }
+  .manual-tag { font-size: 9px; background: #fef3c7; color: #92400e; padding: 1px 5px; border-radius: 3px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
+  .rule-box { background: #f8fafc; border-radius: 6px; padding: 10px; }
+  .rule-val { font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 3px; }
+  .warn { padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; margin-top: 8px; }
+  .warn-red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .warn-yellow { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+  .warn-blue { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+  .warn-green { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+  #banner { border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .metric-box { border-radius: 6px; padding: 8px; }
+  .metric-val { font-size: 22px; font-weight: 800; margin-top: 2px; }
+  .sector-chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; margin: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     WEEKLY_DATA — Updated by Claude each Sunday during weekly review
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+const WEEKLY_DATA = {
+  weekOf:        "April 25, 2026",
+  updatedBy:     "Claude — Apr 25, 2026 (automated weekly review)",
+
+  // SPY two-speed trend (auto-fetched)
+  roc21:         8.39,   // 1-month return % — stronger than prior 7.91
+  roc126:        5.54,   // 6-month return % — slightly lower than prior 6.80, still positive
+
+  // Recession composite (auto-fetched from FRED where available)
+  rec: {
+    chauvet:    false,  // ❓ Needs manual check — FRED: RECPROUSM156N
+    sahm:       false,  // ✅ 0.27 (Mar 2026) — below 0.50 threshold; Mar jobs +178K
+    cfnai:      false,  // ✅ -0.01 (Feb 2026) — above -0.70 threshold
+    yieldcurve: false,  // ✅ ~positive but volatile — swinging around 0 since Feb 26
+    lei:        false,  // ❓ Needs manual check — conference-board.org
+  },
+
+  // FRED readings to display (auto-fetched)
+  fredReadings: {
+    sahm:       "0.27 (Mar 2026)",
+    cfnai:      "-0.01 (Feb 2026)",
+    t10y3m:     "~+0.55% (Apr 14, volatile)",
+    chauvet:    "— check FRED",
+  },
+
+  // Bond market (auto-fetched)
+  tltDir:       "flat",  // rising / flat / falling — YTD +0.34%, moderating from prior rising
+
+  // Top 3 sector leaders this week (auto-fetched)
+  topSectors:   ["XLK", "XLI", "XLY"],
+
+  // Manual — confirm on TradingView/FactSet (pre-set where data available)
+  fedLiq:       "unknown",      // ❓ Check TradingView jlb05013 — H.4.1 Apr 23
+  hygIef:       "tightening",   // HYG $80.64 / IEF ~$95.25 — ratio rising ✓; OAS 262bp
+  factset:      "up3",          // ✅ Q1 2026 positive EPS surprises in IT, Industrials, Healthcare; CY26 growth 18%
+
+  // Account status
+  drawdown:     "normal",     // SPY at ATH — at/near peak equity
+
+  // Notes pre-filled
+  notes: "Full GREEN state — stepping up from re-engagement pacing. SPY at ATH $714.47. ⛔ EARNINGS BLACKOUTS: CAT Apr 30, ETN May 5 — no new entries. Update NVDA alert $181→$190-195; AVGO alert $340→$385-390. DUK: EXIT PRIORITY (regime misaligned + max hold exceeded). XOM: $1.85 above breakeven stop — watch closely. NVDA and AVGO remain valid candidates post-alert update.",
+};
+</script>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Header -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+  <div>
+    <div style="font-size:16px;font-weight:800;color:#0f172a;">Layer 0 — Macro Dashboard</div>
+    <div style="font-size:11px;color:#64748b;margin-top:2px;">Week of <span id="week-label"></span></div>
+  </div>
+  <div style="text-align:right;">
+    <div style="font-size:11px;color:#2563eb;font-weight:600;" id="updated-by"></div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Backup copy — open in any browser</div>
+  </div>
+</div>
+
+<!-- Permission State Banner -->
+<div id="banner">
+  <div>
+    <div style="font-size:24px;font-weight:900;letter-spacing:1px;color:white;" id="banner-state">— STATE</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.9);margin-top:2px;" id="banner-regime">Loading…</div>
+  </div>
+  <div style="text-align:right;font-size:12px;color:rgba(255,255,255,.95);">
+    <div>Max positions: <strong id="banner-pos">—</strong></div>
+    <div>Risk/trade: <strong id="banner-risk">—</strong></div>
+    <div>Max heat: <strong id="banner-heat">—</strong></div>
+  </div>
+</div>
+
+<!-- Row 1: SPY + Recession -->
+<div class="grid2" style="margin-bottom:10px;">
+  <div class="card">
+    <div class="label">SPY Two-Speed Trend <span style="font-size:10px;color:#2563eb;font-weight:600;">auto-populated</span></div>
+    <div class="grid2" style="margin-bottom:10px;">
+      <div>
+        <div class="label" style="margin-bottom:4px;">1-Month (ROC 21)</div>
+        <div id="roc21-display" class="metric-box" style="background:#f0fdf4;">
+          <div class="metric-val" style="color:#16a34a;" id="roc21-val">—</div>
+        </div>
+        <div style="font-size:10px;color:#16a34a;margin-top:3px;" id="roc21-sig"></div>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:4px;">6-Month (ROC 126)</div>
+        <div id="roc126-display" class="metric-box" style="background:#f0fdf4;">
+          <div class="metric-val" style="color:#16a34a;" id="roc126-val">—</div>
+        </div>
+        <div style="font-size:10px;color:#16a34a;margin-top:3px;" id="roc126-sig"></div>
+      </div>
+    </div>
+    <div id="spy-box" style="font-size:12px;padding:7px 10px;border-radius:5px;background:#f0fdf4;"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="label" style="margin-bottom:0;">Recession Composite</div>
+      <span id="rec-badge" style="padding:2px 12px;border-radius:10px;font-size:14px;font-weight:900;background:#dcfce7;color:#166534;">0/5</span>
+    </div>
+    <div id="rec-rows"></div>
+    <div id="rec-interp" style="margin-top:6px;font-size:10px;color:#64748b;padding-top:6px;border-top:1px solid #f1f5f9;"></div>
+  </div>
+</div>
+
+<!-- Row 2: Sector + Bonds/Manual -->
+<div class="grid2" style="margin-bottom:10px;">
+  <div class="card">
+    <div class="label">Sector Leadership <span style="font-size:10px;color:#2563eb;font-weight:600;">auto-populated</span></div>
+    <div id="sector-chips" style="margin-bottom:8px;min-height:28px;"></div>
+    <div id="regime-box" style="padding:8px 10px;border-radius:6px;background:#f8fafc;font-size:12px;margin-bottom:10px;"></div>
+    <div style="margin-bottom:8px;">
+      <div class="label" style="margin-bottom:3px;">TLT Direction (4-week) <span style="font-size:10px;color:#2563eb;font-weight:600;">auto</span></div>
+      <div id="tlt-display" style="padding:6px 10px;border-radius:5px;font-size:12px;font-weight:600;"></div>
+    </div>
+    <div>
+      <div class="label" style="margin-bottom:3px;">HYG/IEF Credit Spread <span class="manual-tag">CONFIRM</span></div>
+      <select id="hyg-sel" onchange="update()">
+        <option value="tightening">Tightening / ratio rising ✅</option>
+        <option value="stable">Stable</option>
+        <option value="widening">Widening ⚠️</option>
+        <option value="widening_fast">Widening rapidly — OVERRIDE</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Signals</div>
+    <div style="margin-bottom:10px;">
+      <div class="label" style="margin-bottom:3px;">FactSet EPS Revisions <span style="font-size:10px;color:#2563eb;font-weight:600;">auto</span></div>
+      <select id="factset-sel" onchange="update()">
+        <option value="up3">↑ Up 3+ weeks — confirms risk-on ✅</option>
+        <option value="flat">→ Flat</option>
+        <option value="down2">↓ Down 2+ weeks — tighten stops</option>
+        <option value="down_sharp">↓↓ Sharp down &gt;2% — reduce positions</option>
+        <option value="unknown">— Not checked</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px;">
+      <div class="label" style="margin-bottom:3px;">Fed Net Liquidity (4-week) <span class="manual-tag">CHECK TV</span></div>
+      <select id="fedliq-sel" class="needs-check" onchange="update();this.className='';">
+        <option value="unknown">— Check TradingView: jlb05013</option>
+        <option value="rising">↑ Rising — liquidity tailwind</option>
+        <option value="flat">→ Flat</option>
+        <option value="falling_mild">↓ Falling &lt;$200B — caution</option>
+        <option value="falling_override">↓↓ Falling &gt;$200B — OVERRIDE</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px;">
+      <div class="label" style="margin-bottom:3px;">Drawdown from Peak Equity</div>
+      <select id="drawdown-sel" onchange="update()">
+        <option value="normal">At or near peak — full risk</option>
+        <option value="mild">5–10% below peak — cut risk 50%</option>
+        <option value="significant">10–15% below peak — emergency</option>
+        <option value="emergency">&gt;15% — 100% cash</option>
+      </select>
+    </div>
+    <div>
+      <div class="label" style="margin-bottom:3px;">Notes</div>
+      <div id="notes-display" style="font-size:11px;color:#475569;padding:6px 8px;background:#f8fafc;border-radius:5px;line-height:1.5;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Week's Rules -->
+<div class="card" style="margin-bottom:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <div class="label" style="margin-bottom:0;">This Week's Rules</div>
+    <span id="rules-badge" style="padding:3px 14px;border-radius:12px;font-weight:800;font-size:12px;">—</span>
+  </div>
+  <div class="grid4">
+    <div class="rule-box"><div class="label">Max Positions</div><div class="rule-val" id="rule-pos">—</div></div>
+    <div class="rule-box"><div class="label">Risk / Trade</div><div class="rule-val" id="rule-risk">—</div></div>
+    <div class="rule-box"><div class="label">Max Portfolio Heat</div><div class="rule-val" id="rule-heat">—</div></div>
+    <div class="rule-box"><div class="label">Setup Style</div><div class="rule-val" style="font-size:12px;" id="rule-style">—</div></div>
+  </div>
+  <div id="warnings"></div>
+</div>
+
+<!-- Manual check reminder -->
+<div class="card">
+  <div class="label">Still Needs Your 2-Min Check</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+    <div style="font-size:11px;padding:6px 8px;background:#fffbeb;border-radius:5px;border:1px solid #fde68a;">
+      <strong>Fed Net Liquidity</strong><br>TradingView → search "jlb05013"<br><span style="color:#94a3b8;">4-wk trend: rising / flat / falling?</span>
+    </div>
+    <div style="font-size:11px;padding:6px 8px;background:#fffbeb;border-radius:5px;border:1px solid #fde68a;">
+      <strong>HYG/IEF Spread</strong><br>TradingView → HYG/IEF ratio chart<br><span style="color:#94a3b8;">4-wk direction: tightening / widening?</span>
+    </div>
+    <div style="font-size:11px;padding:6px 8px;background:#f1f5f9;border-radius:5px;border:1px solid #e2e8f0;">
+      <strong>Chauvet-Piger</strong><br>fred.stlouisfed.org → RECPROUSM156N<br><span style="color:#94a3b8;">Above 50% = recession signal</span>
+    </div>
+    <div style="font-size:11px;padding:6px 8px;background:#f1f5f9;border-radius:5px;border:1px solid #e2e8f0;">
+      <strong>Conference Board LEI</strong><br>conference-board.org<br><span style="color:#94a3b8;">6-mo declining + diffusion &lt;50 = signal</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const SECTOR_REGIME = {
+  XLK:'risk-on', XLY:'risk-on', XLF:'risk-on',
+  XLI:'reflation', XLE:'reflation', XLB:'reflation',
+  XLU:'defensive', XLP:'defensive', XLV:'defensive',
+};
+const REC_CONFIG = [
+  { key:'chauvet',    label:'Chauvet-Piger',      hint:'FRED: RECPROUSM156N >50%', manual: true },
+  { key:'sahm',       label:'Sahm Rule',           hint: null, manual: false },
+  { key:'cfnai',      label:'CFNAI 3-mo MA',       hint: null, manual: false },
+  { key:'yieldcurve', label:'10Y-3M Yield Curve',  hint: null, manual: false },
+  { key:'lei',        label:'Conference Board LEI', hint:'conference-board.org 6mo declining', manual: true },
+];
+const recState = { ...WEEKLY_DATA.rec };
+
+function buildRecRows() {
+  const container = document.getElementById('rec-rows');
+  container.innerHTML = '';
+  REC_CONFIG.forEach(({ key, label, hint, manual }) => {
+    const fredVal = WEEKLY_DATA.fredReadings[key];
+    const row = document.createElement('div');
+    row.className = 'toggle-row';
+    const left = document.createElement('div');
+    left.innerHTML = `<span style="font-size:11px;color:#374151;">${label}</span>` +
+      (fredVal ? `<span class="auto-val">${fredVal}</span>` : '') +
+      (manual ? `<span class="manual-tag">CHECK</span>` : '');
+    if (hint) left.innerHTML += `<br><span style="font-size:10px;color:#94a3b8;">${hint}</span>`;
+    const btn = document.createElement('button');
+    btn.className = recState[key] ? 'badge-btn signal' : 'badge-btn ok';
+    btn.textContent = recState[key] ? 'SIGNAL' : 'OK';
+    btn.onclick = () => {
+      recState[key] = !recState[key];
+      btn.className = recState[key] ? 'badge-btn signal' : 'badge-btn ok';
+      btn.textContent = recState[key] ? 'SIGNAL' : 'OK';
+      update();
+    };
+    row.appendChild(left); row.appendChild(btn); container.appendChild(row);
+  });
+}
+
+function buildSectorChips() {
+  const container = document.getElementById('sector-chips');
+  container.innerHTML = WEEKLY_DATA.topSectors.map(s => {
+    const r = SECTOR_REGIME[s] || 'mixed';
+    const [bg, col] = r === 'risk-on' ? ['#dbeafe','#1d4ed8'] :
+                      r === 'reflation' ? ['#fef3c7','#92400e'] : ['#f1f5f9','#475569'];
+    return `<span class="sector-chip" style="background:${bg};color:${col};">${s}</span>`;
+  }).join('') + '<span style="font-size:10px;color:#2563eb;font-weight:600;margin-left:6px;">auto</span>';
+}
+
+function buildTLTDisplay() {
+  const el = document.getElementById('tlt-display');
+  const d = WEEKLY_DATA.tltDir;
+  el.style.background = d === 'rising' ? '#f0fdf4' : d === 'falling' ? '#fef2f2' : '#f8fafc';
+  el.style.color = d === 'rising' ? '#16a34a' : d === 'falling' ? '#dc2626' : '#374151';
+  el.textContent = d === 'rising' ? '↑ Rising' : d === 'falling' ? '↓ Falling' : '→ Flat';
+}
+
+function update() {
+  const roc21 = WEEKLY_DATA.roc21, roc126 = WEEKLY_DATA.roc126;
+  const fedliq = document.getElementById('fedliq-sel').value;
+  const factset = document.getElementById('factset-sel').value;
+  const hyg = document.getElementById('hyg-sel').value;
+  const drawdown = document.getElementById('drawdown-sel').value;
+  const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+
+  document.getElementById('roc21-val').textContent  = fmt(roc21);
+  document.getElementById('roc126-val').textContent = fmt(roc126);
+  document.getElementById('roc21-sig').textContent  = roc21  > 0 ? '✅ Positive' : '🔴 Negative';
+  document.getElementById('roc126-sig').textContent = roc126 > 0 ? '✅ Positive' : '🔴 Negative';
+  document.getElementById('roc21-display').style.background  = roc21  > 0 ? '#f0fdf4' : '#fef2f2';
+  document.getElementById('roc126-display').style.background = roc126 > 0 ? '#f0fdf4' : '#fef2f2';
+  document.getElementById('roc21-val').style.color  = roc21  > 0 ? '#16a34a' : '#dc2626';
+  document.getElementById('roc126-val').style.color = roc126 > 0 ? '#16a34a' : '#dc2626';
+
+  const spySignal = (roc21>0&&roc126>0)?'green':(roc21<0&&roc126<0)?'red':'yellow';
+  const spyBox = document.getElementById('spy-box');
+  const sm = {green:{bg:'#f0fdf4',text:'✅ Both positive → GREEN signal'},red:{bg:'#fef2f2',text:'🔴 Both negative → RED signal'},yellow:{bg:'#fefce8',text:'🟡 Mixed → YELLOW signal'}};
+  spyBox.style.background = sm[spySignal].bg; spyBox.textContent = sm[spySignal].text;
+
+  const recScore = Object.values(recState).filter(Boolean).length;
+  const rb = document.getElementById('rec-badge');
+  rb.textContent = recScore+'/5';
+  rb.style.background = recScore<=1?'#dcfce7':recScore<=3?'#fef3c7':'#fee2e2';
+  rb.style.color = recScore<=1?'#166534':recScore<=3?'#92400e':'#991b1b';
+  document.getElementById('rec-interp').textContent = recScore<=1?'Normal — full risk operations':recScore<=3?'⚠️ Caution — reduce max positions 25%, tighten stops':'🔴 Defensive — treat as red/yellow regardless of SPY';
+
+  const leaders = WEEKLY_DATA.topSectors;
+  const regimes = leaders.map(s=>SECTOR_REGIME[s]||'mixed');
+  const riskOn=regimes.filter(r=>r==='risk-on').length, reflat=regimes.filter(r=>r==='reflation').length, defens=regimes.filter(r=>r==='defensive').length;
+  const regime=riskOn>=2?'Risk-On':reflat>=2?'Reflation':defens>=2?'Defensive':riskOn>=1&&reflat>=1?'Transition':'Mixed';
+  const regimeBox=document.getElementById('regime-box');
+  const rc=regime==='Risk-On'?['#dbeafe','#1d4ed8']:regime==='Reflation'?['#fef3c7','#92400e']:regime==='Defensive'?['#f1f5f9','#475569']:['#f3e8ff','#6d28d9'];
+  let bondNote='';
+  if(WEEKLY_DATA.tltDir==='rising'&&spySignal==='green') bondNote=' · TLT ↑ + SPY ↑ → Risk-On confirmed';
+  else if(WEEKLY_DATA.tltDir==='falling'&&spySignal==='green') bondNote=' · TLT ↓ + SPY ↑ → Reflation';
+  else if(WEEKLY_DATA.tltDir==='rising'&&spySignal==='red') bondNote=' · TLT ↑ + SPY ↓ → Deflationary risk';
+  regimeBox.innerHTML=`<span style="padding:2px 10px;border-radius:10px;font-size:12px;font-weight:800;background:${rc[0]};color:${rc[1]};">${regime}</span><span style="font-size:11px;color:#475569;margin-left:8px;">${bondNote}</span>`;
+
+  const liqOverride=fedliq==='falling_override'||hyg==='widening_fast';
+  let perm;
+  if(drawdown==='emergency') perm='emergency';
+  else if(liqOverride||recScore>=4||spySignal==='red') perm='red';
+  else if(spySignal==='yellow'||recScore>=2||factset==='down_sharp'||drawdown==='significant') perm='yellow';
+  else if(spySignal==='green'&&recScore<=1) perm=drawdown==='mild'?'yellow':'green';
+  else perm='yellow';
+
+  const bc={green:'#16a34a',yellow:'#d97706',red:'#dc2626',emergency:'#7f1d1d'};
+  document.getElementById('banner').style.background=bc[perm]||'#94a3b8';
+  document.getElementById('banner-state').textContent=({green:'GREEN',yellow:'YELLOW',red:'RED',emergency:'EMERGENCY — CASH'}[perm]||'—')+' STATE';
+  document.getElementById('banner-regime').textContent=(liqOverride?'⚠️ LIQUIDITY OVERRIDE · ':'')+`Regime: ${regime}`;
+
+  const rules={green:{pos:'Up to 20',risk:'0.75–1.0%',heat:'≤15%',style:'Momentum breakouts'},yellow:{pos:'8–12',risk:'0.25–0.5%',heat:'≤8%',style:'Selective — both setups'},red:{pos:'3–5',risk:'None / min',heat:'≤3%',style:'No new entries'},emergency:{pos:'0',risk:'None',heat:'0%',style:'100% cash — no trades'}};
+  const r=drawdown==='mild'&&perm==='green'?{pos:'8–12',risk:'0.375–0.5%',heat:'≤8%',style:'Selective only'}:(rules[perm]||rules.yellow);
+  document.getElementById('rule-pos').textContent=r.pos; document.getElementById('rule-risk').textContent=r.risk;
+  document.getElementById('rule-heat').textContent=r.heat; document.getElementById('rule-style').textContent=r.style;
+  document.getElementById('banner-pos').textContent=r.pos; document.getElementById('banner-risk').textContent=r.risk; document.getElementById('banner-heat').textContent=r.heat;
+
+  const bdc={green:{bg:'#dcfce7',text:'#166534'},yellow:{bg:'#fef3c7',text:'#92400e'},red:{bg:'#fee2e2',text:'#991b1b'},emergency:{bg:'#fecaca',text:'#7f1d1d'}};
+  const bdv=bdc[perm]||{bg:'#f1f5f9',text:'#64748b'};
+  const rbd=document.getElementById('rules-badge'); rbd.style.background=bdv.bg; rbd.style.color=bdv.text; rbd.textContent=perm.toUpperCase();
+
+  const warns=[];
+  if(drawdown==='emergency') warns.push({cls:'warn-red',msg:'🚨 DRAWDOWN >15% — Exit all positions. 100% cash.'});
+  if(liqOverride) warns.push({cls:'warn-red',msg:'⚠️ LIQUIDITY OVERRIDE — Reduce exposure immediately.'});
+  if(drawdown==='significant') warns.push({cls:'warn-red',msg:'🔴 10–15% drawdown — Max 3–5 positions. No new entries.'});
+  if(drawdown==='mild') warns.push({cls:'warn-yellow',msg:'🟡 5–10% drawdown — Cut risk per trade 50%.'});
+  if(recScore>=4) warns.push({cls:'warn-red',msg:'🔴 Recession composite 4–5/5 — Pullback entries only. Move all stops to breakeven.'});
+  else if(recScore>=2) warns.push({cls:'warn-yellow',msg:'🟡 Recession composite 2–3/5 — Reduce max positions 25%. Tighten stops.'});
+  if(factset==='down2') warns.push({cls:'warn-yellow',msg:'🟡 FactSet EPS revisions declining — Tighten stops, higher bar for new entries.'});
+  if(factset==='down_sharp') warns.push({cls:'warn-yellow',msg:'🟡 FactSet EPS revisions sharply down — Reduce max positions immediately.'});
+  if(hyg==='widening') warns.push({cls:'warn-yellow',msg:'🟡 Credit spreads widening — liquidity tightening signal.'});
+  if(perm==='green'&&warns.length===0) warns.push({cls:'warn-green',msg:'✅ No active warnings. Full green-state operations.'});
+  document.getElementById('warnings').innerHTML=warns.map(w=>`<div class="warn ${w.cls}">${w.msg}</div>`).join('');
+}
+
+document.getElementById('week-label').textContent=WEEKLY_DATA.weekOf;
+document.getElementById('updated-by').textContent='Populated by '+WEEKLY_DATA.updatedBy;
+document.getElementById('notes-display').textContent=WEEKLY_DATA.notes;
+buildRecRows(); buildSectorChips(); buildTLTDisplay();
+document.getElementById('factset-sel').value=WEEKLY_DATA.factset;
+document.getElementById('hyg-sel').value=WEEKLY_DATA.hygIef;
+document.getElementById('drawdown-sel').value=WEEKLY_DATA.drawdown;
+document.getElementById('fedliq-sel').value=WEEKLY_DATA.fedLiq;
+update();
+</script>
+</body>
+</html>

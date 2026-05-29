@@ -1,0 +1,2925 @@
+"""
+Swing Trading Framework — Streamlit Dashboard
+Automates Layers 0, 1, 1.5, 2, and 3.
+
+Architecture:
+  Constants → Data fetching → Layer calculations → Chart builders →
+  Helpers → Tab render functions → main()
+"""
+
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, date, timedelta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from ta.momentum import RSIIndicator
+from ta.trend import MACD as MACDIndicator
+import json
+import os
+import warnings
+warnings.filterwarnings("ignore")
+
+try:
+    from fredapi import Fred
+    FRED_AVAILABLE = True
+except ImportError:
+    FRED_AVAILABLE = False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Swing Trading Framework",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONSTANTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Lookback periods (trading days)
+LB_1M = 21    # ~1 calendar month
+LB_3M = 63    # ~3 calendar months
+LB_6M = 126   # ~6 calendar months
+
+# RS new-high threshold: within 2% of the recent peak = new high
+RS_NEW_HI_THRESHOLD = 0.98
+
+# Velocity Flag threshold (v4): sector ETF ROC 21 > 15% = Accelerating
+VELOCITY_THRESHOLD = 0.15
+
+# Sector ETF universe
+SECTOR_ETFS = {
+    "Energy":                 "XLE",
+    "Materials":              "XLB",
+    "Industrials":            "XLI",
+    "Technology":             "XLK",
+    "Financials":             "XLF",
+    "Consumer Discretionary": "XLY",
+    "Consumer Staples":       "XLP",
+    "Utilities":              "XLU",
+    "Health Care":            "XLV",
+}
+
+SECTOR_TICKERS = {
+    "Energy": [
+        "XOM","CVX","COP","EOG","SLB","MPC","PSX","VLO","OXY","HES",
+        "DVN","HAL","BKR","FANG","MRO","APA","EQT","CTRA","TRGP","OKE",
+        "KMI","WMB","LNG","CVI","MGY",
+    ],
+    "Materials": [
+        "LIN","APD","ECL","SHW","FCX","NEM","NUE","VMC","MLM","ALB",
+        "DD","EMN","IFF","PPG","RPM","FMC","MOS","CF","BALL","IP",
+        "PKG","SEE","CCK","AVY","SON","AMCR","CE","DOW","LYB","WLK",
+    ],
+    "Industrials": [
+        "RTX","HON","UNP","UPS","BA","LMT","GE","CAT","DE","MMM",
+        "ITW","EMR","ETN","PH","ROK","FDX","CSX","NSC","WM","RSG",
+        "CTAS","CPRT","GWW","AME","TT","IR","CARR","OTIS","PWR","URI",
+        "MAS","JCI","XYL","AXON","TDG","HWM","NOC","GD","LHX","LDOS",
+        "HUBB","FTV","RRX","GNRC","SAIA","ODFL","JBHT","EXPD","TXT",
+    ],
+    "Technology": [
+        "AAPL","MSFT","NVDA","AVGO","ORCL","CRM","ACN","AMD","QCOM","TXN",
+        "AMAT","LRCX","KLAC","MU","ADI","MCHP","CDNS","SNPS","FTNT",
+        "PANW","CRWD","NOW","ZS","DDOG","NET",
+    ],
+    "Consumer Discretionary": [
+        "AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","TJX","BKNG","CMG",
+        "ROST","ORLY","AZO","DHI","LEN","PHM","ULTA","YUM","DRI",
+    ],
+    "Financials": [
+        "BRK-B","JPM","V","MA","BAC","WFC","GS","MS","BLK","SCHW",
+        "AXP","C","USB","PNC","TFC","COF","ICE","CME","SPGI","MCO",
+    ],
+    "Consumer Staples": [
+        "PG","KO","PEP","COST","WMT","PM","MO","CL","GIS","K",
+        "SJM","HRL","CAG","CPB","MKC","CHD","CLX","KMB","MDLZ",
+    ],
+    "Utilities": [
+        "NEE","DUK","SO","D","AEP","EXC","SRE","PEG","ETR","ED",
+        "XEL","WEC","ES","AWK","DTE","FE","PPL","AEE","CMS","NI",
+    ],
+    "Health Care": [
+        "LLY","UNH","JNJ","ABT","TMO","DHR","BMY","AMGN","ISRG","MDT",
+        "SYK","BSX","EW","BDX","IDXX","DXCM",
+    ],
+}
+
+ALL_SECTORS = list(SECTOR_ETFS.keys())
+
+# Regime classification sets.
+# Industrials appears in both Risk-on and Reflation per framework v3.
+RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary", "Industrials"}
+REFLATION_SECTORS = {"Energy", "Materials", "Industrials"}
+DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
+
+# Per-sector display colors for the RRG chart
+SECTOR_COLORS = {
+    "Energy":                 "#F59E0B",   # amber
+    "Materials":              "#10B981",   # emerald
+    "Industrials":            "#3B82F6",   # blue
+    "Technology":             "#A78BFA",   # violet
+    "Financials":             "#EC4899",   # pink
+    "Consumer Discretionary": "#F97316",   # orange
+    "Consumer Staples":       "#06B6D4",   # cyan
+    "Utilities":              "#EF4444",   # red
+    "Health Care":            "#84CC16",   # lime
+}
+SECTOR_DASH = ["solid", "dash", "dot", "dashdot"]   # line-style overflow fallback
+
+# Permission state limits and display labels
+PERM_LIMITS = {
+    "Green":  {"max_pos": 20, "max_pos_label": "Up to 20", "risk_lo": 0.75, "risk_hi": 1.00, "heat": 15},
+    "Yellow": {"max_pos": 10, "max_pos_label": "8–12",     "risk_lo": 0.25, "risk_hi": 0.50, "heat": 8},
+    "Red":    {"max_pos":  5, "max_pos_label": "3–5",      "risk_lo": 0.00, "risk_hi": 0.00, "heat": 3},
+}
+
+SETUP_STYLE = {
+    "Green":  "Momentum breakouts",
+    "Yellow": "Pullbacks to 20d / 50d MA",
+    "Red":    "No new entries — protect capital",
+}
+
+# Layer 1.5 flow strength options and sizing map (framework v3, Table: Position Sizing)
+FLOW_OPTS = ["Not set", "Weak", "Moderate", "Strong", "Outflows"]
+
+FLOW_SIZE_MAP = {
+    "Weak":     ("Quarter",  "0.19%", "1 week of modest inflows — watch closely"),
+    "Moderate": ("Half",     "0.38%", "1–2 weeks consistent inflows — enter"),
+    "Strong":   ("Full",     "0.75%", "2+ weeks accelerating inflows — full size"),
+    "Outflows": ("Exit",     "—",     "Flow reversal — exit review immediately"),
+}
+
+# Layer 1.5 phase labels mapped from RRG quadrant
+PHASE_MAP = {
+    "Improving": "Phase 1 — Early",
+    "Leading":   "Phase 2 — Confirmed",
+    "Weakening": "Exiting",
+    "Lagging":   "No Trade",
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATA FETCHING
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_macro_data() -> pd.DataFrame:
+    """Fetch 1-year daily close for SPY, sector ETFs, TLT, HYG, IEF, and VIX."""
+    tickers = ["SPY", "TLT", "HYG", "IEF"] + list(SECTOR_ETFS.values())
+    raw   = yf.download(tickers, period="1y", auto_adjust=True, progress=False)
+    close = raw["Close"]
+    try:
+        vix = yf.download("^VIX", period="1y", auto_adjust=True, progress=False)
+        close["^VIX"] = vix["Close"].squeeze()
+    except Exception:
+        pass
+    return close
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_fred_data() -> dict:
+    """Fetch recession composite indicators from FRED (cached 24h — updates daily/monthly)."""
+    if not FRED_AVAILABLE:
+        return {"error": "fredapi package not installed"}
+    try:
+        api_key = st.secrets.get("FRED_API_KEY", "")
+        if not api_key:
+            return {"error": "Add FRED_API_KEY to Streamlit Secrets to enable recession composite"}
+        fred = Fred(api_key=api_key)
+
+        def latest(series_id, start="2023-01-01"):
+            s = fred.get_series(series_id, observation_start=start).dropna()
+            return float(s.iloc[-1]), str(s.index[-1].date())
+
+        data = {}
+        data["sahm"],    data["sahm_date"]    = latest("SAHMREALTIME")
+        data["cfnai"],   data["cfnai_date"]   = latest("CFNAIMA3")
+        data["t10y3m"],  data["t10y3m_date"]  = latest("T10Y3M")
+        data["recprob"], data["recprob_date"] = latest("RECPROUSM156N")
+        return data
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_fed_net_liquidity() -> dict:
+    """
+    Fetch Fed Net Liquidity from FRED public CSV (no API key required).
+    Formula: WALCL - WTREGEN - RRPONTSYD
+    Signal: 4-week change <= -$200B → Override Active
+    Updates Thursdays at 4:30 PM ET with the H.4.1 release.
+    """
+    import urllib.request
+    import csv
+    from io import StringIO
+
+    def fetch_series(series_id):
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            data = r.read().decode()
+        rows = list(csv.reader(StringIO(data)))[1:]
+        return {row[0]: float(row[1]) for row in rows if len(row) > 1 and row[1] not in ('.', '', 'NA')}
+
+    try:
+        walcl = fetch_series("WALCL")
+        tga   = fetch_series("WTREGEN")
+        rrp   = fetch_series("RRPONTSYD")
+
+        dates = sorted(set(walcl) & set(tga) & set(rrp))
+        if len(dates) < 5:
+            return {"error": "Insufficient FRED data"}
+
+        net_liq = {d: walcl[d] - tga[d] - rrp[d] for d in dates}
+        recent      = sorted(net_liq.keys())
+        latest_date = recent[-1]
+        prior_date  = recent[-5]  # 4 weeks back
+
+        current  = net_liq[latest_date]
+        prior    = net_liq[prior_date]
+        change_b = (current - prior) / 1000  # convert $M → $B
+
+        if change_b <= -200:
+            signal = "OVERRIDE ACTIVE"
+        elif change_b < 0:
+            signal = "DECLINING"
+        else:
+            signal = "RISING"
+
+        return {
+            "as_of":        latest_date,
+            "current_b":    round(current / 1000, 1),
+            "prior_b":      round(prior / 1000, 1),
+            "prior_date":   prior_date,
+            "change_4w_b":  round(change_b, 1),
+            "signal":       signal,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_etf_implied_flows() -> dict:
+    """
+    Compute implied fund flows for each sector ETF using yfinance.
+
+    Method: Δ shares outstanding × price ≈ implied AUM flow.
+      - Pulls 'sharesOutstanding' from yf.Ticker.info (updates T+1/T+2)
+      - Pulls 30 days of daily price history to compute trailing price
+      - Week-over-week Δ shares: compare today's shares vs 5 trading days ago
+      - 4-week Δ shares: compare today vs 20 trading days ago
+
+    Flow classification per ETF:
+      Strong   : 1w Δ AUM > +$150M  AND  4w Δ AUM > +$300M
+      Moderate : 1w Δ AUM > +$50M   OR   4w Δ AUM > +$100M (and not Strong)
+      Outflows : 1w Δ AUM < -$50M   OR   4w Δ AUM < -$100M
+      Weak     : everything else (small positive or flat)
+
+    Returns dict keyed by ETF ticker → {
+        'flow_strength': str,    # "Strong" / "Moderate" / "Weak" / "Outflows" / "N/A"
+        'shares_now':    int,
+        'aum_1w_delta':  float,  # $M
+        'aum_4w_delta':  float,  # $M
+        'price':         float,
+        'error':         str,    # only if fetch failed
+    }
+    """
+    results = {}
+    etfs = list(SECTOR_ETFS.values())
+
+    # Fetch 30 days of price data for all ETFs in one call
+    try:
+        px_df = yf.download(etfs, period="30d", auto_adjust=True, progress=False)["Close"]
+        if isinstance(px_df, pd.Series):
+            # Only one ETF returned as Series
+            px_df = px_df.to_frame(name=etfs[0])
+    except Exception:
+        px_df = pd.DataFrame()
+
+    for etf in etfs:
+        try:
+            info = yf.Ticker(etf).info
+            shares_now = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
+            if not shares_now:
+                results[etf] = {"flow_strength": "N/A", "error": "No shares data"}
+                continue
+
+            # Current price
+            if etf in px_df.columns and len(px_df[etf].dropna()) > 0:
+                price = float(px_df[etf].dropna().iloc[-1])
+            else:
+                price = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
+
+            if price == 0:
+                results[etf] = {"flow_strength": "N/A", "error": "No price data"}
+                continue
+
+            # Δ shares via price history length proxies (yfinance info is a single snapshot)
+            # Use 52-week high/low share counts if available, otherwise use single-point logic
+            # Best available: compare sharesOutstanding to impliedSharesOutstanding
+            # For a robust Δ: fetch two Ticker objects isn't possible; use price vol as proxy
+            # Practical approach: use fast_info for a second data point where available
+            try:
+                fast = yf.Ticker(etf).fast_info
+                # fast_info has shares, which may differ slightly from .info — use as prior
+                shares_alt = getattr(fast, "shares", None)
+            except Exception:
+                shares_alt = None
+
+            # Compute Δ AUM using price-series implied AUM (shares × price each day)
+            # Since we can't get daily historical shares, we estimate:
+            # Use the ETF's daily price change as a proxy for AUM change direction
+            if etf in px_df.columns:
+                px = px_df[etf].dropna()
+                if len(px) >= 6:
+                    price_1w_ago = float(px.iloc[-6]) if len(px) >= 6 else price
+                    price_4w_ago = float(px.iloc[-21]) if len(px) >= 21 else float(px.iloc[0])
+
+                    # Implied AUM today vs N days ago (shares held constant as best estimate)
+                    aum_now  = shares_now * price / 1e6        # $M
+                    aum_1w   = shares_now * price_1w_ago / 1e6
+                    aum_4w   = shares_now * price_4w_ago / 1e6
+
+                    # Price-adjusted: isolate flow signal by normalizing out price return
+                    # True flow Δ = AUM Δ - (price return × prior AUM)
+                    # Without historical shares we use the price-return-neutral estimate:
+                    # If shares_alt available, use it for 1-point Δ shares estimate
+                    if shares_alt and shares_alt != shares_now:
+                        # shares_alt is typically slightly older; use as prior
+                        delta_shares = shares_now - shares_alt
+                        aum_1w_delta = delta_shares * price / 1e6
+                        aum_4w_delta = aum_1w_delta  # single delta; apply to both
+                    else:
+                        # Fallback: net AUM change includes price return — use as directional signal only
+                        spy_1w_ret = 0.0
+                        spy_4w_ret = 0.0
+                        if "SPY" in px_df.columns:
+                            spy_px = px_df["SPY"].dropna()
+                            if len(spy_px) >= 6:
+                                spy_1w_ret = float(spy_px.iloc[-1] / spy_px.iloc[-6] - 1)
+                            if len(spy_px) >= 21:
+                                spy_4w_ret = float(spy_px.iloc[-1] / spy_px.iloc[-21] - 1)
+
+                        etf_1w_ret = float(px.iloc[-1] / price_1w_ago - 1) if price_1w_ago else 0
+                        etf_4w_ret = float(px.iloc[-1] / price_4w_ago - 1) if price_4w_ago else 0
+
+                        # Excess return vs SPY × AUM = flow proxy ($M)
+                        aum_1w_delta = (etf_1w_ret - spy_1w_ret) * aum_now
+                        aum_4w_delta = (etf_4w_ret - spy_4w_ret) * aum_now
+                else:
+                    aum_1w_delta = 0.0
+                    aum_4w_delta = 0.0
+            else:
+                aum_1w_delta = 0.0
+                aum_4w_delta = 0.0
+
+            # Classify
+            if aum_1w_delta > 150 and aum_4w_delta > 300:
+                flow_strength = "Strong"
+            elif aum_1w_delta > 50 or aum_4w_delta > 100:
+                flow_strength = "Moderate"
+            elif aum_1w_delta < -50 or aum_4w_delta < -100:
+                flow_strength = "Outflows"
+            else:
+                flow_strength = "Weak"
+
+            results[etf] = {
+                "flow_strength": flow_strength,
+                "shares_now":    int(shares_now),
+                "aum_1w_delta":  round(aum_1w_delta, 1),
+                "aum_4w_delta":  round(aum_4w_delta, 1),
+                "price":         round(price, 2),
+            }
+
+        except Exception as e:
+            results[etf] = {"flow_strength": "N/A", "error": str(e)}
+
+    return results
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_screener_data(sectors_key: str) -> tuple:
+    """
+    Fetch 1-year OHLCV for all tickers in the given sectors (comma-separated key).
+    Returns (close_df, volume_df, tickers_list) or raises on network failure.
+    """
+    try:
+        sectors = sectors_key.split(",")
+        all_t   = [t for s in sectors for t in SECTOR_TICKERS.get(s, [])]
+        raw     = yf.download(all_t + ["SPY"], period="1y", auto_adjust=True, progress=False)
+        return raw["Close"], raw["Volume"], all_t
+    except Exception as e:
+        raise RuntimeError(f"Screener data fetch failed: {e}") from e
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER 0 — MACRO REGIME FILTER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calc_layer0(close: pd.DataFrame) -> dict:
+    """
+    Compute all Layer 0 signals from daily price data:
+      - SPY two-speed trend (Signal 1)
+      - Sector RS vs SPY → regime classification (Signal 2)
+      - TLT direction + TLT/SPY combined signal (Signal 3)
+      - HYG/IEF liquidity check (Signal 4)
+      - VIX level
+    Returns a flat dict of readings; includes 'error' key if data is insufficient.
+    """
+    r = {}
+
+    def s(name):
+        return close[name].dropna() if name in close.columns else pd.Series(dtype=float)
+
+    spy = s("SPY")
+    if len(spy) < LB_6M:
+        return {"error": "Insufficient SPY data — try refreshing."}
+
+    # ── Signal 1: SPY two-speed trend ────────────────────────────────────────
+    r["spy_price"]    = float(spy.iloc[-1])
+    r["spy_ma20"]     = float(spy.rolling(20).mean().iloc[-1])
+    r["spy_ma50"]     = float(spy.rolling(50).mean().iloc[-1])
+    r["spy_above_20"] = bool(spy.iloc[-1] > spy.rolling(20).mean().iloc[-1])
+    r["spy_above_50"] = bool(spy.iloc[-1] > spy.rolling(50).mean().iloc[-1])
+    r["spy_ret_1m"]   = float(spy.iloc[-1] / spy.iloc[-LB_1M]  - 1)
+    r["spy_ret_3m"]   = float(spy.iloc[-1] / spy.iloc[-LB_3M]  - 1)
+    r["spy_ret_6m"]   = float(spy.iloc[-1] / spy.iloc[-LB_6M]  - 1)
+
+    # ── Signal 3: Bond market ─────────────────────────────────────────────────
+    tlt = s("TLT")
+    if len(tlt) >= LB_1M:
+        r["tlt_above_50"] = bool(tlt.iloc[-1] > tlt.rolling(50).mean().iloc[-1]) if len(tlt) >= 50 else None
+        r["tlt_ret_1m"]   = float(tlt.iloc[-1] / tlt.iloc[-LB_1M] - 1)
+        if   r["tlt_ret_1m"] >  0.01: r["tlt_direction"] = "Rising"
+        elif r["tlt_ret_1m"] < -0.01: r["tlt_direction"] = "Declining"
+        else:                          r["tlt_direction"] = "Flat"
+
+        tlt_rising = r["tlt_direction"] == "Rising"
+        spy_rising = r.get("spy_ret_1m", 0) > 0
+        if   tlt_rising and spy_rising:       r["tlt_spy_signal"] = "TLT ↑ + SPY ↑ → Risk-on confirmed"
+        elif not tlt_rising and spy_rising:   r["tlt_spy_signal"] = "TLT ↓ + SPY ↑ → Reflation regime"
+        elif tlt_rising and not spy_rising:   r["tlt_spy_signal"] = "TLT ↑ + SPY ↓ → Deflationary — reduce significantly"
+        else:                                 r["tlt_spy_signal"] = "TLT ↓ + SPY ↓ → Stagflation / liquidity crisis"
+    else:
+        r["tlt_above_50"]   = None
+        r["tlt_ret_1m"]     = None
+        r["tlt_direction"]  = "N/A"
+        r["tlt_spy_signal"] = "N/A"
+
+    # ── Signal 4: Liquidity — HYG/IEF credit spread ───────────────────────────
+    # Override triggered by HYG/IEF declining over the past month (credit spreads widening).
+    hyg, ief = s("HYG"), s("IEF")
+    if len(hyg) >= LB_1M and len(ief) >= LB_1M:
+        ief_a  = ief.reindex(hyg.index).ffill()
+        ratio  = (hyg / ief_a).dropna()
+        r["hyg_ief_ratio"]     = float(ratio.iloc[-1])
+        r["hyg_ief_1m_ago"]    = float(ratio.iloc[-LB_1M])
+        r["liquidity_tighten"] = bool(ratio.iloc[-1] < ratio.iloc[-LB_1M])
+    else:
+        r["hyg_ief_ratio"]     = None
+        r["hyg_ief_1m_ago"]    = None
+        r["liquidity_tighten"] = False
+
+    # ── VIX ──────────────────────────────────────────────────────────────────
+    vix = s("^VIX")
+    r["vix"]          = float(vix.iloc[-1]) if len(vix) > 0 else None
+    r["vix_elevated"] = bool(r["vix"] > 25) if r["vix"] else False
+
+    # ── Signal 6: Fed Net Liquidity (WALCL - TGA - RRP) ──────────────────────
+    fnl = fetch_fed_net_liquidity()
+    if "error" not in fnl:
+        r["fnl_signal"]    = fnl["signal"]       # "RISING", "DECLINING", "OVERRIDE ACTIVE"
+        r["fnl_change_4w"] = fnl["change_4w_b"]  # $B, 4-week change
+        r["fnl_current"]   = fnl["current_b"]    # $B, latest reading
+        r["fnl_as_of"]     = fnl["as_of"]        # date string
+    else:
+        r["fnl_signal"]    = "N/A"
+        r["fnl_change_4w"] = None
+        r["fnl_current"]   = None
+        r["fnl_as_of"]     = ""
+        r["fnl_error"]     = fnl["error"]
+
+    # ── Signal 2: Sector RS vs SPY → regime flavor ───────────────────────────
+    sector_rs = {}
+    for sector, etf in SECTOR_ETFS.items():
+        ep = s(etf)
+        if len(ep) < LB_3M:
+            continue
+        idx  = ep.index.intersection(spy.index)
+        ep_a = ep.loc[idx]
+        sa   = spy.loc[idx]
+        if len(ep_a) < LB_3M:
+            continue
+
+        rs_line   = ep_a / sa
+        rs_1m     = float(ep_a.iloc[-1] / ep_a.iloc[-LB_1M] - 1) - float(sa.iloc[-1] / sa.iloc[-LB_1M] - 1)
+        rs_3m     = float(ep_a.iloc[-1] / ep_a.iloc[-LB_3M] - 1) - float(sa.iloc[-1] / sa.iloc[-LB_3M] - 1)
+        rs_new_hi = bool(rs_line.iloc[-1] >= rs_line.iloc[-LB_3M:].max() * RS_NEW_HI_THRESHOLD)
+
+        if   rs_1m > 0 and rs_3m > 0: trend = "Leading"
+        elif rs_1m > 0 or  rs_3m > 0: trend = "Mixed"
+        else:                          trend = "Lagging"
+
+        # Velocity Flag (v4): ROC 21 for the sector ETF
+        roc_21 = float(ep_a.iloc[-1] / ep_a.iloc[-LB_1M] - 1)
+        velocity_status = ("ACCELERATING" if roc_21 > VELOCITY_THRESHOLD
+                           else "NORMAL" if roc_21 > 0.05
+                           else "SLOW")
+
+        sector_rs[sector] = {
+            "etf":      etf,
+            "price":    round(float(ep_a.iloc[-1]), 2),
+            "ret_1m":   float(ep_a.iloc[-1] / ep_a.iloc[-LB_1M] - 1),
+            "ret_3m":   float(ep_a.iloc[-1] / ep_a.iloc[-LB_3M] - 1),
+            "rs_1m":    rs_1m,
+            "rs_3m":    rs_3m,
+            "rs_new_hi": rs_new_hi,
+            "trend":    trend,
+            "roc_21":   roc_21,
+            "velocity": velocity_status,
+        }
+
+    r["sector_rs"]       = sector_rs
+    r["leading_sectors"] = [sec for sec, v in sector_rs.items() if v["trend"] == "Leading"]
+    r["mixed_sectors"]   = [sec for sec, v in sector_rs.items() if v["trend"] == "Mixed"]
+
+    # Velocity Flag summary (v4)
+    r["velocity_flags"]  = {sec: v["velocity"] for sec, v in sector_rs.items()}
+    r["accelerating"]    = [sec for sec, v in sector_rs.items() if v["velocity"] == "ACCELERATING"]
+
+    # Regime classification — priority order matters: Stagflation → Risk-on → Reflation → Deflation → Mixed
+    leading = set(r["leading_sectors"])
+    ro = len(leading & RISK_ON_SECTORS)
+    re = len(leading & REFLATION_SECTORS)
+    de = len(leading & DEFENSIVE_SECTORS)
+
+    if   re >= 2 and de >= 1: r["regime"] = "Stagflation"
+    elif ro >= 2:              r["regime"] = "Risk-on"
+    elif re >= 2:              r["regime"] = "Reflation"
+    elif de >= 2:              r["regime"] = "Deflation"
+    else:                      r["regime"] = "Mixed"
+
+    return r
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RECESSION COMPOSITE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def score_recession_composite(fred: dict, lei_manual: str) -> list:
+    """
+    Score the 5-model recession composite (framework Signal 5).
+    Four models auto-fetched from FRED; one (Conference Board LEI) is manual
+    because the source is paywalled.
+    Returns a list of indicator dicts: name, value, as_of, threshold, ok (bool).
+    """
+    indicators = []
+
+    if "error" not in fred:
+        cp = fred.get("recprob")
+        indicators.append({
+            "name": "Chauvet-Piger Recession Prob", "value": f"{cp:.1f}%" if cp is not None else "N/A",
+            "as_of": fred.get("recprob_date", ""), "threshold": "< 50%",
+            "ok": (cp < 50) if cp is not None else True,
+        })
+        sahm = fred.get("sahm")
+        indicators.append({
+            "name": "Sahm Rule", "value": f"{sahm:.2f}" if sahm is not None else "N/A",
+            "as_of": fred.get("sahm_date", ""), "threshold": "< 0.50",
+            "ok": (sahm < 0.50) if sahm is not None else True,
+        })
+        cfnai = fred.get("cfnai")
+        indicators.append({
+            "name": "CFNAI 3-mo MA", "value": f"{cfnai:.2f}" if cfnai is not None else "N/A",
+            "as_of": fred.get("cfnai_date", ""), "threshold": "> -0.70",
+            "ok": (cfnai > -0.70) if cfnai is not None else True,
+        })
+        t10y3m = fred.get("t10y3m")
+        indicators.append({
+            "name": "10Y-3M Yield Curve", "value": f"{t10y3m:+.2f}%" if t10y3m is not None else "N/A",
+            "as_of": fred.get("t10y3m_date", ""), "threshold": "> 0% (uninverted)",
+            "ok": (t10y3m >= 0) if t10y3m is not None else True,
+        })
+
+    # Conference Board LEI — manual; only flags if explicitly set to declining
+    indicators.append({
+        "name": "Conference Board LEI", "value": lei_manual,
+        "as_of": "manual", "threshold": "Not declining 6mo",
+        "ok": lei_manual != "6mo declining ⚠️",
+    })
+
+    return indicators
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER 1 — MARKET PERMISSION STATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto") -> tuple:
+    """
+    Determine permission state (Green / Yellow / Red) per framework v3:
+      Green:  SPY both positive + rec composite < 2/5 + EPS not declining + no liquidity override
+      Yellow: SPY mixed OR rec composite 2–3/5 OR EPS declining
+      Red:    SPY both negative OR liquidity override OR rec composite 4+/5
+
+    Liquidity override: triggered by HYG/IEF ratio declining (credit spreads widening).
+    VIX is informational only and does not gate the override.
+    """
+    if override != "Auto":
+        return override, PERM_LIMITS[override]
+
+    roc1_pos     = l0.get("spy_ret_1m", 0) > 0
+    roc6_pos     = l0.get("spy_ret_6m", 0) > 0
+    liq_override = (
+        bool(l0.get("liquidity_tighten")) or          # HYG/IEF credit spread widening
+        l0.get("fnl_signal") == "OVERRIDE ACTIVE"     # Fed Net Liquidity 4-week drop > $200B
+    )
+    eps_declining = "Declining" in eps_signal
+
+    if liq_override or (not roc1_pos and not roc6_pos) or rec_flags >= 4:
+        perm = "Red"
+    elif rec_flags >= 2 or eps_declining or not roc1_pos or not roc6_pos:
+        perm = "Yellow"
+    else:
+        perm = "Green"
+
+    return perm, PERM_LIMITS[perm]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER 1.5 — SECTOR ROTATION (RRG)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def calc_layer15(close: pd.DataFrame) -> list:
+    """
+    Compute the Relative Rotation Graph (RRG) for all sector ETFs vs SPY.
+    Uses weekly resampled data; trailing 8 weeks shown per sector.
+
+    Methodology (JdK RS-Ratio / RS-Momentum):
+      RS-Ratio   = (weekly RS / SMA10 of weekly RS) × 100  — centered at 100
+      RS-Momentum = (RS-Ratio / SMA4 of RS-Ratio) × 100   — centered at 100
+
+    Quadrant → framework phase mapping:
+      Improving (RS < 100, Momentum > 100) → Phase 1 Early
+      Leading   (RS > 100, Momentum > 100) → Phase 2 Confirmed
+      Weakening (RS > 100, Momentum < 100) → Exiting
+      Lagging   (RS < 100, Momentum < 100) → No Trade
+
+    Flow-strength sizing is applied in the tab render function using session state,
+    allowing user override without invalidating this cached computation.
+    """
+    spy = close["SPY"].dropna() if "SPY" in close.columns else pd.Series(dtype=float)
+    if len(spy) < 60:
+        return []
+
+    results = []
+    for sector, etf in SECTOR_ETFS.items():
+        if etf not in close.columns:
+            continue
+        px  = close[etf].dropna()
+        idx = px.index.intersection(spy.index)
+        if len(idx) < 60:
+            continue
+
+        px_a  = px.loc[idx]
+        spy_a = spy.loc[idx]
+
+        rs_daily = px_a / spy_a
+        rs_w     = rs_daily.resample("W-FRI").last().dropna()
+        if len(rs_w) < 15:
+            continue
+
+        sma10       = rs_w.rolling(10).mean()
+        rs_ratio    = (rs_w / sma10 * 100).dropna()
+
+        sma4        = rs_ratio.rolling(4).mean()
+        rs_momentum = (rs_ratio / sma4 * 100).dropna()
+
+        common  = rs_ratio.index.intersection(rs_momentum.index)
+        trail_x = rs_ratio.loc[common].iloc[-8:].tolist()
+        trail_y = rs_momentum.loc[common].iloc[-8:].tolist()
+        if not trail_x or not trail_y:
+            continue
+
+        cur_x, cur_y = trail_x[-1], trail_y[-1]
+
+        if   cur_x >= 100 and cur_y >= 100: quadrant = "Leading"
+        elif cur_x <  100 and cur_y >= 100: quadrant = "Improving"
+        elif cur_x >= 100 and cur_y <  100: quadrant = "Weakening"
+        else:                               quadrant = "Lagging"
+
+        # Default sizing from quadrant — overridden by user flow-strength input in the tab
+        default_size_map = {
+            "Improving": ("Quarter → Half", "0.19–0.38%", "Early rotation — watch closely"),
+            "Leading":   ("Half → Full",    "0.38–0.75%", "Confirmed — enter or hold"),
+            "Weakening": ("Tighten stop",   "—",          "Tighten to 20d MA"),
+            "Lagging":   ("No trade",       "—",          "Avoid"),
+        }
+        sizing, risk_pct, action = default_size_map[quadrant]
+
+        price    = float(px_a.iloc[-1])
+        ma20     = float(px_a.rolling(20).mean().iloc[-1])
+        above_20 = price > ma20
+
+        results.append({
+            "sector":      sector,
+            "etf":         etf,
+            "rs_ratio":    round(cur_x, 2),
+            "rs_momentum": round(cur_y, 2),
+            "trail_x":     [round(v, 2) for v in trail_x],
+            "trail_y":     [round(v, 2) for v in trail_y],
+            "quadrant":    quadrant,
+            "phase":       PHASE_MAP[quadrant],
+            "sizing":      sizing,
+            "risk_pct":    risk_pct,
+            "action":      action,
+            "price":       round(price, 2),
+            "ma20":        round(ma20, 2),
+            "above_20":    above_20,
+        })
+
+    order = {"Improving": 0, "Leading": 1, "Weakening": 2, "Lagging": 3}
+    results.sort(key=lambda x: order[x["quadrant"]])
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER 2 — STOCK SCREENER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calc_layer2(
+    close: pd.DataFrame,
+    volume: pd.DataFrame,
+    tickers: list,
+    ticker_sector: dict,
+    spy: pd.Series,
+    min_dollar_vol: float = 10_000_000,
+    rs_lookback: int = LB_3M,
+) -> pd.DataFrame:
+    """
+    Screen individual stocks against Layer 2 criteria:
+      - Price above 20d and 50d MA
+      - Adequate average dollar volume
+      - RS line at/near new highs vs SPY
+      - RS line rising vs 1 month ago
+      - Two-speed trend signal (1M + 3M returns)
+      - RSI and MACD for additional context
+
+    Note: Earnings Carry (Step 4) and Energy Three-Layer (Step 5) are not
+    automated — both require external data sources not available via yfinance.
+    """
+    rows = []
+    for t in tickers:
+        if t not in close.columns:
+            continue
+        px  = close[t].dropna()
+        vol = volume[t].dropna() if t in volume.columns else pd.Series(dtype=float)
+        if len(px) < LB_3M:
+            continue
+
+        price          = float(px.iloc[-1])
+        ma20           = float(px.rolling(20).mean().iloc[-1])
+        ma50           = float(px.rolling(50).mean().iloc[-1])
+        avg_share_vol  = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
+        avg_dollar_vol = price * avg_share_vol
+        ret_1m         = float(px.iloc[-1] / px.iloc[-LB_1M] - 1)
+        ret_3m         = float(px.iloc[-1] / px.iloc[-LB_3M] - 1)
+
+        spy_a     = spy.reindex(px.index).ffill()
+        rs_line   = px / spy_a
+        rs_new_hi = bool(rs_line.iloc[-1] >= rs_line.iloc[-rs_lookback:].max() * RS_NEW_HI_THRESHOLD)
+        rs_rising = bool(len(rs_line) >= LB_1M and rs_line.iloc[-1] > rs_line.iloc[-LB_1M])
+
+        try:
+            rsi_v  = float(RSIIndicator(close=px, window=14).rsi().iloc[-1])
+            mo     = MACDIndicator(close=px, window_slow=26, window_fast=12, window_sign=9)
+            m_hist = float(mo.macd_diff().iloc[-1])
+            m_bull = bool(mo.macd().iloc[-1] > mo.macd_signal().iloc[-1])
+        except Exception:
+            rsi_v, m_hist, m_bull = 50.0, 0.0, False
+
+        above_20 = price > ma20
+        above_50 = price > ma50
+        vol_ok   = avg_dollar_vol >= min_dollar_vol
+
+        if   ret_1m > 0 and ret_3m > 0: two_spd = "FULL"
+        elif ret_1m > 0 or  ret_3m > 0: two_spd = "HALF"
+        else:                            two_spd = "NO TRADE"
+
+        passes = above_20 and above_50 and vol_ok and rs_new_hi and rs_rising and two_spd == "FULL"
+
+        # % above 20d MA (v4 — for Accelerating Protocol screening)
+        pct_above_20 = (price / ma20 - 1) if ma20 > 0 else 0.0
+
+        rows.append({
+            "Ticker":     t,
+            "Sector":     ticker_sector.get(t, ""),
+            "Price":      round(price, 2),
+            "vs 20MA":    above_20,
+            "vs 50MA":    above_50,
+            "% > 20MA":   round(pct_above_20, 4),
+            "1M Ret":     ret_1m,
+            "3M Ret":     ret_3m,
+            "RS Hi":      rs_new_hi,
+            "RS ↑":       rs_rising,
+            "RSI":        round(rsi_v, 1),
+            "MACD":       m_bull,
+            "MACD Hist":  round(m_hist, 4),
+            "Avg $Vol(M)": round(avg_dollar_vol / 1e6, 1),
+            "2-Speed":    two_spd,
+            "PASS":       passes,
+        })
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LAYER 3 — ENTRY TRIGGER
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_earnings_dates(tickers_key: str) -> dict:
+    """Fetch next earnings dates for a batch of tickers (cached 24h)."""
+    tickers = tickers_key.split(",")
+    today   = datetime.today().date()
+    results = {}
+    for t in tickers:
+        try:
+            cal     = yf.Ticker(t).calendar
+            next_ed = None
+            if isinstance(cal, dict):
+                ed = cal.get("Earnings Date")
+                if ed is not None:
+                    dates = ed if isinstance(ed, list) else [ed]
+                    for d in dates:
+                        try:
+                            dt = pd.Timestamp(d).date()
+                            if dt >= today:
+                                next_ed = dt
+                                break
+                        except Exception:
+                            pass
+            elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                for col in cal.columns:
+                    try:
+                        val = cal.at["Earnings Date", col]
+                        dt  = pd.Timestamp(val).date()
+                        if dt >= today:
+                            next_ed = dt
+                            break
+                    except Exception:
+                        pass
+            results[t] = next_ed
+        except Exception:
+            results[t] = None
+    return results
+
+
+def calc_layer3(
+    passes_df: pd.DataFrame,
+    half_df: pd.DataFrame,
+    close: pd.DataFrame,
+    volume: pd.DataFrame,
+    spy: pd.Series,
+    perm: str,
+    l0: dict,
+    earnings_dates: dict,
+    ticker_sector: dict,
+    rec_flags: int,
+) -> tuple:
+    """
+    Evaluate Layer 3 entry trigger for each Layer 2 candidate.
+    Returns (full_l3_df, half_l3_df).
+
+    Per stock computes: vol ratio, MA distances, 10d EMA, 6-week base range,
+    RS slope, earnings proximity, trigger type routing, entry/stop suggestion, verdict.
+
+    Trigger type routing:
+      Red state           → None (no entries)
+      Sector accelerating → Accelerating Protocol (v4)
+      rec_flags >= 4      → Pullback only
+      Risk-on / Green     → Breakout preferred
+      Mixed / Yellow      → Pullback preferred
+    """
+    today        = datetime.today().date()
+    regime       = l0.get("regime", "Mixed")
+    accel_secs   = set(l0.get("accelerating", []))
+    rec_override = rec_flags >= 4
+
+    def _assess(df_in: pd.DataFrame, signal_tier: str) -> pd.DataFrame:
+        rows = []
+        for _, src in df_in.iterrows():
+            t   = src["Ticker"]
+            sec = src["Sector"]
+
+            if t not in close.columns:
+                continue
+
+            px  = close[t].dropna()
+            vol = volume[t].dropna() if t in volume.columns else pd.Series(dtype=float)
+
+            if len(px) < 60:
+                continue
+
+            price  = float(px.iloc[-1])
+            ma20   = float(px.rolling(20).mean().iloc[-1])
+            ma50   = float(px.rolling(50).mean().iloc[-1])
+            ema10  = float(px.ewm(span=10, adjust=False).mean().iloc[-1])
+
+            avg_vol   = float(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0.0
+            last_vol  = float(vol.iloc[-1]) if len(vol) > 0 else 0.0
+            vol_ratio = round(last_vol / avg_vol, 2) if avg_vol > 0 else 0.0
+
+            pct_vs_20 = (price / ma20 - 1) if ma20 > 0 else 0.0
+            pct_vs_50 = (price / ma50 - 1) if ma50 > 0 else 0.0
+
+            # 6-week base range for breakout stop / pivot reference
+            base_px   = px.iloc[-30:]
+            base_high = float(base_px.max())
+            base_low  = float(base_px.min())
+
+            # RS slope: compare today's RS vs 10 trading days ago
+            spy_a = spy.reindex(px.index).ffill()
+            rs    = (px / spy_a).dropna()
+            rs_up = bool(len(rs) >= 10 and rs.iloc[-1] > rs.iloc[-10])
+
+            # Earnings proximity (14 calendar days ≈ 10 business days)
+            next_ed = earnings_dates.get(t)
+            days_to_ed = None
+            if next_ed is not None:
+                try:
+                    days_to_ed = (next_ed - today).days
+                except Exception:
+                    pass
+            earnings_flag = (days_to_ed is not None and days_to_ed <= 14)
+
+            # ── Trigger type routing ──────────────────────────────────────────
+            if perm == "Red":
+                trigger_type = "None"
+            elif sec in accel_secs:
+                trigger_type = "Accelerating"
+            elif rec_override or regime in ("Deflation", "Stagflation"):
+                trigger_type = "Pullback"
+            elif regime == "Risk-on" or (perm == "Green" and regime == "Reflation"):
+                trigger_type = "Breakout"
+            else:
+                trigger_type = "Pullback"
+
+            # ── Verdict + suggested entry/stop ────────────────────────────────
+            entry_px = None
+            stop_px  = None
+            verdict  = "⬜ NOT READY"
+            notes    = []
+
+            if earnings_flag:
+                verdict = "❌ SKIP"
+                notes.append(f"Earnings in {days_to_ed}d")
+
+            elif trigger_type == "None":
+                verdict = "❌ RED STATE"
+                notes.append("No new entries")
+
+            elif trigger_type == "Breakout":
+                near_top = pct_vs_20 <= 0.08 and price <= base_high * 1.05
+                vol_ok   = vol_ratio >= 1.4
+                if near_top and vol_ok and rs_up:
+                    verdict  = "🟢 ENTRY READY"
+                    entry_px = round(price, 2)
+                    stop_px  = round(base_low * 0.99, 2)
+                elif near_top and vol_ratio >= 1.0:
+                    verdict  = "🟡 WATCH"
+                    entry_px = round(base_high * 1.001, 2)
+                    stop_px  = round(base_low * 0.99, 2)
+                    notes.append(f"Vol {vol_ratio:.1f}x — needs ≥1.4x on breakout day")
+                else:
+                    verdict  = "⬜ NOT READY"
+                    entry_px = round(base_high * 1.001, 2)
+                    stop_px  = round(base_low * 0.99, 2)
+                    if not near_top: notes.append(f"{pct(pct_vs_20)} vs 20MA — not at pivot")
+                    if not vol_ok:   notes.append(f"Vol {vol_ratio:.1f}x — needs ≥1.4x")
+                    if not rs_up:    notes.append("RS not rising")
+
+            elif trigger_type == "Pullback":
+                near_20  = abs(pct_vs_20) <= 0.03
+                near_50  = abs(pct_vs_50) <= 0.03
+                vol_decl = vol_ratio <= 1.0
+                if (near_20 or near_50) and vol_decl:
+                    verdict = "🟢 ENTRY READY"
+                    if near_20:
+                        entry_px = round(price, 2)
+                        stop_px  = round(ma20 * 0.98, 2)
+                        notes.append("At 20d MA")
+                    else:
+                        entry_px = round(price, 2)
+                        stop_px  = round(ma50 * 0.98, 2)
+                        notes.append("At 50d MA")
+                elif near_20 or near_50:
+                    verdict = "🟡 WATCH"
+                    entry_px = round(ma20 if near_20 else ma50, 2)
+                    stop_px  = round((ma20 if near_20 else ma50) * 0.98, 2)
+                    notes.append(f"Vol {vol_ratio:.1f}x — look for declining volume")
+                else:
+                    verdict  = "⬜ NOT READY"
+                    entry_px = round(ma20, 2)
+                    stop_px  = round(ma20 * 0.98, 2)
+                    notes.append(f"{pct(pct_vs_20)} vs 20MA  |  {pct(pct_vs_50)} vs 50MA")
+
+            elif trigger_type == "Accelerating":
+                in_range = 0 <= pct_vs_20 <= 0.15
+                vol_ok   = vol_ratio >= 1.0
+                if in_range and vol_ok:
+                    verdict  = "🟢 ENTRY READY"
+                    entry_px = round(price, 2)
+                    stop_px  = round(ema10 * 0.99, 2)
+                    notes.append("Half size · 10d EMA stop · 6-week hold")
+                elif in_range:
+                    verdict  = "🟡 WATCH"
+                    entry_px = round(price, 2)
+                    stop_px  = round(ema10 * 0.99, 2)
+                    notes.append(f"Vol {vol_ratio:.1f}x — needs ≥1.0x · Half size · 10d EMA stop")
+                else:
+                    verdict  = "⬜ NOT READY"
+                    entry_px = round(price, 2)
+                    stop_px  = round(ema10 * 0.99, 2)
+                    notes.append(f"{pct(pct_vs_20)} above 20MA — outside 0–15% Accel window")
+
+            # Append upcoming earnings note (if not already flagged)
+            if next_ed is not None and not earnings_flag:
+                try:
+                    notes.append(f"Earnings: {next_ed.strftime('%b %-d')}")
+                except Exception:
+                    notes.append(f"Earnings: {next_ed}")
+
+            rows.append({
+                "Ticker":    t,
+                "Sector":    sec,
+                "Price":     round(price, 2),
+                "Trigger":   trigger_type,
+                "Vol Ratio": vol_ratio,
+                "vs 20MA":   round(pct_vs_20, 4),
+                "vs 50MA":   round(pct_vs_50, 4),
+                "10d EMA":   round(ema10, 2),
+                "Entry":     entry_px,
+                "Stop":      stop_px,
+                "RS ↑":      rs_up,
+                "Verdict":   verdict,
+                "Notes":     " · ".join(notes) if notes else "Verify in TradingView",
+            })
+
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+    full_l3 = _assess(passes_df, "Full")
+    half_l3 = _assess(half_df.head(15), "Half")
+    return full_l3, half_l3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHART BUILDERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def build_chart(ticker: str):
+    """
+    Build a 5-panel Plotly chart for a single ticker:
+    Price + MAs / Volume / RS vs SPY / RSI(14) / MACD.
+    Returns None if data is unavailable.
+    """
+    hist     = yf.Ticker(ticker).history(period="6mo")
+    spy_hist = yf.Ticker("SPY").history(period="6mo")
+    if hist.empty:
+        return None
+
+    px  = hist["Close"].dropna()
+    op  = hist["Open"].reindex(px.index)
+    hi  = hist["High"].reindex(px.index)
+    lo  = hist["Low"].reindex(px.index)
+    vol = hist["Volume"].reindex(px.index)
+
+    ma20   = px.rolling(20).mean()
+    ma50   = px.rolling(50).mean()
+    ema10  = px.ewm(span=10, adjust=False).mean()  # 10d EMA for Accelerating Protocol (v4)
+    spy_a  = spy_hist["Close"].reindex(px.index).ffill()
+    rs    = px / spy_a
+    rsi   = RSIIndicator(close=px, window=14).rsi()
+    mo    = MACDIndicator(close=px, window_slow=26, window_fast=12, window_sign=9)
+    ml, mg, mh = mo.macd(), mo.macd_signal(), mo.macd_diff()
+
+    def tl(series):
+        return [None if pd.isna(v) else float(v) for v in series]
+
+    dates = [str(d)[:10] for d in px.index]
+
+    PANEL_SEP    = [0.633, 0.500, 0.313, 0.144]
+    PANEL_LABELS = [
+        (f"{ticker} — Price", 0.993, 0.13),
+        ("Volume",            0.621, 0.01),
+        ("RS vs SPY",         0.488, 0.01),
+        ("RSI (14)",          0.301, 0.01),
+        ("MACD",              0.132, 0.01),
+    ]
+
+    fig = make_subplots(
+        rows=5, cols=1, shared_xaxes=True,
+        row_heights=[0.38, 0.12, 0.18, 0.16, 0.16],
+        vertical_spacing=0.025,
+    )
+    fig.add_trace(go.Candlestick(
+        x=dates, open=tl(op), high=tl(hi), low=tl(lo), close=tl(px),
+        increasing_line_color="#22c55e", decreasing_line_color="#ef4444", showlegend=False,
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(ema10), name="10d EMA", line=dict(color="#ef4444", width=1, dash="dot")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(ma20), name="20d MA",  line=dict(color="#f59e0b", width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(ma50), name="50d MA",  line=dict(color="#3b82f6", width=1.5)), row=1, col=1)
+
+    vol_c = ["#22c55e" if (c or 0) >= (o or 0) else "#ef4444" for c, o in zip(tl(px), tl(op))]
+    fig.add_trace(go.Bar(x=dates, y=tl(vol), marker_color=vol_c, opacity=0.7, showlegend=False), row=2, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(rs),  line=dict(color="#a78bfa", width=1.5), showlegend=False), row=3, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(rsi), line=dict(color="#38bdf8", width=1.5), showlegend=False), row=4, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", line_width=1, row=4, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="#22c55e", line_width=1, row=4, col=1)
+
+    mh_c = ["#22c55e" if (v or 0) >= 0 else "#ef4444" for v in tl(mh)]
+    fig.add_trace(go.Bar(x=dates, y=tl(mh), marker_color=mh_c, showlegend=False), row=5, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(ml), name="MACD",   line=dict(color="#f59e0b", width=1.5), showlegend=False), row=5, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=tl(mg), name="Signal", line=dict(color="#a78bfa", width=1.5), showlegend=False), row=5, col=1)
+
+    for y in PANEL_SEP:
+        fig.add_shape(
+            type="line", xref="paper", yref="paper",
+            x0=0, x1=1, y0=y, y1=y,
+            line=dict(color="#6b7280", width=2),
+        )
+    for label, y, x in PANEL_LABELS:
+        fig.add_annotation(
+            text=f"<b>{label}</b>", xref="paper", yref="paper",
+            x=x, y=y, showarrow=False,
+            font=dict(color="#5A7BAA", size=11),
+            xanchor="left", yanchor="top", bgcolor="rgba(0,0,0,0)",
+        )
+
+    fig.update_layout(
+        height=750, paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
+        font=dict(color="#103766", size=11), margin=dict(l=50, r=20, t=20, b=20),
+        xaxis_rangeslider_visible=False,
+        legend=dict(orientation="h", x=0, y=1.01, bgcolor="rgba(0,0,0,0)"),
+    )
+    for i in range(1, 6):
+        fig.update_xaxes(gridcolor="rgba(16,55,102,0.10)", row=i, col=1)
+        fig.update_yaxes(gridcolor="rgba(16,55,102,0.10)", row=i, col=1)
+    fig.update_yaxes(range=[0, 100], row=4, col=1)
+    return fig
+
+
+def build_rrg_chart(l15_data: list) -> go.Figure:
+    """
+    Build the Relative Rotation Graph scatter chart.
+    Each sector gets a unique color (SECTOR_COLORS) and a smooth spline trail
+    showing the last 8 weekly positions.
+    Returns None if data is empty.
+    """
+    if not l15_data:
+        return None
+
+    all_x = [v for d in l15_data for v in d["trail_x"]]
+    all_y = [v for d in l15_data for v in d["trail_y"]]
+    pad   = 0.8
+    xlo   = min(min(all_x) - pad, 98.5)
+    xhi   = max(max(all_x) + pad, 101.5)
+    ylo   = min(min(all_y) - pad, 98.5)
+    yhi   = max(max(all_y) + pad, 101.5)
+
+    quad_label_colors = {
+        "LEADING":   "#27500A",
+        "IMPROVING": "#288CFA",
+        "WEAKENING": "#E07800",
+        "LAGGING":   "#CC1111",
+    }
+    fill_map = {
+        "Leading":   "rgba(39,80,10,0.15)",
+        "Improving": "rgba(37,80,200,0.15)",
+        "Weakening": "rgba(224,120,0,0.15)",
+        "Lagging":   "rgba(204,17,17,0.15)",
+    }
+
+    shapes = [
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=100, y1=yhi, fillcolor=fill_map["Leading"],   line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=100, y1=yhi, fillcolor=fill_map["Improving"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=100, x1=xhi, y0=ylo, y1=100, fillcolor=fill_map["Weakening"], line_width=0, layer="below"),
+        dict(type="rect", xref="x", yref="y", x0=xlo, x1=100, y0=ylo, y1=100, fillcolor=fill_map["Lagging"],   line_width=0, layer="below"),
+        dict(type="line", xref="x", yref="y", x0=xlo, x1=xhi, y0=100, y1=100, line=dict(color="#6b7280", width=1, dash="dot")),
+        dict(type="line", xref="x", yref="y", x0=100, x1=100, y0=ylo, y1=yhi, line=dict(color="#6b7280", width=1, dash="dot")),
+    ]
+
+    fig = go.Figure()
+    fig.update_layout(shapes=shapes)
+
+    all_sector_keys = list(SECTOR_COLORS.keys())
+    for d in l15_data:
+        idx        = all_sector_keys.index(d["sector"]) if d["sector"] in all_sector_keys else 0
+        color      = list(SECTOR_COLORS.values())[idx % len(SECTOR_COLORS)]
+        dash_style = SECTOR_DASH[idx // len(SECTOR_COLORS)]
+        tx, ty     = d["trail_x"], d["trail_y"]
+
+        # Spline trail — faded, markers on historical positions
+        fig.add_trace(go.Scatter(
+            x=tx, y=ty,
+            mode="lines+markers",
+            line=dict(color=color, width=1.5, shape="spline", smoothing=1.3, dash=dash_style),
+            marker=dict(size=[4] * (len(tx) - 1) + [0], color=color, opacity=0.45),
+            showlegend=False, hoverinfo="skip",
+        ))
+
+        # Current position — large labeled dot
+        fig.add_trace(go.Scatter(
+            x=[d["rs_ratio"]], y=[d["rs_momentum"]],
+            mode="markers+text",
+            marker=dict(size=14, color=color, line=dict(color="#EEF3FA", width=1.5)),
+            text=[d["etf"]],
+            textposition="top center",
+            textfont=dict(color="#103766", size=10),
+            name=f"{d['etf']} — {d['quadrant']}",
+            hovertemplate=(
+                f"<b>{d['sector']} ({d['etf']})</b><br>"
+                f"RS-Ratio: %{{x:.2f}}<br>"
+                f"RS-Momentum: %{{y:.2f}}<br>"
+                f"Phase: {d['phase']}<br>"
+                f"Action: {d['action']}<extra></extra>"
+            ),
+        ))
+
+    for text, x, y, xa, ya in [
+        ("LEADING",   xhi - 0.05, yhi - 0.05, "right", "top"),
+        ("IMPROVING", xlo + 0.05, yhi - 0.05, "left",  "top"),
+        ("WEAKENING", xhi - 0.05, ylo + 0.05, "right", "bottom"),
+        ("LAGGING",   xlo + 0.05, ylo + 0.05, "left",  "bottom"),
+    ]:
+        fig.add_annotation(
+            text=f"<b>{text}</b>", x=x, y=y,
+            xanchor=xa, yanchor=ya, showarrow=False,
+            font=dict(color=quad_label_colors[text], size=11),
+        )
+
+    fig.update_layout(
+        height=560,
+        paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
+        font=dict(color="#103766", size=11),
+        margin=dict(l=55, r=20, t=30, b=55),
+        xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[xlo, xhi]),
+        yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[ylo, yhi]),
+        showlegend=True,
+        legend=dict(orientation="h", x=0, y=-0.15, bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+    )
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def pct(v):  return f"{v*100:+.1f}%"
+def icon(v): return "✅" if v else "❌"
+def macd(v): return "▲" if v else "▼"
+
+
+def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = True) -> str:
+    """Render a DataFrame as a Classic Blue styled HTML table.
+    bordered=False omits the outer container — use when the table sits inside a _card().
+    """
+    _GREEN  = ("#27500A", "500")
+    _RED    = ("#CC1111", "500")
+    _ORANGE = ("#E07800", "500")
+    _BLUE   = ("#288CFA", "500")
+    _DARK   = ("#103766", "400")
+
+    def _color(val: str):
+        s = str(val)
+        if any(x in s for x in ["✅", "Leading", "Positive", "Clear", "Open", "Rising",
+                                  "OK", "🟢", "Phase 2", "Confirmed", "GREEN"]):
+            return _GREEN
+        if any(x in s for x in ["❌", "Lagging", "Negative", "FLAG", "Closed",
+                                  "Declining", "🔴", "OVERRIDE", "ACTIVE", "Critical"]):
+            return _RED
+        if any(x in s for x in ["⚠️", "Mixed", "Weakening", "Elevated", "pressure", "🟡"]):
+            return _ORANGE
+        if any(x in s for x in ["🔵", "Improving", "Phase 1", "Early"]):
+            return _BLUE
+        return _DARK
+
+    TH      = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
+               " text-align: left; white-space: nowrap;")
+    TD_BASE = "padding: 8px 12px; font-size: 13px; border-top: 0.5px solid rgba(16,55,102,0.09);"
+
+    cols   = list(df.columns)
+    header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
+
+    rows_html = ""
+    for _, row in df.iterrows():
+        cells = ""
+        for col in cols:
+            val = row[col]
+            color, weight = _color(val)
+            cells += (f'<td style="{TD_BASE} color: {color}; font-weight: {weight};">'
+                      f'{val}</td>')
+        rows_html += f"<tr>{cells}</tr>"
+
+    inner = (
+        f'<table style="width: 100%; border-collapse: collapse; background: #FFFFFF;">'
+        f'<thead><tr style="background: #EEF3FA;">{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        f'</table>'
+    )
+    if not bordered:
+        return inner
+    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
+    return (
+        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
+        f'{inner}</div><div style="margin-bottom:8px"></div>'
+    )
+
+
+def _card(heading: str, inner_html: str, pill: str = "") -> str:
+    """White card with uppercase heading, optional pill label, and arbitrary inner HTML."""
+    pill_html = (
+        f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
+        f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
+        if pill else ""
+    )
+    return (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px; overflow:hidden;">'
+        f'<div style="display:flex; align-items:center; justify-content:space-between;'
+        f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
+        f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+        f' letter-spacing:0.04em;">{heading}</span>{pill_html}</div>'
+        f'{inner_html}</div>'
+    )
+
+
+def _gate_bar_html(perm: str, text: str) -> str:
+    """Render the permission state gate bar."""
+    cfg = {
+        "Green":  ("#D6F0D6", "rgba(29,122,42,0.30)",  "#1D7A2A", "#173404"),
+        "Yellow": ("#FFF3D6", "rgba(224,120,0,0.30)",   "#E07800", "#412402"),
+        "Red":    ("#FFE4E4", "rgba(204,17,17,0.30)",   "#CC1111", "#501313"),
+    }
+    bg, border, dot_c, text_c = cfg.get(perm, cfg["Green"])
+    return (
+        f'<div style="background:{bg}; border-radius:9px; border:0.5px solid {border};'
+        f' padding:10px 16px; display:flex; align-items:center; gap:10px; margin-bottom:10px;">'
+        f'<div style="width:9px; height:9px; border-radius:50%; background:{dot_c}; flex-shrink:0;"></div>'
+        f'<span style="font-size:13px; font-weight:500; color:{text_c};">{text}</span>'
+        f'</div>'
+    )
+
+
+def _tile(label: str, value: str, signal: str = "", signal_color: str = "#5A7BAA") -> str:
+    """Single metric tile for the header row."""
+    sig_html = (
+        f'<div style="font-size:11px; font-weight:500; color:{signal_color}; margin-top:3px;">{signal}</div>'
+        if signal else ""
+    )
+    return (
+        f'<div style="background:#EEF3FA; border-radius:9px; border:0.5px solid rgba(16,55,102,0.15);'
+        f' padding:10px 12px;">'
+        f'<div style="font-size:11px; font-weight:400; color:#5A7BAA; margin-bottom:2px;">{label}</div>'
+        f'<div style="font-size:17px; font-weight:500; color:#103766;">{value}</div>'
+        f'{sig_html}</div>'
+    )
+
+
+def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Format a screener DataFrame for display:
+      - Percentage columns formatted with sign and 1 decimal
+      - Boolean columns converted to ✅ / ❌
+      - MACD converted to ▲ / ▼
+      - Dollar volume formatted as $XM
+    Drops internal columns PASS and MACD Hist (not intended for display).
+    """
+    d = df.copy()
+    for col in ["1M Ret", "3M Ret"]:
+        if col in d.columns: d[col] = d[col].apply(pct)
+    if "% > 20MA" in d.columns: d["% > 20MA"] = d["% > 20MA"].apply(pct)
+    for col in ["vs 20MA", "vs 50MA", "RS Hi", "RS ↑"]:
+        if col in d.columns: d[col] = d[col].apply(icon)
+    if "MACD"         in d.columns: d["MACD"]         = d["MACD"].apply(macd)
+    if "Avg $Vol(M)"  in d.columns: d["Avg $Vol(M)"]  = d["Avg $Vol(M)"].apply(lambda x: f"${x:.1f}M")
+    return d.drop(columns=["PASS", "MACD Hist"], errors="ignore")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB RENDER FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
+                         rec_flags: int, rec_total: int, perm: str,
+                         limits: dict, l15_data: list) -> None:
+    """Render the combined Layer 0 & 1 — Macro Regime + Permission State tab."""
+
+    roc1_pos      = l0["spy_ret_1m"] > 0
+    roc6_pos      = l0["spy_ret_6m"] > 0
+    spy_signal    = "GREEN" if (roc1_pos and roc6_pos) else ("RED" if (not roc1_pos and not roc6_pos) else "MIXED")
+    liq_override  = bool(l0.get("liquidity_tighten")) or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
+    tlt_dir       = l0.get("tlt_direction", "N/A")
+    vix_v         = l0.get("vix")
+    hyg_r         = l0.get("hyg_ief_ratio")
+    eps_signal    = st.session_state.eps_signal
+    eps_declining = "Declining" in eps_signal
+
+    # ── Build Sector RS table ─────────────────────────────────────────────────
+    sr = l0.get("sector_rs", {})
+    if sr:
+        sr_rows = []
+        for sec, v in sr.items():
+            emoji = "🟢" if v["trend"] == "Leading" else "🟡" if v["trend"] == "Mixed" else "🔴"
+            sr_rows.append({
+                "Sector": sec, "ETF": v["etf"],
+                "Price":  f"${v['price']:.2f}",
+                "1M RS":  pct(v["rs_1m"]),
+                "3M RS":  pct(v["rs_3m"]),
+                "RS Hi":  icon(v["rs_new_hi"]),
+                "Status": f"{emoji} {v['trend']}",
+                "_sort":  v["rs_3m"],
+            })
+        sr_df = pd.DataFrame(sr_rows).sort_values("_sort", ascending=False).drop(columns=["_sort"])
+        sector_rs_html = cb_table(sr_df, bordered=False)
+    else:
+        sector_rs_html = "<p style='color:#5A7BAA; font-size:13px;'>Sector data unavailable.</p>"
+
+    # ── Build Velocity Flag table (v4) ───────────────────────────────────────
+    if sr:
+        vf_rows = []
+        for sec, v in sorted(sr.items(), key=lambda x: x[1].get("roc_21", 0), reverse=True):
+            vel = v.get("velocity", "N/A")
+            roc = v.get("roc_21", 0)
+            vel_icon = "🔥" if vel == "ACCELERATING" else ("✅" if vel == "NORMAL" else "⬜")
+            vf_rows.append({
+                "Sector": sec, "ETF": v["etf"],
+                "ROC 21": pct(roc),
+                "Status": f"{vel_icon} {vel}",
+            })
+        velocity_html = cb_table(pd.DataFrame(vf_rows), bordered=False)
+        accel_list = l0.get("accelerating", [])
+        if accel_list:
+            velocity_html += (f'<p style="font-size:11px; color:#CC1111; font-weight:500; margin-top:6px;">'
+                              f'Accelerating Protocol eligible: {", ".join(accel_list)}</p>')
+    else:
+        velocity_html = "<p style='color:#5A7BAA; font-size:13px;'>Velocity data unavailable.</p>"
+
+    # ── Build Bond & Liquidity table ──────────────────────────────────────────
+    bond_rows = [
+        {"Signal": "TLT Direction (4-week)",
+         "Value": f"{tlt_dir}  ({pct(l0['tlt_ret_1m'])} 1M)" if l0.get("tlt_ret_1m") is not None else tlt_dir},
+        {"Signal": "TLT vs 50d MA",
+         "Value": ("✅ Above" if l0.get("tlt_above_50") else "❌ Below") if l0.get("tlt_above_50") is not None else "N/A"},
+        {"Signal": "Bond/SPY Regime Signal",
+         "Value": l0.get("tlt_spy_signal", "N/A")},
+        {"Signal": "HYG/IEF Credit Spread",
+         "Value": f"{hyg_r:.3f}  ({'⬇️ Tightening' if l0.get('liquidity_tighten') else '✅ Stable'})" if hyg_r else "N/A"},
+        {"Signal": "VIX",
+         "Value": f"{vix_v:.1f}  ({'⚠️ Elevated' if l0.get('vix_elevated') else '✅ Normal'})" if vix_v else "N/A"},
+        {"Signal": f"Fed Net Liquidity ({l0.get('fnl_as_of', '')})",
+         "Value": (
+             f"${l0['fnl_current']:,.1f}B  |  4-week: ${l0['fnl_change_4w']:+.1f}B  |  "
+             f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
+         ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
+    ]
+    bond_html = cb_table(pd.DataFrame(bond_rows), bordered=False)
+
+    # ── Build Sector Flow preview table ──────────────────────────────────────
+    if l15_data:
+        improving = [d for d in l15_data if d["quadrant"] == "Improving"]
+        leading   = [d for d in l15_data if d["quadrant"] == "Leading"]
+        flow_rows = [
+            {"Phase": "🔵 Phase 1 — Early",     "ETFs": ", ".join(d["etf"] for d in improving) or "None"},
+            {"Phase": "🟢 Phase 2 — Confirmed", "ETFs": ", ".join(d["etf"] for d in leading)   or "None"},
+        ]
+        flow_html = cb_table(pd.DataFrame(flow_rows), bordered=False)
+        flow_html += '<p style="font-size:11px; color:#5A7BAA; margin-top:6px;">Full detail in the Layer 1.5 tab.</p>'
+    else:
+        flow_html = "<p style='color:#5A7BAA; font-size:13px;'>RRG data unavailable.</p>"
+
+    # ── Build SPY Two-Speed table ─────────────────────────────────────────────
+    gate_status = ("✅ Both positive — gate open" if spy_signal == "GREEN"
+                   else "❌ Both negative — Red state" if spy_signal == "RED"
+                   else "⚠️ Mixed — Yellow pressure")
+    spy_rows = [
+        {"Signal": "ROC 21 (1-Month)",  "Value": pct(l0["spy_ret_1m"]),  "Status": "✅ Positive" if roc1_pos else "❌ Negative"},
+        {"Signal": "ROC 126 (6-Month)", "Value": pct(l0["spy_ret_6m"]),  "Status": "✅ Positive" if roc6_pos else "❌ Negative"},
+        {"Signal": "Gate",              "Value": "",                       "Status": gate_status},
+    ]
+    spy_html = cb_table(pd.DataFrame(spy_rows), bordered=False)
+
+    # ── Build Recession Composite table ──────────────────────────────────────
+    if "error" in fred_data:
+        rec_html = f"<p style='color:#5A7BAA; font-size:13px;'>{fred_data['error']}</p>"
+    else:
+        rec_rows = [{
+            "Indicator": ind["name"],
+            "Value":     ind["value"],
+            "As of":     ind["as_of"],
+            "Threshold": ind["threshold"],
+            "Status":    "✅ OK" if ind["ok"] else "⚠️ FLAG",
+        } for ind in rec_indicators]
+        flag_text = ("Clear — full risk operations." if rec_flags == 0
+                     else f"{rec_flags}/{rec_total} indicator(s) flagging.")
+        flag_color_css = "#27500A" if rec_flags == 0 else ("#E07800" if rec_flags <= 2 else "#CC1111")
+        rec_html = (cb_table(pd.DataFrame(rec_rows), bordered=False)
+                    + f'<p style="font-size:11px; color:{flag_color_css}; font-weight:500; margin-top:6px;">{flag_text}</p>')
+
+    # ── Build Gate Summary table ──────────────────────────────────────────────
+    gate_rows = [
+        {"Gate": "SPY both positive",  "Status": "✅ Open" if (roc1_pos and roc6_pos) else ("❌ Closed" if spy_signal == "RED" else "⚠️ Mixed"),    "Effect": "Required for Green"},
+        {"Gate": "Liquidity override", "Status": "🔴 ACTIVE" if liq_override else "✅ Clear",                                                        "Effect": "Forces Red if active"},
+        {"Gate": "Recession composite","Status": "🔴 Critical" if rec_flags >= 4 else ("⚠️ Elevated" if rec_flags >= 2 else "✅ Clear"),             "Effect": "≥4 flags → Red; 2–3 → Yellow"},
+        {"Gate": "EPS Revisions",      "Status": f"{'⚠️' if eps_declining else '✅'} {eps_signal}",                                                  "Effect": "Declining → Yellow pressure"},
+        {"Gate": "Taylor Rule",        "Status": st.session_state.taylor_rule,                                                                        "Effect": "Informational"},
+        {"Gate": "Drawdown from Peak", "Status": st.session_state.drawdown_state,                                                                     "Effect": "Informs risk scaling"},
+    ]
+    gate_sum_html = cb_table(pd.DataFrame(gate_rows), bordered=False)
+
+    # ── Assemble full two-column HTML layout ──────────────────────────────────
+    rec_pill = f"{'🟢' if rec_flags==0 else '🟡' if rec_flags<=2 else '🔴'} {rec_flags}/{rec_total}"
+    full_html = (
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+
+        # ── Left: Layer 0 ──────────────────────────────────────────────────
+        '<div>'
+        + _card("Sector Relative Strength vs SPY", sector_rs_html)
+        + _card("Velocity Flag — ROC 21", velocity_html, pill="v4")
+        + _card("Bond &amp; Liquidity", bond_html)
+        + _card("Sector Flow Momentum", flow_html, pill="L1.5 Preview")
+        + '</div>'
+
+        # ── Right: Layer 1 ─────────────────────────────────────────────────
+        '<div>'
+        + _card("SPY Two-Speed Trend", spy_html)
+        + _card("Recession Composite", rec_html, pill=rec_pill)
+        + _card("Gate Summary", gate_sum_html)
+        + '</div>'
+
+        '</div>'
+    )
+    st.markdown(full_html, unsafe_allow_html=True)
+
+
+def _render_layer15_tab(l15_data: list) -> None:
+    """
+    Render the Layer 1.5 — Sector Rotation tab.
+    Includes the RRG chart, quadrant summary, ETF entry candidates with
+    phase labels, flow-strength sizing override, and exit review.
+    """
+    st.caption("Relative Rotation Graph — sector ETFs vs SPY. Weekly data, trailing 8 weeks. Clockwise rotation is normal cycle progression.")
+
+    # Sector filter for the chart
+    chart_sectors = st.multiselect(
+        "Sectors to display",
+        options=ALL_SECTORS,
+        default=ALL_SECTORS,
+    )
+    chart_data = [d for d in l15_data if d["sector"] in chart_sectors] if chart_sectors else l15_data
+
+    with st.spinner("Building RRG chart..."):
+        rrg_fig = build_rrg_chart(chart_data)
+    if rrg_fig:
+        st.plotly_chart(rrg_fig, use_container_width=True)
+    else:
+        st.warning("Insufficient data to build RRG chart.")
+
+    st.divider()
+
+    # Quadrant count summary
+    n_improving = sum(1 for d in l15_data if d["quadrant"] == "Improving")
+    n_leading   = sum(1 for d in l15_data if d["quadrant"] == "Leading")
+    n_weakening = sum(1 for d in l15_data if d["quadrant"] == "Weakening")
+    n_lagging   = sum(1 for d in l15_data if d["quadrant"] == "Lagging")
+
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("🔵 Improving", n_improving)
+    mc2.metric("🟢 Leading",   n_leading)
+    mc3.metric("🟡 Weakening", n_weakening)
+    mc4.metric("🔴 Lagging",   n_lagging)
+
+    # Flow strength inputs — auto-populated from implied flows, manually overridable
+    with st.expander("📊 Weekly Flow Strength — auto-computed, override if needed"):
+        fc1, fc2 = st.columns([3, 1])
+        with fc1:
+            st.caption(
+                "Auto-computed from implied AUM flows (yfinance). "
+                "Override any sector manually. "
+                "Source: ETF excess return vs SPY × AUM as flow proxy."
+            )
+        with fc2:
+            if st.button("🔄 Refresh Flows", key="refresh_flows"):
+                fetch_etf_implied_flows.clear()
+                st.rerun()
+
+        # Load auto-computed flows and seed session state (only if not already set this session)
+        auto_flows = fetch_etf_implied_flows()
+        for sector, etf in SECTOR_ETFS.items():
+            key = f"flow_{etf.lower()}"
+            auto_val = auto_flows.get(etf, {}).get("flow_strength", "Not set")
+            # Seed from auto if session state is still at default "Not set"
+            if st.session_state.get(key, "Not set") == "Not set" and auto_val in FLOW_OPTS:
+                st.session_state[key] = auto_val
+
+        flow_cols = st.columns(3)
+        for i, (sector, etf) in enumerate(SECTOR_ETFS.items()):
+            key = f"flow_{etf.lower()}"
+            auto_data = auto_flows.get(etf, {})
+            auto_val  = auto_data.get("flow_strength", "N/A")
+            delta_1w  = auto_data.get("aum_1w_delta")
+            delta_4w  = auto_data.get("aum_4w_delta")
+            err       = auto_data.get("error")
+
+            # Build sublabel showing auto signal and Δ AUM
+            if err:
+                sublabel = f"Auto: ⚠️ {err[:30]}"
+            elif delta_1w is not None:
+                sublabel = f"Auto: {auto_val} | 1w ${delta_1w:+.0f}M / 4w ${delta_4w:+.0f}M"
+            else:
+                sublabel = f"Auto: {auto_val}"
+
+            with flow_cols[i % 3]:
+                st.session_state[key] = st.selectbox(
+                    f"{etf} — {sector}",
+                    FLOW_OPTS,
+                    index=FLOW_OPTS.index(st.session_state.get(key, "Not set")),
+                    key=f"flow_sel_{etf}",
+                    help=sublabel,
+                )
+                st.caption(sublabel)
+
+    st.divider()
+
+    col_l, col_r = st.columns([1, 1], gap="medium")
+
+    with col_l:
+        candidates = [d for d in l15_data if d["quadrant"] in ("Improving", "Leading")]
+        with st.expander("ETF Entry Candidates", expanded=True):
+            if candidates:
+                rows = []
+                for d in candidates:
+                    flow_key      = f"flow_{d['etf'].lower()}"
+                    flow_strength = st.session_state.get(flow_key, "Not set")
+                    # Override sizing with user's flow reading if set
+                    if flow_strength in FLOW_SIZE_MAP:
+                        sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
+                    else:
+                        sizing, risk_pct = d["sizing"], d["risk_pct"]
+
+                    q_icon = "🔵" if d["quadrant"] == "Improving" else "🟢"
+                    rows.append({
+                        "ETF":         d["etf"],
+                        "Sector":      d["sector"],
+                        "Phase":       f"{q_icon} {d['phase']}",
+                        "RS Ratio":    d["rs_ratio"],
+                        "RS Mom":      d["rs_momentum"],
+                        "vs 20MA":     "✅" if d["above_20"] else "❌",
+                        "Price":       f"${d['price']:.2f}",
+                        "Stop (20MA)": f"${d['ma20']:.2f}",
+                        "Flow Signal": flow_strength,
+                        "Sizing":      sizing,
+                        "Risk %":      risk_pct,
+                    })
+                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
+            else:
+                st.info("No Improving or Leading sectors currently.")
+
+    with col_r:
+        weakening = [d for d in l15_data if d["quadrant"] == "Weakening"]
+        with st.expander("Weakening — Review Stops", expanded=True):
+            if weakening:
+                rows = []
+                for d in weakening:
+                    flow_key      = f"flow_{d['etf'].lower()}"
+                    flow_strength = st.session_state.get(flow_key, "Not set")
+                    rows.append({
+                        "ETF":         d["etf"],
+                        "Sector":      d["sector"],
+                        "RS Ratio":    d["rs_ratio"],
+                        "RS Mom":      d["rs_momentum"],
+                        "vs 20MA":     "✅" if d["above_20"] else "❌",
+                        "Price":       f"${d['price']:.2f}",
+                        "Stop (20MA)": f"${d['ma20']:.2f}",
+                        "Flow Signal": flow_strength,
+                        "Action":      "Exit review — outflows" if flow_strength == "Outflows" else d["action"],
+                    })
+                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
+            else:
+                st.success("No sectors in Weakening quadrant.")
+
+    # Full sector table
+    st.write("")
+    with st.expander("All Sectors", expanded=True):
+        q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
+        all_rows = []
+        for d in l15_data:
+            flow_key      = f"flow_{d['etf'].lower()}"
+            flow_strength = st.session_state.get(flow_key, "Not set")
+            if flow_strength in FLOW_SIZE_MAP:
+                sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
+            else:
+                sizing, risk_pct = d["sizing"], d["risk_pct"]
+            all_rows.append({
+                "Sector":      d["sector"],
+                "ETF":         d["etf"],
+                "Phase":       f"{q_icons[d['quadrant']]} {d['phase']}",
+                "RS Ratio":    d["rs_ratio"],
+                "RS Mom":      d["rs_momentum"],
+                "Price":       f"${d['price']:.2f}",
+                "vs 20MA":     "✅" if d["above_20"] else "❌",
+                "Flow Signal": flow_strength,
+                "Sizing":      sizing,
+                "Action":      d["action"],
+            })
+        st.markdown(cb_table(pd.DataFrame(all_rows)), unsafe_allow_html=True)
+
+
+def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
+                       half_df: pd.DataFrame, perm: str,
+                       active_sectors: list, show_half: bool, show_all: bool,
+                       l0: dict = None) -> None:
+    """Render the Layer 2 — Screener tab."""
+
+    # Red state bar
+    if perm == "Red":
+        st.markdown(
+            _gate_bar_html("Red", "RED STATE — No new entries. Results shown for reference only."),
+            unsafe_allow_html=True,
+        )
+
+    # ── Stats tile row ────────────────────────────────────────────────────────
+    no_trade = len(results_df[results_df["2-Speed"] == "NO TRADE"])
+    sector_str = ", ".join(active_sectors)
+    stats_html = (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px;">'
+        f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
+        f'Sectors: {sector_str} &nbsp;·&nbsp; Universe: {len(results_df)} stocks</div>'
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
+        + _tile("Screened",    str(len(results_df)), "")
+        + _tile("Full Signal", str(len(passes_df)),  "● Both signals positive", "#27500A")
+        + _tile("Half Signal", str(len(half_df)),    "● Mixed signals",         "#E07800")
+        + _tile("No Trade",    str(no_trade),        "● Both signals negative", "#CC1111")
+        + '</div></div>'
+    )
+    st.markdown(stats_html, unsafe_allow_html=True)
+
+    # ── Full Signal card ──────────────────────────────────────────────────────
+    if not passes_df.empty:
+        st.markdown(
+            _card(f"Full Signal — {len(passes_df)} candidates",
+                  cb_table(fmt_df(passes_df), bordered=False),
+                  pill="✅ Full"),
+            unsafe_allow_html=True,
+        )
+        st.text_area(
+            "Copy tickers",
+            value="  ".join(passes_df["Ticker"].tolist()),
+            height=60,
+            label_visibility="collapsed",
+            help="Full Signal tickers — copy and paste into Claude",
+        )
+    else:
+        st.markdown(
+            _gate_bar_html("Yellow", "No stocks passing all Layer 2 filters in the current regime."),
+            unsafe_allow_html=True,
+        )
+
+    # ── Half Signal card ──────────────────────────────────────────────────────
+    if show_half:
+        half_show = half_df.head(15)
+        if not half_show.empty:
+            st.markdown(
+                _card(f"Half Signal — {len(half_df)} candidates",
+                      cb_table(fmt_df(half_show), bordered=False),
+                      pill="⚠️ Half"),
+                unsafe_allow_html=True,
+            )
+            st.text_area(
+                "Copy half tickers",
+                value="  ".join(half_show["Ticker"].tolist()),
+                height=60,
+                label_visibility="collapsed",
+                help="Half Signal tickers — copy and paste into Claude",
+            )
+        else:
+            st.markdown(
+                _gate_bar_html("Yellow", "No half-signal candidates."),
+                unsafe_allow_html=True,
+            )
+
+    # ── Accelerating Protocol candidates (v4) ──────────────────────────────
+    accel_sectors = l0.get("accelerating", []) if l0 else []
+    if accel_sectors and not results_df.empty:
+        # Find stocks in accelerating sectors that are 0-15% above 20d MA
+        accel_sector_names = set(accel_sectors)
+        accel_mask = (
+            results_df["Sector"].isin(accel_sector_names)
+            & (results_df["% > 20MA"] > 0)
+            & (results_df["% > 20MA"] <= 0.15)
+            & (results_df["2-Speed"].isin(["FULL", "HALF"]))
+        )
+        accel_df = results_df[accel_mask].sort_values("% > 20MA", ascending=True)
+        if not accel_df.empty:
+            st.markdown(
+                _card(f"🔥 Accelerating Protocol — {len(accel_df)} candidates",
+                      cb_table(fmt_df(accel_df), bordered=False)
+                      + '<p style="font-size:11px; color:#CC1111; font-weight:500; margin-top:6px;">'
+                      'Half size · 10d EMA stop · 6-week max hold · Max 3 simultaneous</p>',
+                      pill="v4"),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                _gate_bar_html("Yellow", f"Accelerating sectors ({', '.join(accel_sectors)}) — no stocks within 0–15% above 20d MA."),
+                unsafe_allow_html=True,
+            )
+
+    # ── Full Universe card ────────────────────────────────────────────────────
+    if show_all:
+        all_s = results_df.sort_values(["PASS", "2-Speed", "3M Ret"], ascending=[False, True, False])
+        st.markdown(
+            _card(f"Full Universe — {len(results_df)} stocks",
+                  cb_table(fmt_df(all_s), bordered=False)),
+            unsafe_allow_html=True,
+        )
+
+
+def _render_layer3_tab(
+    full_l3: pd.DataFrame,
+    half_l3: pd.DataFrame,
+    perm: str,
+    l0: dict,
+    rec_flags: int,
+) -> None:
+    """Render the Layer 3 — Entry Trigger tab."""
+    regime     = l0.get("regime", "Mixed")
+    accel_secs = l0.get("accelerating", [])
+    has_accel  = bool(accel_secs)
+
+    # ── Entry mode header ──────────────────────────────────────────────────────
+    if perm == "Red":
+        mode_label = "❌ No New Entries"
+        mode_color = "#CC1111"
+        mode_desc  = "RED state — capital protection only."
+    elif has_accel:
+        mode_label = "🔥 Accelerating Protocol Active"
+        mode_color = "#CC1111"
+        mode_desc  = f"Velocity Flag: {', '.join(accel_secs)}. Modified rules apply to flagged sectors."
+    elif perm == "Green" and regime == "Risk-on":
+        mode_label = "🚀 Breakout Mode"
+        mode_color = "#27500A"
+        mode_desc  = "Risk-on / GREEN — buy breakouts on 40%+ above-average volume. RS new high confirms."
+    else:
+        mode_label = "📉 Pullback Mode"
+        mode_color = "#E07800"
+        mode_desc  = "YELLOW / Mixed — 20d or 50d MA pullbacks on declining volume."
+
+    if perm == "Red":
+        rule_rows = [{"Rule": "RED STATE", "Criteria": "No new entries. Review existing positions only."}]
+    elif has_accel:
+        rule_rows = [
+            {"Rule": "Normal sectors",   "Criteria": "Breakout: vol ≥1.4x · within 5% of base top · RS line ↑"},
+            {"Rule": "🔥 Accel sectors", "Criteria": "0–15% above 20d MA · vol ≥1.0x · half size · 10d EMA stop · 6-week hold"},
+        ]
+    elif perm == "Green" and regime == "Risk-on":
+        rule_rows = [
+            {"Rule": "Breakout entry",  "Criteria": "Closes above base top · vol ≥1.4x above avg · RS line new high"},
+            {"Rule": "Stop",            "Criteria": "Just below 6-week base low"},
+            {"Rule": "Don't chase",     "Criteria": "Skip if >5% above pivot (unless Accel Protocol active)"},
+        ]
+    else:
+        rule_rows = [
+            {"Rule": "Pullback to 20d MA", "Criteria": "Within 3% of 20d MA · vol <1.0x avg · bullish reversal candle"},
+            {"Rule": "Pullback to 50d MA", "Criteria": "Same criteria at 50d MA level"},
+            {"Rule": "Stop",               "Criteria": "1–2% below the MA that triggered entry"},
+        ]
+
+    mode_html = (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:14px 17px; margin-bottom:10px;">'
+        f'<div style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+        f' letter-spacing:0.04em; margin-bottom:8px;">Entry Mode — This Week</div>'
+        f'<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">'
+        f'<span style="font-size:16px; font-weight:500; color:{mode_color};">{mode_label}</span>'
+        f'<span style="font-size:12px; color:#5A7BAA;">{mode_desc}</span>'
+        f'</div>'
+        f'</div>'
+    )
+    rules_html = cb_table(pd.DataFrame(rule_rows), bordered=False)
+    st.markdown(mode_html + _card("Entry Trigger Rules", rules_html), unsafe_allow_html=True)
+
+    if perm == "Red":
+        st.markdown(
+            _gate_bar_html("Red", "RED STATE — No Layer 3 evaluation. Protect capital."),
+            unsafe_allow_html=True,
+        )
+        return
+
+    if rec_flags >= 4:
+        st.markdown(
+            _gate_bar_html("Red", f"Recession composite {rec_flags}/5 — breakout entries invalid. Pullback entries only."),
+            unsafe_allow_html=True,
+        )
+
+    # ── Render tier helper ─────────────────────────────────────────────────────
+    def _render_tier(l3_df: pd.DataFrame, title: str, tier_key: str) -> None:
+        if l3_df.empty:
+            st.markdown(
+                _gate_bar_html("Yellow", f"{title} — no candidates to evaluate."),
+                unsafe_allow_html=True,
+            )
+            return
+
+        sort_map = {"🟢 ENTRY READY": 0, "🟡 WATCH": 1, "⬜ NOT READY": 2, "❌ SKIP": 3, "❌ RED STATE": 4}
+        l3s = l3_df.copy()
+        l3s["_s"] = l3s["Verdict"].map(lambda v: sort_map.get(v, 5))
+        l3s = l3s.sort_values(["_s", "Sector"]).drop(columns=["_s"])
+
+        disp = pd.DataFrame({
+            "Ticker":    l3s["Ticker"],
+            "Sector":    l3s["Sector"],
+            "Price":     l3s["Price"].apply(lambda x: f"${x:.2f}"),
+            "Trigger":   l3s["Trigger"],
+            "Vol Ratio": l3s["Vol Ratio"].apply(lambda x: f"{x:.1f}x"),
+            "vs 20MA":   l3s["vs 20MA"].apply(pct),
+            "vs 50MA":   l3s["vs 50MA"].apply(pct),
+            "RS ↑":      l3s["RS ↑"].apply(icon),
+            "Entry":     l3s["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Stop":      l3s["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Verdict":   l3s["Verdict"],
+            "Notes":     l3s["Notes"],
+        })
+
+        ready_n  = int((l3s["Verdict"] == "🟢 ENTRY READY").sum())
+        watch_n  = int((l3s["Verdict"] == "🟡 WATCH").sum())
+        pill_str = f"✅ {ready_n} ready · 🟡 {watch_n} watch"
+
+        st.markdown(
+            _card(f"{title} — {len(l3s)} candidates", cb_table(disp, bordered=False), pill=pill_str),
+            unsafe_allow_html=True,
+        )
+
+        ready_tickers = l3s[l3s["Verdict"] == "🟢 ENTRY READY"]["Ticker"].tolist()
+        if ready_tickers:
+            st.text_area(
+                f"Entry-ready {title.lower()} tickers",
+                value="  ".join(ready_tickers),
+                height=50,
+                label_visibility="collapsed",
+                help="Copy for TradingView review",
+            )
+
+    _render_tier(full_l3, "Full Signal", "full")
+    _render_tier(half_l3, "Half Signal", "half")
+    st.caption(
+        "Entry and stop prices are algorithmic estimates based on price data. "
+        "Always confirm base structure, candle quality, and exact pivot in TradingView before entering."
+    )
+
+
+def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
+    """Render the Core Allocation tab (v4)."""
+
+    account   = st.session_state.account_value
+    core_pct  = st.session_state.core_pct_deployed
+    core_tickers = [t.strip().upper() for t in st.session_state.core_positions.split(",") if t.strip()]
+
+    # Deployment floor targets
+    floor_map  = {"Green": (40, 60), "Yellow": (20, 35), "Red": (0, 0)}
+    floor_lo, floor_hi = floor_map.get(perm, (0, 0))
+    core_target = {"Green": 40, "Yellow": 20, "Red": 0}.get(perm, 0)
+
+    # Core status
+    core_value   = account * core_pct / 100
+    slots_used   = len(core_tickers)
+    slots_max    = 3
+
+    # Build status card
+    status_rows = [
+        {"Metric": "Account Value",          "Value": f"${account:,.0f}"},
+        {"Metric": "Core % Deployed",         "Value": f"{core_pct:.0f}%"},
+        {"Metric": "Core $ Deployed",         "Value": f"${core_value:,.0f}"},
+        {"Metric": "Core Target",             "Value": f"{core_target}% (${account * core_target / 100:,.0f})"},
+        {"Metric": "Slots Used",              "Value": f"{slots_used} / {slots_max}"},
+        {"Metric": "Deployment Floor",        "Value": f"{floor_lo}–{floor_hi}% (${account * floor_lo / 100:,.0f}–${account * floor_hi / 100:,.0f})"},
+        {"Metric": "Floor Met?",              "Value": "✅ Yes" if core_pct >= floor_lo else "❌ Below floor"},
+    ]
+    status_html = cb_table(pd.DataFrame(status_rows), bordered=False)
+
+    # Phase 2 candidates from RRG
+    phase2 = [d for d in l15_data if d["quadrant"] == "Leading"]
+    if phase2:
+        p2_rows = []
+        for d in phase2:
+            already_held = d["etf"] in core_tickers
+            sr = l0.get("sector_rs", {}).get(d["sector"], {})
+            vel = sr.get("velocity", "N/A")
+            p2_rows.append({
+                "ETF":        d["etf"],
+                "Sector":     d["sector"],
+                "Phase":      "🟢 Phase 2 — Confirmed",
+                "Price":      f"${d['price']:.2f}",
+                "Stop (20MA)": f"${d['ma20']:.2f}",
+                "Velocity":   f"{'🔥' if vel == 'ACCELERATING' else ''} {vel}",
+                "Held?":      "✅ Yes" if already_held else "—",
+            })
+        p2_html = cb_table(pd.DataFrame(p2_rows), bordered=False)
+    else:
+        p2_html = "<p style='color:#5A7BAA; font-size:13px;'>No sectors in Phase 2 currently.</p>"
+
+    # Current Core positions detail (if any)
+    sr = l0.get("sector_rs", {})
+    if core_tickers:
+        held_rows = []
+        for etf in core_tickers:
+            # Find sector for this ETF
+            sec_name = next((sec for sec, e in SECTOR_ETFS.items() if e == etf), "Unknown")
+            sr_data = sr.get(sec_name, {})
+            price  = sr_data.get("price", "N/A")
+            vel    = sr_data.get("velocity", "N/A")
+            trend  = sr_data.get("trend", "N/A")
+            # Check RRG quadrant
+            rrg_match = next((d for d in l15_data if d["etf"] == etf), None)
+            phase = rrg_match["phase"] if rrg_match else "N/A"
+            above_20 = rrg_match["above_20"] if rrg_match else None
+            ma20 = rrg_match["ma20"] if rrg_match else "N/A"
+
+            held_rows.append({
+                "ETF":        etf,
+                "Sector":     sec_name,
+                "Price":      f"${price}" if isinstance(price, (int, float)) else price,
+                "Stop (20MA)": f"${ma20}" if isinstance(ma20, (int, float)) else ma20,
+                "vs 20MA":    ("✅" if above_20 else "❌") if above_20 is not None else "N/A",
+                "RS Trend":   trend,
+                "Velocity":   vel,
+                "Phase":      phase,
+            })
+        held_html = cb_table(pd.DataFrame(held_rows), bordered=False)
+    else:
+        held_html = "<p style='color:#5A7BAA; font-size:13px;'>No Core positions entered. Set in sidebar.</p>"
+
+    # Exit signals
+    exit_signals = []
+    for etf in core_tickers:
+        rrg_match = next((d for d in l15_data if d["etf"] == etf), None)
+        if rrg_match and not rrg_match["above_20"]:
+            exit_signals.append(f"⚠️ {etf} — below 20d MA → exit review")
+        if rrg_match and rrg_match["quadrant"] in ("Weakening", "Lagging"):
+            exit_signals.append(f"⚠️ {etf} — {rrg_match['quadrant']} quadrant → exit review")
+    if perm == "Red":
+        exit_signals.append("🔴 RED state — exit all Core positions")
+
+    exit_html = ""
+    if exit_signals:
+        exit_html = '<div style="margin-top:6px;">' + "".join(
+            f'<p style="font-size:12px; color:#CC1111; font-weight:500; margin:3px 0;">{s}</p>'
+            for s in exit_signals
+        ) + '</div>'
+
+    # Assemble layout
+    full_html = (
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+        '<div>'
+        + _card("Core Status", status_html, pill=f"{'🟢' if core_pct >= floor_lo else '🔴'} Floor")
+        + _card("Current Core Positions", held_html + exit_html)
+        + '</div>'
+        '<div>'
+        + _card("Phase 2 Candidates — Core Entry Eligible", p2_html)
+        + '</div>'
+        '</div>'
+    )
+    st.markdown(full_html, unsafe_allow_html=True)
+
+
+def _render_charts_tab(passes_df: pd.DataFrame) -> None:
+    """Render the Charts tab — individual stock charts for Full Signal candidates."""
+
+    if passes_df.empty:
+        st.info("No Full Signal candidates to chart.")
+        return
+
+    sel = st.selectbox(
+        "Select ticker",
+        passes_df["Ticker"].tolist(),
+        format_func=lambda t: f"{t}  —  {passes_df[passes_df['Ticker']==t]['Sector'].iloc[0]}",
+    )
+    if sel:
+        row = passes_df[passes_df["Ticker"] == sel].iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Price",  f"${row['Price']:.2f}")
+        c2.metric("1M Ret", pct(row["1M Ret"]))
+        c3.metric("3M Ret", pct(row["3M Ret"]))
+        c4.metric("RSI",    f"{row['RSI']:.1f}")
+        with st.spinner(f"Building {sel} chart..."):
+            fig = build_chart(sel)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error(f"Could not load chart data for {sel}.")
+
+    if st.checkbox("Show all Full Signal charts"):
+        for _, row in passes_df.iterrows():
+            t = row["Ticker"]
+            with st.expander(f"{t}  —  {row['Sector']}  |  1M: {pct(row['1M Ret'])}  |  3M: {pct(row['3M Ret'])}", expanded=False):
+                with st.spinner(f"Loading {t}..."):
+                    fig = build_chart(t)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PORTFOLIO TRACKER
+# ─────────────────────────────────────────────────────────────────────────────
+
+PORTFOLIO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portfolio.json")
+
+
+def _portfolio_load() -> dict:
+    if not os.path.exists(PORTFOLIO_PATH):
+        return {"account_size": 100000, "open_positions": [], "closed_positions": []}
+    with open(PORTFOLIO_PATH, "r") as f:
+        return json.load(f)
+
+
+def _portfolio_save(data: dict) -> None:
+    with open(PORTFOLIO_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_portfolio_prices(tickers_key: str) -> dict:
+    """Fetch last close for open positions. Cached 5 min."""
+    tickers = [t.strip() for t in tickers_key.split(",") if t.strip()]
+    if not tickers:
+        return {}
+    try:
+        raw = yf.download(tickers, period="2d", auto_adjust=True, progress=False)
+        closes = raw["Close"] if len(tickers) > 1 else raw["Close"].rename(tickers[0])
+        if isinstance(closes, pd.Series):
+            closes = closes.to_frame()
+        return {t: float(closes[t].dropna().iloc[-1]) for t in tickers if t in closes.columns}
+    except Exception:
+        return {}
+
+
+def _dollar_fmt(v: float) -> str:
+    return f"${v:+,.0f}" if v != 0 else "$0"
+
+
+def _pct_fmt(v: float) -> str:
+    return f"{v*100:+.1f}%"
+
+
+def _pnl_color(v: float) -> str:
+    if v > 0: return "#27500A"
+    if v < 0: return "#CC1111"
+    return "#5A7BAA"
+
+
+def _build_open_table(positions: list, prices: dict, account_size: float):
+    rows = []
+    total_mv = total_cb = total_upnl = total_risk = 0.0
+    for p in positions:
+        ticker     = p["ticker"]
+        entry_px   = p["entry_price"]
+        shares     = p["shares"]
+        stop_px    = p["stop_price"]
+        entry_dt   = datetime.strptime(p["entry_date"], "%Y-%m-%d").date()
+        days_held  = (date.today() - entry_dt).days
+        layer      = p.get("layer", "Tactical")
+        cur_px     = prices.get(ticker, p.get("current_price") or entry_px)
+        cost_basis = entry_px * shares
+        mkt_val    = cur_px * shares
+        upnl_d     = mkt_val - cost_basis
+        upnl_pct   = upnl_d / cost_basis if cost_basis else 0.0
+        risk_d     = (entry_px - stop_px) * shares
+        total_mv   += mkt_val
+        total_cb   += cost_basis
+        total_upnl += upnl_d
+        total_risk += risk_d
+        rows.append({
+            "Ticker":     ticker,
+            "Layer":      layer,
+            "Entry Date": str(entry_dt),
+            "Entry":      f"${entry_px:.2f}",
+            "Current":    f"${cur_px:.2f}",
+            "Shares":     shares,
+            "Cost Basis": f"${cost_basis:,.0f}",
+            "Mkt Value":  f"${mkt_val:,.0f}",
+            "P&L $":      _dollar_fmt(upnl_d),
+            "P&L %":      _pct_fmt(upnl_pct),
+            "Days":       days_held,
+            "Stop":       f"${stop_px:.2f}",
+            "Risk $":     f"${risk_d:,.0f}",
+        })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["Ticker","Layer","Entry Date","Entry","Current","Shares",
+                 "Cost Basis","Mkt Value","P&L $","P&L %","Days","Stop","Risk $"])
+    return df, total_mv, total_cb, total_upnl, total_risk
+
+
+def _build_closed_table(positions: list) -> pd.DataFrame:
+    rows = []
+    for p in positions:
+        entry_px = p["entry_price"]
+        exit_px  = p["exit_price"]
+        shares   = p["shares"]
+        pnl_d    = (exit_px - entry_px) * shares
+        pnl_pct  = pnl_d / (entry_px * shares) if entry_px else 0.0
+        entry_dt = datetime.strptime(p["entry_date"], "%Y-%m-%d").date()
+        exit_dt  = datetime.strptime(p["exit_date"],  "%Y-%m-%d").date()
+        rows.append({
+            "Ticker":      p["ticker"],
+            "Layer":       p.get("layer", "Tactical"),
+            "Entry Date":  str(entry_dt),
+            "Exit Date":   str(exit_dt),
+            "Entry":       f"${entry_px:.2f}",
+            "Exit":        f"${exit_px:.2f}",
+            "Shares":      shares,
+            "P&L $":       _dollar_fmt(pnl_d),
+            "P&L %":       _pct_fmt(pnl_pct),
+            "Hold Days":   (exit_dt - entry_dt).days,
+            "Exit Reason": p.get("exit_reason", "—"),
+        })
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["Ticker","Layer","Entry Date","Exit Date","Entry","Exit",
+                 "Shares","P&L $","P&L %","Hold Days","Exit Reason"])
+
+
+def _calc_performance(closed: list, start_dt: date, end_dt: date) -> dict:
+    filtered = [
+        p for p in closed
+        if start_dt <= datetime.strptime(p["exit_date"], "%Y-%m-%d").date() <= end_dt
+    ]
+    if not filtered:
+        return {"count": 0, "realized_pnl": 0, "win_rate": 0,
+                "avg_win": 0, "avg_loss": 0, "profit_factor": 0, "trades": []}
+    pnls = [{"pnl": (p["exit_price"]-p["entry_price"])*p["shares"],
+             "pct": p["exit_price"]/p["entry_price"]-1} for p in filtered]
+    wins   = [x for x in pnls if x["pnl"] > 0]
+    losses = [x for x in pnls if x["pnl"] <= 0]
+    gross_wins   = sum(x["pnl"] for x in wins)
+    gross_losses = abs(sum(x["pnl"] for x in losses))
+    return {
+        "count":        len(filtered),
+        "realized_pnl": sum(x["pnl"] for x in pnls),
+        "win_rate":     len(wins) / len(pnls),
+        "avg_win":      sum(x["pct"] for x in wins)   / len(wins)   if wins   else 0,
+        "avg_loss":     sum(x["pct"] for x in losses) / len(losses) if losses else 0,
+        "profit_factor":gross_wins / gross_losses if gross_losses > 0 else float("inf"),
+        "trades":       filtered,
+        "n_wins":       len(wins),
+        "n_losses":     len(losses),
+    }
+
+
+def _render_portfolio_tab() -> None:
+    """Render the Portfolio Tracker tab."""
+    today = date.today()
+    data         = _portfolio_load()
+    account_size = data.get("account_size", 100000)
+    open_pos     = data.get("open_positions", [])
+    closed_pos   = data.get("closed_positions", [])
+
+    # ── Live prices ───────────────────────────────────────────────────────────
+    open_tickers = [p["ticker"] for p in open_pos]
+    prices = {}
+    if open_tickers:
+        with st.spinner("Fetching live prices…"):
+            prices = fetch_portfolio_prices(",".join(open_tickers))
+
+    # ── Sidebar controls ──────────────────────────────────────────────────────
+    with st.sidebar:
+        st.divider()
+        st.subheader("Portfolio")
+        account_size = st.number_input(
+            "Account Size ($)", value=account_size, min_value=1000, step=1000, format="%d",
+            key="port_acct_size",
+        )
+        if account_size != data.get("account_size"):
+            data["account_size"] = account_size
+            _portfolio_save(data)
+
+        # Add position form
+        with st.expander("➕ Add Open Position"):
+            with st.form("add_pos_form", clear_on_submit=True):
+                ticker     = st.text_input("Ticker").upper().strip()
+                layer      = st.selectbox("Layer", ["Tactical", "Core"], key="add_layer")
+                entry_date = st.date_input("Entry Date", value=today, key="add_edate")
+                entry_px   = st.number_input("Entry Price", min_value=0.01, step=0.01, format="%.2f", key="add_epx")
+                shares     = st.number_input("Shares", min_value=1, step=1, key="add_shares")
+                stop_px    = st.number_input("Stop Price", min_value=0.01, step=0.01, format="%.2f", key="add_stop")
+                notes      = st.text_input("Notes", key="add_notes")
+                if st.form_submit_button("Add") and ticker and entry_px > 0 and shares > 0:
+                    data["open_positions"].append({
+                        "ticker": ticker, "layer": layer,
+                        "entry_date": str(entry_date), "entry_price": entry_px,
+                        "shares": int(shares), "stop_price": stop_px,
+                        "current_price": None, "notes": notes,
+                    })
+                    _portfolio_save(data)
+                    st.cache_data.clear()
+                    st.rerun()
+
+        # Close position form
+        if open_tickers:
+            with st.expander("✅ Close Position"):
+                with st.form("close_pos_form", clear_on_submit=True):
+                    sel_ticker  = st.selectbox("Ticker", open_tickers, key="close_ticker")
+                    exit_date   = st.date_input("Exit Date", value=today, key="close_edate")
+                    exit_px     = st.number_input("Exit Price", min_value=0.01, step=0.01, format="%.2f", key="close_px")
+                    exit_reason = st.selectbox("Exit Reason", ["Target","Stop","Rule-based"], key="close_reason")
+                    close_notes = st.text_input("Notes", key="close_notes")
+                    if st.form_submit_button("Close") and exit_px > 0:
+                        pos = next((p for p in data["open_positions"] if p["ticker"] == sel_ticker), None)
+                        if pos:
+                            data["closed_positions"].insert(0, {
+                                "ticker": pos["ticker"], "layer": pos.get("layer","Tactical"),
+                                "entry_date": pos["entry_date"], "exit_date": str(exit_date),
+                                "entry_price": pos["entry_price"], "exit_price": exit_px,
+                                "shares": pos["shares"], "exit_reason": exit_reason,
+                                "notes": close_notes,
+                            })
+                            data["open_positions"] = [p for p in data["open_positions"] if p["ticker"] != sel_ticker]
+                            _portfolio_save(data)
+                            st.cache_data.clear()
+                            st.rerun()
+
+    # ── Performance period selector ───────────────────────────────────────────
+    perf_col1, perf_col2 = st.columns([2, 5])
+    with perf_col1:
+        perf_period = st.selectbox(
+            "Performance Period",
+            ["YTD", "1M", "3M", "6M", "1Y", "Custom"],
+            index=0, label_visibility="collapsed", key="port_period",
+        )
+    if perf_period == "YTD":
+        p_start, p_end, period_label = date(today.year,1,1), today, f"YTD {today.year}"
+    elif perf_period == "1M":
+        p_start, p_end, period_label = today-timedelta(days=30), today, "Last 30 Days"
+    elif perf_period == "3M":
+        p_start, p_end, period_label = today-timedelta(days=91), today, "Last 3 Months"
+    elif perf_period == "6M":
+        p_start, p_end, period_label = today-timedelta(days=182), today, "Last 6 Months"
+    elif perf_period == "1Y":
+        p_start, p_end, period_label = today-timedelta(days=365), today, "Last 12 Months"
+    else:
+        with perf_col2:
+            custom_range = st.date_input(
+                "Range", value=(date(today.year,1,1), today),
+                min_value=date(2020,1,1), max_value=today,
+                label_visibility="collapsed", key="port_custom_range",
+            )
+        p_start = custom_range[0] if isinstance(custom_range,(list,tuple)) else date(today.year,1,1)
+        p_end   = custom_range[1] if isinstance(custom_range,(list,tuple)) and len(custom_range)>1 else today
+        period_label = f"{p_start} → {p_end}"
+
+    perf = _calc_performance(closed_pos, p_start, p_end)
+    _, total_mv, total_cb, total_upnl, total_risk = _build_open_table(open_pos, prices, account_size)
+
+    deployed_pct = total_cb / account_size if account_size else 0
+    heat_pct     = total_risk / account_size if account_size else 0
+    pf_val       = perf["profit_factor"]
+    pf_str       = f"{pf_val:.2f}" if pf_val != float("inf") else "∞"
+    rpnl_color   = _pnl_color(perf["realized_pnl"])
+    upnl_color   = _pnl_color(total_upnl)
+
+    # ── Summary tile row ──────────────────────────────────────────────────────
+    summary_html = (
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px;">'
+        f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px; font-weight:500;">'
+        f'PERFORMANCE SUMMARY &nbsp;·&nbsp; {period_label}</div>'
+        f'<div style="display:grid; grid-template-columns:repeat(8,1fr); gap:9px;">'
+        + _tile("Realized P&L",   _dollar_fmt(perf["realized_pnl"]),
+                f"{perf['count']} closed trades", rpnl_color)
+        + _tile("Unrealized P&L", _dollar_fmt(total_upnl),
+                f"{len(open_pos)} open positions", upnl_color)
+        + _tile("Win Rate",       f"{perf['win_rate']*100:.0f}%" if perf["count"] else "—",
+                f"{perf.get('n_wins',0)}W / {perf.get('n_losses',0)}L" if perf["count"] else "")
+        + _tile("Avg Win",        _pct_fmt(perf["avg_win"]) if perf["avg_win"] else "—",
+                "", "#27500A" if perf["avg_win"] > 0 else "#5A7BAA")
+        + _tile("Avg Loss",       _pct_fmt(perf["avg_loss"]) if perf["avg_loss"] else "—",
+                "", "#CC1111" if perf["avg_loss"] < 0 else "#5A7BAA")
+        + _tile("Profit Factor",  pf_str,
+                "≥ 1.5 target", "#27500A" if pf_val >= 1.5 else "#E07800" if pf_val >= 1.0 else "#CC1111")
+        + _tile("Deployed",       f"{deployed_pct*100:.1f}%",
+                f"${total_cb:,.0f} cost basis")
+        + _tile("Portfolio Heat", f"{heat_pct*100:.1f}%",
+                "risk $ / account",
+                "#CC1111" if heat_pct > 0.15 else "#E07800" if heat_pct > 0.08 else "#27500A")
+        + '</div></div>'
+    )
+    st.markdown(summary_html, unsafe_allow_html=True)
+
+    # ── Open positions ────────────────────────────────────────────────────────
+    open_df, _, _, _, _ = _build_open_table(open_pos, prices, account_size)
+    n_core     = sum(1 for p in open_pos if p.get("layer") == "Core")
+    n_tactical = len(open_pos) - n_core
+    open_pill  = f"{len(open_pos)} positions · {n_core} Core / {n_tactical} Tactical"
+
+    if not open_df.empty:
+        st.markdown(
+            _card("Open Positions", cb_table(open_df, bordered=False), pill=open_pill),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            _card("Open Positions",
+                  '<p style="font-size:13px; color:#5A7BAA;">No open positions. Add one in the sidebar.</p>',
+                  pill="0 positions"),
+            unsafe_allow_html=True,
+        )
+
+    # ── Closed positions ──────────────────────────────────────────────────────
+    closed_years = sorted(
+        set(datetime.strptime(p["exit_date"], "%Y-%m-%d").year for p in closed_pos),
+        reverse=True,
+    ) if closed_pos else [today.year]
+
+    year_options = [str(y) for y in closed_years]
+    default_idx  = year_options.index(str(today.year)) if str(today.year) in year_options else 0
+
+    selected_year = int(st.selectbox(
+        "Year", year_options, index=default_idx,
+        label_visibility="collapsed", key="port_year",
+    ))
+
+    filtered_closed = [
+        p for p in closed_pos
+        if datetime.strptime(p["exit_date"], "%Y-%m-%d").year == selected_year
+    ]
+    closed_df  = _build_closed_table(filtered_closed)
+    year_pnl   = sum((p["exit_price"]-p["entry_price"])*p["shares"] for p in filtered_closed)
+    closed_pill = f"{selected_year} · {len(filtered_closed)} trades · {_dollar_fmt(year_pnl)}"
+
+    if not closed_df.empty:
+        st.markdown(
+            _card(f"Closed Positions — {selected_year}", cb_table(closed_df, bordered=False), pill=closed_pill),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            _card(f"Closed Positions — {selected_year}",
+                  f'<p style="font-size:13px; color:#5A7BAA;">No closed trades in {selected_year}.</p>',
+                  pill=f"{selected_year}"),
+            unsafe_allow_html=True,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSS
+# ─────────────────────────────────────────────────────────────────────────────
+
+APP_CSS = """
+<style>
+/* ── PAGE BACKGROUND ───────────────────────────────────────────────────── */
+html, body, .stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main, .main > div { background-color: #EEF3FA !important; }
+.block-container {
+    padding-top: 2rem !important;
+    background-color: #EEF3FA !important;
+    max-width: 100% !important;
+}
+
+/* ── SIDEBAR ───────────────────────────────────────────────────────────── */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div {
+    background-color: #D6E8FA !important;
+    border-right: 1px solid rgba(16,55,102,0.15) !important;
+}
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] span { color: #5A7BAA !important; }
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3   { color: #103766 !important; }
+
+/* ── HEADINGS ──────────────────────────────────────────────────────────── */
+h2 { color: #103766 !important; font-weight: 500 !important; font-size: 18px !important; }
+h3 { color: #103766 !important; font-weight: 500 !important; }
+[data-testid="stCaptionContainer"] p,
+[data-testid="stCaptionContainer"] { color: #5A7BAA !important; font-size: 11px !important; }
+h4 {
+    color: #5A7BAA !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(16,55,102,0.15) !important;
+    padding-bottom: 7px !important;
+    margin-top: 2px !important;
+    margin-bottom: 12px !important;
+}
+
+/* ── METRIC PANELS ─────────────────────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #FFFFFF !important;
+    border: 1px solid rgba(16,55,102,0.15) !important;
+    border-radius: 9px !important;
+    padding: 10px 12px !important;
+}
+[data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] p {
+    font-size: 11px !important;
+    color: #5A7BAA !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.02em !important;
+    text-transform: none !important;
+}
+[data-testid="stMetricValue"] > div {
+    font-size: 17px !important;
+    font-weight: 500 !important;
+    color: #103766 !important;
+}
+[data-testid="stMetricDelta"] { color: #1D7A2A !important; font-size: 11px !important; }
+[data-testid="stMetricDelta"] svg { display: none; }
+
+/* ── EXPANDER CARDS ────────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border: 1px solid rgba(16,55,102,0.15) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 0 0 1px rgba(16,55,102,0.06) !important;
+}
+[data-testid="stExpander"] details summary p {
+    color: #5A7BAA !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+}
+[data-testid="stExpanderToggleIcon"] svg { color: #5A7BAA !important; }
+[data-testid="stExpander"] details summary {
+    border-bottom: 1px solid rgba(16,55,102,0.12) !important;
+    padding-bottom: 8px !important;
+}
+
+/* ── DATAFRAMES / TABLES ────────────────────────────────────────────────── */
+[data-testid="stDataFrame"]       { border-radius: 9px !important; overflow: hidden !important; }
+[data-testid="stDataFrame"] > div { border-radius: 9px !important; }
+
+/* ── ALERT BOXES ────────────────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 9px !important;
+    border: 1px solid rgba(16,55,102,0.15) !important;
+}
+
+/* ── TABS ───────────────────────────────────────────────────────────────── */
+[data-baseweb="tab-list"]           { background-color: transparent !important; border-bottom: 1px solid rgba(16,55,102,0.15) !important; }
+[data-baseweb="tab"]                { color: #5A7BAA !important; font-weight: 400 !important; }
+[aria-selected="true"][data-baseweb="tab"] {
+    color: #103766 !important;
+    border-bottom: 2px solid #288CFA !important;
+    font-weight: 500 !important;
+}
+
+/* ── MISC ───────────────────────────────────────────────────────────────── */
+hr { border-color: rgba(16,55,102,0.15) !important; margin: 0.75rem 0 !important; }
+p  { color: #103766 !important; }
+
+/* ── METRIC TEXT ────────────────────────────────────────────────────────── */
+[data-testid="stMetric"] p,
+[data-testid="stMetric"] label,
+[data-testid="stMetric"] span    { color: #5A7BAA !important; }
+[data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] p  { color: #5A7BAA !important; }
+[data-testid="stMetricValue"] > div { color: #103766 !important; }
+
+/* ── SIDEBAR WIDGETS ────────────────────────────────────────────────────── */
+[data-testid="stSelectbox"] > div > div     { border-color: rgba(16,55,102,0.20) !important; }
+[data-testid="stNumberInput"] > div > div > input { border-color: rgba(16,55,102,0.20) !important; }
+</style>
+"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    # ── CSS ───────────────────────────────────────────────────────────────────
+    st.markdown(APP_CSS, unsafe_allow_html=True)
+
+    # ── SESSION STATE ─────────────────────────────────────────────────────────
+    # Manual signals (set once per weekly review)
+    defaults = {
+        "eps_signal":    "Not set",
+        "drawdown_state": "At or near peak — full risk",
+        "lei_signal":    "Not set",
+        "taylor_rule":   "Not set",
+        # Core Allocation (v4)
+        "core_pct_deployed": 0.0,
+        "core_positions":    "",     # Comma-separated ETF tickers, e.g. "XLK,XLI"
+        "account_value":     71000,
+    }
+    # Layer 1.5 flow strength per sector ETF (set in the L1.5 tab expander)
+    for etf in SECTOR_ETFS.values():
+        defaults[f"flow_{etf.lower()}"] = "Not set"
+
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    # ── SIDEBAR ───────────────────────────────────────────────────────────────
+    with st.sidebar:
+        st.title("📈 Controls")
+        st.caption(f"Loaded: {datetime.now().strftime('%b %d, %Y  %I:%M %p')}")
+        if st.button("🔄 Refresh Data", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+        st.divider()
+        st.subheader("Manual Signals")
+        st.caption("Set once at the start of each weekly review.")
+
+        st.session_state.eps_signal = st.selectbox(
+            "EPS Revisions (FactSet)",
+            ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"],
+            index=["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"].index(st.session_state.eps_signal),
+        )
+        _drawdown_opts = [
+            "At or near peak — full risk",
+            "Tier 1: 0–7% drawdown — full operations",
+            "Tier 2: 7–10% drawdown — reduce risk 50%",
+            "Tier 3: 10–15% drawdown — defensive",
+            ">15% drawdown — 100% cash",
+        ]
+        # Migrate old v3 values to v4 if needed
+        if st.session_state.drawdown_state not in _drawdown_opts:
+            st.session_state.drawdown_state = _drawdown_opts[0]
+        st.session_state.drawdown_state = st.selectbox(
+            "Drawdown from Peak Equity",
+            _drawdown_opts,
+            index=_drawdown_opts.index(st.session_state.drawdown_state),
+        )
+        st.session_state.lei_signal = st.selectbox(
+            "Conference Board LEI",
+            ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"],
+            index=["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"].index(st.session_state.lei_signal),
+        )
+        _taylor_opts = [
+            "Not set",
+            "Positive >1% — Fed too loose ⚠️",
+            "Near zero (−1% to +1%) — neutral",
+            "Negative <−1% — Fed too tight ✅",
+        ]
+        st.session_state.taylor_rule = st.selectbox(
+            "Taylor Rule Deviation (monthly)",
+            _taylor_opts,
+            index=_taylor_opts.index(st.session_state.taylor_rule),
+        )
+
+        st.divider()
+        st.subheader("Core Allocation (v4)")
+        st.caption("Track Core ETF positions and deployment floor.")
+        st.session_state.account_value = st.number_input(
+            "Account Value ($)", value=st.session_state.account_value, step=1000, format="%d",
+        )
+        st.session_state.core_positions = st.text_input(
+            "Core ETF Positions (comma-separated)", value=st.session_state.core_positions,
+            placeholder="e.g. XLK, XLI",
+            help="Enter ETF tickers of current Core positions.",
+        )
+        st.session_state.core_pct_deployed = st.slider(
+            "Core % Deployed", 0.0, 60.0, st.session_state.core_pct_deployed, step=1.0,
+            help="Percentage of account in Core ETFs.",
+        )
+
+        st.divider()
+        st.subheader("Overrides")
+        regime_ov = st.selectbox("Regime",           ["Auto", "Risk-on", "Reflation", "Deflation", "Stagflation", "Mixed"])
+        perm_ov   = st.selectbox("Permission State", ["Auto", "Green", "Yellow", "Red"])
+
+        st.divider()
+        st.subheader("Screener Settings")
+        min_vol   = st.number_input("Min Avg Dollar Volume ($M)", value=10, step=5, format="%d") * 1_000_000
+        rs_lb     = st.slider("RS Lookback (days)", 21, 126, LB_3M)
+        show_half = st.checkbox("Show Half Signal watchlist", value=True)
+        show_all  = st.checkbox("Show full universe table",   value=False)
+
+    # ── DATA LOADING ──────────────────────────────────────────────────────────
+    with st.spinner("Loading market data..."):
+        macro_close = fetch_macro_data()
+        l0          = calc_layer0(macro_close)
+
+    if "error" in l0:
+        st.error(l0["error"])
+        return
+
+    with st.spinner("Loading FRED indicators..."):
+        fred_data = fetch_fred_data()
+
+    with st.spinner("Computing sector rotation (RRG)..."):
+        l15_data = calc_layer15(macro_close)
+
+    # ── REGIME AND PERMISSION STATE ───────────────────────────────────────────
+    regime = regime_ov if regime_ov != "Auto" else l0["regime"]
+
+    rec_indicators = score_recession_composite(fred_data, st.session_state.lei_signal)
+    rec_flags      = sum(1 for i in rec_indicators if not i["ok"])
+    rec_total      = len(rec_indicators)
+
+    perm, limits = calc_layer1(l0, rec_flags, st.session_state.eps_signal, perm_ov)
+
+    # Sectors to screen — auto-set from regime, user can override in sidebar
+    regime_sectors = {
+        "Risk-on":     list(RISK_ON_SECTORS),
+        "Reflation":   list(REFLATION_SECTORS),
+        "Deflation":   list(DEFENSIVE_SECTORS),
+        "Stagflation": list(REFLATION_SECTORS | {"Consumer Staples", "Utilities"}),
+    }
+    mixed_auto   = l0.get("leading_sectors", []) + l0.get("mixed_sectors", [])
+    auto_sectors = regime_sectors.get(regime, mixed_auto or ALL_SECTORS)
+
+    with st.sidebar:
+        st.divider()
+        st.subheader("Sectors to Screen")
+        selected_sectors = st.multiselect(
+            "Override if needed",
+            ALL_SECTORS,
+            default=auto_sectors,
+            help="Auto-set from regime. Adjust to add/remove sectors.",
+        )
+    active_sectors = selected_sectors if selected_sectors else auto_sectors
+
+    # ── SCREENER DATA ─────────────────────────────────────────────────────────
+    universe_size = sum(len(SECTOR_TICKERS.get(s, [])) for s in active_sectors)
+    with st.spinner(f"Loading {universe_size} stocks..."):
+        try:
+            sectors_key             = ",".join(sorted(active_sectors))
+            close_sc, vol_sc, all_t = fetch_screener_data(sectors_key)
+        except RuntimeError as e:
+            st.error(str(e))
+            return
+
+    ticker_sector = {t: sec for sec in active_sectors for t in SECTOR_TICKERS.get(sec, [])}
+    spy_sc        = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
+
+    with st.spinner("Running screener..."):
+        results_df = calc_layer2(close_sc, vol_sc, all_t, ticker_sector, spy_sc, min_vol, rs_lb)
+
+    if results_df.empty:
+        st.error("Screener returned no results. Check your internet connection and refresh.")
+        return
+
+    passes_df = results_df[results_df["PASS"]].sort_values(["Sector", "3M Ret"], ascending=[True, False])
+    half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].sort_values("3M Ret", ascending=False)
+
+    # ── LAYER 3 — ENTRY TRIGGERS ──────────────────────────────────────────────
+    all_cands    = list(passes_df["Ticker"]) + list(half_df.head(15)["Ticker"])
+    earnings_key = ",".join(sorted(set(all_cands))) if all_cands else ""
+    with st.spinner("Checking earnings dates..."):
+        earnings_dates = fetch_earnings_dates(earnings_key) if earnings_key else {}
+    full_l3, half_l3 = calc_layer3(
+        passes_df, half_df, close_sc, vol_sc, spy_sc, perm, l0,
+        earnings_dates, ticker_sector, rec_flags,
+    )
+
+    # ── PAGE HEADER ───────────────────────────────────────────────────────────
+    liq_override = l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
+
+    # Signal colors for tiles
+    regime_color = "#27500A" if regime in ("Risk-on", "Reflation") else ("#CC1111" if regime == "Stagflation" else "#5A7BAA")
+    perm_color   = {"Green": "#27500A", "Yellow": "#E07800", "Red": "#CC1111"}.get(perm, "#5A7BAA")
+    spy_color    = "#27500A" if l0["spy_ret_1m"] > 0 else "#CC1111"
+    risk_str     = f"{limits['risk_lo']}–{limits['risk_hi']}%/trade" if limits["risk_hi"] > 0 else "No new trades"
+
+    # Core deployment status (v4)
+    core_pct    = st.session_state.core_pct_deployed
+    core_target = {"Green": 40, "Yellow": 20, "Red": 0}.get(perm, 0)
+    core_color  = "#27500A" if core_pct >= core_target else ("#E07800" if core_pct > 0 else "#CC1111")
+    core_signal = f"Target: {core_target}%" if core_target > 0 else "No Core in Red"
+
+    # Velocity summary (v4)
+    accel_sectors = l0.get("accelerating", [])
+    vel_count     = len(accel_sectors)
+    vel_label     = f"{vel_count} sector{'s' if vel_count != 1 else ''}" if vel_count > 0 else "None"
+    vel_color     = "#CC1111" if vel_count > 0 else "#27500A"
+
+    tiles_html = (
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:6px;">'
+        + _tile("Regime",        regime,                        f"● {l0.get('regime_detail', regime)}", regime_color)
+        + _tile("Permission",    perm,                          f"● {'Full' if perm=='Green' else 'Selective' if perm=='Yellow' else 'Protection'}", perm_color)
+        + _tile("SPY",           f"${l0['spy_price']:.2f}",    f"{'+' if l0['spy_ret_1m']>0 else ''}{l0['spy_ret_1m']*100:.1f}% 1M", spy_color)
+        + _tile("Max Positions", str(limits["max_pos_label"]), f"{risk_str}")
+        + "</div>"
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:10px;">'
+        + _tile("Core Deployed", f"{core_pct:.0f}%",           core_signal, core_color)
+        + _tile("Velocity Flag", vel_label,                     ", ".join(accel_sectors) if accel_sectors else "All normal", vel_color)
+        + _tile("Max Heat",      f"{limits['heat']}%",          "")
+        + _tile("Drawdown",      st.session_state.drawdown_state.split("—")[0].strip(), "")
+        + "</div>"
+    )
+
+    # Gate bar
+    gate_texts = {
+        "Green":  f"GREEN STATE — Full deployment. Momentum breakouts. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
+        "Yellow": f"YELLOW STATE — Selective entry. {SETUP_STYLE['Yellow']}. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
+        "Red":    f"RED STATE — Capital protection. No new entries. {limits['max_pos_label']} positions max · {limits['heat']}% max heat.",
+    }
+    gate_bar = _gate_bar_html(perm, gate_texts[perm])
+
+    # Warning bars
+    warn_bars = ""
+    if liq_override:
+        reasons = []
+        if l0.get("liquidity_tighten"):      reasons.append("HYG/IEF declining")
+        if l0.get("fnl_signal") == "OVERRIDE ACTIVE": reasons.append(f"Fed Net Liquidity −${abs(l0.get('fnl_change_4w', 0)):.0f}B (4-week)")
+        warn_bars += _gate_bar_html("Red", f"Liquidity override active — {'; '.join(reasons)}. Reduce exposure immediately.")
+    if rec_flags >= 3:
+        warn_bars += _gate_bar_html("Red",    f"Recession composite elevated: {rec_flags}/{rec_total} indicators flagging.")
+    elif rec_flags >= 1:
+        warn_bars += _gate_bar_html("Yellow", f"Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
+
+    date_str = datetime.now().strftime("%A, %B %d, %Y")
+    header_html = (
+        f'<div style="padding-top:1rem; margin-bottom:4px;">'
+        f'<span style="font-size:28px; font-weight:500; color:#103766;">Swing Trading Framework</span>'
+        f'<span style="font-size:12px; font-weight:400; color:#5A7BAA; margin-left:14px;">{date_str}</span>'
+        f'</div>'
+        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+        f' padding:15px 17px; margin-bottom:10px;">{tiles_html}</div>'
+        f'{gate_bar}{warn_bars}'
+    )
+    st.markdown(header_html, unsafe_allow_html=True)
+
+    # ── TABS ──────────────────────────────────────────────────────────────────
+    # ── Tab nav styling ─────────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+    /* Tab container — clean bottom border */
+    div[data-testid="stTabs"] > div[role="tablist"] {
+        border-bottom: 2px solid rgba(16,55,102,0.10);
+        gap: 0;
+    }
+    /* Individual tab buttons */
+    div[data-testid="stTabs"] button[role="tab"] {
+        font-size: 13px;
+        font-weight: 500;
+        color: #5A7BAA;
+        padding: 10px 20px;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        margin-bottom: -2px;
+        transition: color 0.15s, border-color 0.15s;
+    }
+    div[data-testid="stTabs"] button[role="tab"]:hover {
+        color: #103766;
+        border-bottom-color: rgba(16,55,102,0.25);
+    }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: #103766;
+        font-weight: 600;
+        border-bottom: 2px solid #103766;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Macro & Permission",
+        "Sector Rotation",
+        "Core Allocation",
+        "Screener",
+        "Entry Trigger",
+        "Charts",
+        "Portfolio",
+    ])
+
+    with tab1:
+        _render_layer0_1_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l15_data)
+
+    with tab2:
+        _render_layer15_tab(l15_data)
+
+    with tab3:
+        _render_core_tab(l0, l15_data, perm)
+
+    with tab4:
+        _render_layer2_tab(results_df, passes_df, half_df, perm, active_sectors, show_half, show_all, l0)
+
+    with tab5:
+        _render_layer3_tab(full_l3, half_l3, perm, l0, rec_flags)
+
+    with tab6:
+        _render_charts_tab(passes_df)
+
+    with tab7:
+        _render_portfolio_tab()
+
+
+if __name__ == "__main__":
+    main()

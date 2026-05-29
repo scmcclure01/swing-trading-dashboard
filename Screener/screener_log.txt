@@ -1,0 +1,75 @@
+========================================
+Run started: Sat Apr 25 11:52:38 CDT 2026
+/Users/scotmcclure/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: HES"}}}
+$HES: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+$MRO: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+
+2 Failed downloads:
+['HES', 'MRO']: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+
+Regime: Reflation | Permission: Yellow
+Sectors: ['Energy', 'Materials', 'Industrials'] | Universe: 104 stocks
+
+Downloading screening data (1y)...
+  251 trading days loaded
+
+======================================================================
+  REGIME: Reflation  |  PERMISSION: Yellow  |  2026-04-25
+  Screened: 102 stocks
+======================================================================
+
+✅ FULL SIGNAL — 4 passing all Layer 2 filters
+
+  CAT    Industrials            $830.79   1M:+18.4% 3M:+30.9% RSI:70.5 MACD:▲
+  ETN    Industrials            $423.92   1M:+18.7% 3M:+28.0% RSI:72.4 MACD:▲
+  TT     Industrials            $486.42   1M:+19.5% 3M:+23.7% RSI:69.3 MACD:▲
+  NUE    Materials              $214.29   1M:+29.5% 3M:+21.0% RSI:83.1 MACD:▲
+
+⚠️  HALF SIGNAL — top 10 watch list
+
+  APA    Energy                 $37.73    1M:-11.3% 3M:+49.5% RSI:50.6 MACD:▼
+  CVI    Energy                 $31.52    1M:-8.2% 3M:+41.9% RSI:52.7 MACD:▼
+  LYB    Materials              $69.87    1M:-10.1% 3M:+39.0% RSI:46.4 MACD:▼
+  DOW    Materials              $38.66    1M:-2.1% 3M:+38.8% RSI:52.3 MACD:▼
+  CF     Materials              $120.93   1M:-8.8% 3M:+32.7% RSI:49.5 MACD:▼
+  WLK    Materials              $110.64   1M:-2.5% 3M:+32.1% RSI:45.0 MACD:▼
+  OXY    Energy                 $57.12    1M:-11.2% 3M:+30.7% RSI:48.4 MACD:▼
+  MPC    Energy                 $224.14   1M:-9.7% 3M:+30.6% RSI:48.8 MACD:▼
+  VLO    Energy                 $235.85   1M:-5.0% 3M:+29.5% RSI:51.3 MACD:▼
+  FANG   Energy                 $194.79   1M:-3.7% 3M:+27.6% RSI:58.7 MACD:▲
+
+Building HTML dashboard...
+  Downloading 6-month chart data for 4 passing stocks...
+  Dashboard saved: screener_dashboard_2026-04-25.html
+  CSV saved:       screen_reflation_yellow_2026-04-25.csv
+
+Opening dashboard in browser...
+
+Run finished: Sat Apr 25 11:52:45 CDT 2026
+========================================
+Run started: Sun Apr 26 07:00:00 CDT 2026
+/Users/scotmcclure/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+
+── Swing Trading Screener ──────────────────────────────────
+Based on your Layer 0 review, select the sectors showing
+RS leadership (outperforming SPY). Enter the numbers separated
+by commas, e.g.  1,2,3
+
+  1. Energy
+  2. Materials
+  3. Industrials
+  4. Technology
+  5. Financials
+  6. Consumer Discretionary
+  7. Consumer Staples
+  8. Utilities
+  9. Health Care
+
+Leading sectors: Traceback (most recent call last):
+  File "/Users/scotmcclure/Library/CloudStorage/GoogleDrive-scmcclure01@gmail.com/My Drive/Claude/Stock Trading/Swing Trading Framework/screener.py", line 55, in <module>
+    raw = input("\nLeading sectors: ").strip()
+EOFError: EOF when reading a line
+Run finished: Sun Apr 26 07:00:04 CDT 2026
