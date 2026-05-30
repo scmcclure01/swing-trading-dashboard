@@ -522,12 +522,24 @@ SECTOR_TO_SCREEN = {
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def run_screener_v3(regime: str, leading_sectors: list, mixed_sectors: list) -> pd.DataFrame:
+def run_screener_v3(
+    regime: str,
+    leading_sectors: list,
+    mixed_sectors: list,
+    perm: str,
+    accel_sectors_key: str,
+    rec_flags: int,
+) -> pd.DataFrame:
     """
-    Autonomous screener v3 — scans sectors that are Leading or Mixed in L0.
+    Autonomous screener v3 — scans L0 Leading/Mixed sectors through L2 filters,
+    then applies L3 entry trigger assessment (trigger type, entry/stop, verdict).
     Cached for 24 hours. Button-triggered.
-    Returns a DataFrame of all passing candidates, ranked by RS vs SPY.
+    Returns a DataFrame of all passing candidates with L3 verdicts, ranked by RS.
     """
+    accel_secs = set(accel_sectors_key.split(",")) if accel_sectors_key else set()
+    rec_override = rec_flags >= 4
+    today = datetime.today().date()
+
     # Use actual L0 sector readings — only scan what's Leading or Mixed
     l0_sectors = leading_sectors + mixed_sectors
     screen_sectors = []
@@ -664,20 +676,138 @@ def run_screener_v3(regime: str, leading_sectors: list, mixed_sectors: list) -> 
             passes = (two_speed == "FULL" and rs_new_hi and rs_rising
                       and avg_dollar_vol >= 10_000_000)
 
+            # ── L3 Entry Trigger Assessment ──────────────────────────────────
+            sec = ticker_sector.get(ticker, "Unknown")
+            ema10 = float(close.ewm(span=10, adjust=False).mean().iloc[-1])
+            pct_vs_50 = (price / ma50 - 1) if ma50 > 0 else 0
+
+            # 6-week base range
+            base_px = close.iloc[-30:]
+            base_high = float(base_px.max())
+            base_low = float(base_px.min())
+
+            # Last day volume ratio (for breakout confirmation)
+            last_vol = float(volume.iloc[-1]) if len(volume) > 0 else 0
+            last_vol_ratio = round(last_vol / avg_vol, 2) if avg_vol > 0 else 0
+
+            # Earnings check
+            try:
+                cal = yf.Ticker(ticker).calendar
+                next_ed = None
+                if isinstance(cal, dict):
+                    ed = cal.get("Earnings Date")
+                    if ed is not None:
+                        for d in (ed if isinstance(ed, list) else [ed]):
+                            try:
+                                dt = pd.Timestamp(d).date()
+                                if dt >= today:
+                                    next_ed = dt
+                                    break
+                            except Exception:
+                                pass
+                elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                    for col in cal.columns:
+                        try:
+                            dt = pd.Timestamp(cal.at["Earnings Date", col]).date()
+                            if dt >= today:
+                                next_ed = dt
+                                break
+                        except Exception:
+                            pass
+            except Exception:
+                next_ed = None
+
+            days_to_ed = (next_ed - today).days if next_ed else None
+            earnings_flag = (days_to_ed is not None and days_to_ed <= 14)
+
+            # Trigger type routing
+            if perm == "Red":
+                trigger_type = "None"
+            elif sec in accel_secs:
+                trigger_type = "Accelerating"
+            elif rec_override or regime in ("Deflation", "Stagflation"):
+                trigger_type = "Pullback"
+            elif regime == "Risk-on" or (perm == "Green" and regime == "Reflation"):
+                trigger_type = "Breakout"
+            else:
+                trigger_type = "Pullback"
+
+            # Verdict + entry/stop
+            entry_px_suggest = None
+            stop_px_suggest = None
+            verdict = "⬜ NOT READY"
+            notes = []
+
+            if earnings_flag:
+                verdict = "❌ EARNINGS"
+                notes.append(f"Earnings in {days_to_ed}d")
+            elif trigger_type == "None":
+                verdict = "❌ RED"
+                notes.append("No new entries")
+            elif trigger_type == "Breakout":
+                near_top = pct_above_20 <= 0.08 and price <= base_high * 1.05
+                vol_ok = last_vol_ratio >= 1.4
+                if near_top and vol_ok and rs_rising:
+                    verdict = "🟢 ENTRY READY"
+                    entry_px_suggest = round(price, 2)
+                    stop_px_suggest = round(base_low * 0.99, 2)
+                elif near_top and last_vol_ratio >= 1.0:
+                    verdict = "🟡 WATCH"
+                    entry_px_suggest = round(base_high * 1.001, 2)
+                    stop_px_suggest = round(base_low * 0.99, 2)
+                    notes.append(f"Vol {last_vol_ratio:.1f}x — needs 1.4x")
+                else:
+                    entry_px_suggest = round(base_high * 1.001, 2)
+                    stop_px_suggest = round(base_low * 0.99, 2)
+                    if not near_top:
+                        notes.append("Not at pivot")
+            elif trigger_type == "Pullback":
+                near_20 = abs(pct_above_20) <= 0.03
+                near_50 = abs(pct_vs_50) <= 0.03
+                vol_decl = last_vol_ratio <= 1.0
+                if (near_20 or near_50) and vol_decl:
+                    verdict = "🟢 ENTRY READY"
+                    ref_ma = ma20 if near_20 else ma50
+                    entry_px_suggest = round(price, 2)
+                    stop_px_suggest = round(ref_ma * 0.98, 2)
+                    notes.append("At 20d MA" if near_20 else "At 50d MA")
+                elif near_20 or near_50:
+                    verdict = "🟡 WATCH"
+                    ref_ma = ma20 if near_20 else ma50
+                    entry_px_suggest = round(ref_ma, 2)
+                    stop_px_suggest = round(ref_ma * 0.98, 2)
+                    notes.append(f"Vol {last_vol_ratio:.1f}x — need declining")
+                else:
+                    entry_px_suggest = round(ma20, 2)
+                    stop_px_suggest = round(ma20 * 0.98, 2)
+            elif trigger_type == "Accelerating":
+                in_range = 0 <= pct_above_20 <= 0.15
+                vol_ok = last_vol_ratio >= 1.0
+                if in_range and vol_ok:
+                    verdict = "🟢 ENTRY READY"
+                    entry_px_suggest = round(price, 2)
+                    stop_px_suggest = round(ema10 * 0.99, 2)
+                    notes.append("Half size · 10d EMA stop · 6wk")
+                elif in_range:
+                    verdict = "🟡 WATCH"
+                    entry_px_suggest = round(price, 2)
+                    stop_px_suggest = round(ema10 * 0.99, 2)
+                    notes.append(f"Vol {last_vol_ratio:.1f}x · Half size")
+                else:
+                    entry_px_suggest = round(price, 2)
+                    stop_px_suggest = round(ema10 * 0.99, 2)
+
+            if next_ed and not earnings_flag:
+                try:
+                    notes.append(f"Earnings: {next_ed.strftime('%b %-d')}")
+                except Exception:
+                    notes.append(f"Earnings: {next_ed}")
+
             results.append({
                 "Ticker": ticker,
-                "Sector": ticker_sector.get(ticker, "Unknown"),
+                "Sector": sec,
                 "Price": round(price, 2),
-                "vs 20MA": True,
-                "vs 50MA": True,
                 "% > 20MA": round(pct_above_20, 4),
-                "1M Ret": roc_1m / 100,
-                "3M Ret": roc_3m / 100 if roc_3m else 0,
-                "RS Hi": rs_new_hi,
-                "RS ↑": rs_rising,
-                "RSI": 50.0,  # placeholder — full RSI computed in L3
-                "MACD": macd_cross,
-                "MACD Hist": 0,
                 "Avg $Vol(M)": round(avg_dollar_vol / 1e6, 1),
                 "2-Speed": two_speed,
                 "PASS": passes,
@@ -686,6 +816,11 @@ def run_screener_v3(regime: str, leading_sectors: list, mixed_sectors: list) -> 
                 "Entry_Zone": entry_zone,
                 "MACD_Crossover": macd_cross,
                 "Vol_Ratio_5d": vol_ratio,
+                "Trigger": trigger_type,
+                "Entry": entry_px_suggest,
+                "Stop": stop_px_suggest,
+                "Verdict": verdict,
+                "Notes": " · ".join(notes) if notes else "",
             })
         except Exception:
             continue
@@ -2059,14 +2194,22 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     # Run or load cached
     if run_clicked:
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
-            results_df = run_screener_v3(regime, leading, mixed)
+            accel_key = ",".join(l0.get("accelerating", []))
+            rec_indicators = score_recession_composite(
+                fetch_fred_data(), st.session_state.get("lei_signal", "Not set"))
+            rec_flags_local = sum(1 for i in rec_indicators if not i["ok"])
+            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
         st.session_state["screener_results"] = results_df
         st.session_state["screener_regime"] = regime
     else:
         results_df = st.session_state.get("screener_results")
         # Try loading from cache on first visit
         if results_df is None:
-            results_df = run_screener_v3(regime, leading, mixed)
+            accel_key = ",".join(l0.get("accelerating", []))
+            rec_indicators = score_recession_composite(
+                fetch_fred_data(), st.session_state.get("lei_signal", "Not set"))
+            rec_flags_local = sum(1 for i in rec_indicators if not i["ok"])
+            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
             if results_df is not None and not results_df.empty:
                 st.session_state["screener_results"] = results_df
                 st.session_state["screener_regime"] = regime
@@ -2111,24 +2254,61 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     )
     st.markdown(stats_html, unsafe_allow_html=True)
 
+    # ── Ticker selector for Position Sizer ──────────────────────────────────
+    # Actionable candidates: entry-ready or watch, with entry/stop prices
+    actionable = results_df[
+        results_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"])
+        & results_df["Entry"].notna() & results_df["Stop"].notna()
+    ].copy()
+
+    if not actionable.empty:
+        size_options = ["— Select a ticker to size —"] + [
+            f"{row['Ticker']}  ({row['Verdict'].split(' ', 1)[-1]})  ${row['Price']:.2f}  →  Entry ${row['Entry']:.2f} / Stop ${row['Stop']:.2f}"
+            for _, row in actionable.iterrows()
+        ]
+
+        def _on_size_select():
+            sel = st.session_state.get("screener_size_select", "")
+            if sel and not sel.startswith("—"):
+                ticker = sel.split("  ")[0].strip()
+                match = actionable[actionable["Ticker"] == ticker]
+                if not match.empty:
+                    row = match.iloc[0]
+                    st.session_state["sizer_entry"] = float(row["Entry"])
+                    st.session_state["sizer_stop"] = float(row["Stop"])
+                    trigger = row.get("Trigger", "Breakout")
+                    if trigger in ["Breakout", "Pullback", "Accelerating"]:
+                        st.session_state["sizer_trigger"] = trigger
+
+        st.selectbox(
+            "Size a candidate → then go to Position Sizer tab",
+            size_options, key="screener_size_select",
+            on_change=_on_size_select,
+        )
+
     # ── Top Setups card (Full signal + near entry zone) ──────────────────────
     top_setups = results_df[
         (results_df["PASS"]) & (results_df["Dist_MA20_pct"] <= 6.0)
     ].head(15)
     if not top_setups.empty:
         top_disp = pd.DataFrame({
-            "Ticker":    top_setups["Ticker"],
-            "Sector":    top_setups["Sector"],
-            "Price":     top_setups["Price"].apply(lambda x: f"${x:.2f}"),
-            "2-Speed":   top_setups["2-Speed"],
-            "RS vs SPY": top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            "vs 20MA":   top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "Entry Zone": top_setups["Entry_Zone"],
-            "MACD ×":    top_setups["MACD_Crossover"].apply(lambda x: "🟢" if x else ""),
-            "Vol 5d":    top_setups["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
+            "Ticker":     top_setups["Ticker"],
+            "Sector":     top_setups["Sector"],
+            "Price":      top_setups["Price"].apply(lambda x: f"${x:.2f}"),
+            "Verdict":    top_setups["Verdict"],
+            "Trigger":    top_setups["Trigger"],
+            "Entry":      top_setups["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Stop":       top_setups["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "RS vs SPY":  top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            "vs 20MA":    top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "Notes":      top_setups["Notes"],
         })
+        ready_n = int((top_setups["Verdict"] == "🟢 ENTRY READY").sum())
+        watch_n = int((top_setups["Verdict"] == "🟡 WATCH").sum())
         st.markdown(
-            _card(f"Top Setups — Full Signal + Near Entry Zone", cb_table(top_disp, bordered=False), pill=f"✅ {len(top_setups)}"),
+            _card(f"Top Setups — Full Signal + Near Entry Zone",
+                  cb_table(top_disp, bordered=False),
+                  pill=f"✅ {ready_n} ready · 🟡 {watch_n} watch"),
             unsafe_allow_html=True,
         )
 
@@ -2136,15 +2316,16 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     if not passes_df.empty:
         full_show = passes_df.head(50)
         full_disp = pd.DataFrame({
-            "Ticker":    full_show["Ticker"],
-            "Sector":    full_show["Sector"],
-            "Price":     full_show["Price"].apply(lambda x: f"${x:.2f}"),
-            "RS vs SPY": full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            "vs 20MA":   full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "Entry Zone": full_show["Entry_Zone"],
-            "MACD ×":    full_show["MACD_Crossover"].apply(lambda x: "🟢" if x else ""),
-            "Vol 5d":    full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
-            "Avg $Vol":  full_show["Avg $Vol(M)"].apply(lambda x: f"${x:.0f}M"),
+            "Ticker":     full_show["Ticker"],
+            "Sector":     full_show["Sector"],
+            "Price":      full_show["Price"].apply(lambda x: f"${x:.2f}"),
+            "Verdict":    full_show["Verdict"],
+            "Trigger":    full_show["Trigger"],
+            "Entry":      full_show["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Stop":       full_show["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "RS vs SPY":  full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            "vs 20MA":    full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "Vol 5d":     full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
         })
         showing = f"top 50 of {len(passes_df)}" if len(passes_df) > 50 else str(len(passes_df))
         st.markdown(
@@ -2214,23 +2395,22 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
         )
 
 
-def _render_position_sizer(
-    full_l3: pd.DataFrame,
-    half_l3: pd.DataFrame,
+def _render_position_sizer_tab(
+    candidates_df: pd.DataFrame,
     perm: str,
     l0: dict,
 ) -> None:
     """
-    Render the Layer 4 — Position Sizer section within the Entry Trigger tab.
-    Auto-populates entry/stop from L3 candidates. Computes shares, risk, and
-    flags Accelerating half-sizing, 10% cap, and drawdown-adjusted risk.
+    Render the Position Sizer tab — standalone.
+    Reads selected ticker from screener or allows custom entry.
+    Computes shares, risk, and shows profit targets.
     """
-    st.markdown("---")
     st.markdown(
         _card(
             "Layer 4 — Position Sizer",
             '<p style="font-size:12px; color:#5A7BAA; margin:0;">'
-            'Select a candidate or enter custom values. Risk % auto-adjusts to permission state and drawdown tier.</p>',
+            'Select a candidate from the screener or enter custom values. '
+            'Risk % auto-adjusts to permission state and drawdown tier.</p>',
             pill="v4",
         ),
         unsafe_allow_html=True,
@@ -2239,23 +2419,21 @@ def _render_position_sizer(
     account = st.session_state.account_value
     drawdown_state = st.session_state.drawdown_state
 
-    # ── Build candidate list from L3 results ──────────────────────────────────
+    # ── Build candidate list ──────────────────────────────────────────────────
     candidates = {}
-    for df in [full_l3, half_l3]:
-        if df is not None and not df.empty:
-            for _, row in df.iterrows():
-                if pd.notna(row.get("Entry")) and pd.notna(row.get("Stop")):
-                    trigger = row.get("Trigger", "Standard")
-                    label = f"{row['Ticker']}  —  {row['Verdict']}  ({trigger})"
-                    candidates[label] = {
-                        "ticker": row["Ticker"],
-                        "entry": float(row["Entry"]),
-                        "stop": float(row["Stop"]),
-                        "trigger": trigger,
-                        "sector": row.get("Sector", ""),
-                    }
+    if candidates_df is not None and not candidates_df.empty:
+        for _, row in candidates_df.iterrows():
+            trigger = row.get("Trigger", "Breakout")
+            verdict = row.get("Verdict", "")
+            label = f"{row['Ticker']}  —  {verdict}  ({trigger})  ${row['Price']:.2f}"
+            candidates[label] = {
+                "ticker": row["Ticker"],
+                "entry": float(row["Entry"]),
+                "stop": float(row["Stop"]),
+                "trigger": trigger,
+                "sector": row.get("Sector", ""),
+            }
 
-    # Store candidates in session state so callback can access them
     st.session_state["_sizer_candidates"] = candidates
 
     def _on_candidate_change():
@@ -2269,19 +2447,18 @@ def _render_position_sizer(
             if c["trigger"] in trigger_opts:
                 st.session_state["sizer_trigger"] = c["trigger"]
 
-    # Initialize sizer fields if not present
     if "sizer_entry" not in st.session_state:
         st.session_state["sizer_entry"] = 0.0
     if "sizer_stop" not in st.session_state:
         st.session_state["sizer_stop"] = 0.0
 
-    col_sel, col_spacer = st.columns([3, 1])
-    with col_sel:
-        options = ["Custom entry"] + list(candidates.keys())
-        selected = st.selectbox(
-            "Select candidate", options, label_visibility="collapsed",
-            key="sizer_select", on_change=_on_candidate_change,
-        )
+    options = ["Custom entry"] + list(candidates.keys())
+    st.selectbox(
+        "Select candidate",
+        options,
+        key="sizer_select",
+        on_change=_on_candidate_change,
+    )
 
     # ── Input columns ─────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -3397,7 +3574,7 @@ def main():
         "Sector Rotation",
         "Core Allocation",
         "Screener",
-        "Entry Trigger",
+        "Position Sizer",
         "Charts",
         "Portfolio",
     ])
@@ -3415,41 +3592,20 @@ def main():
         _render_layer2_tab(perm, regime, l0)
 
     with tab5:
-        # L3 uses screener results from session state (populated by L2 tab)
-        passes_df = st.session_state.get("screener_passes", pd.DataFrame())
-        half_df   = st.session_state.get("screener_half", pd.DataFrame())
-        if passes_df.empty and half_df.empty:
+        # Position Sizer — standalone tab, reads selected ticker from screener
+        results_df = st.session_state.get("screener_results")
+        if results_df is not None and not results_df.empty:
+            # Build candidate list from screener results that have entry/stop
+            sizer_candidates = results_df[
+                results_df["Entry"].notna() & results_df["Stop"].notna()
+            ].copy()
+            _render_position_sizer_tab(sizer_candidates, perm, l0)
+        else:
             st.markdown(
                 '<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">'
-                'Run the screener first (Screener tab) to populate entry trigger candidates.</p>',
+                'Run the screener first (Screener tab) to populate candidates for sizing.</p>',
                 unsafe_allow_html=True,
             )
-        else:
-            # Compute L3 from screener results
-            # Build close/volume data from cached screener download
-            all_cands = list(passes_df["Ticker"]) + list(half_df.head(15)["Ticker"])
-            if all_cands:
-                earnings_key = ",".join(sorted(set(all_cands)))
-                with st.spinner("Checking earnings dates..."):
-                    earnings_dates = fetch_earnings_dates(earnings_key)
-
-                # Fetch price data for L3 candidates directly
-                try:
-                    l3_tickers = list(set(all_cands))
-                    l3_raw = yf.download(l3_tickers + ["SPY"], period="1y", auto_adjust=True, progress=False)
-                    close_sc = l3_raw["Close"]
-                    vol_sc = l3_raw["Volume"]
-                    spy_sc = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
-                    ticker_sector = {row["Ticker"]: row["Sector"] for _, row in pd.concat([passes_df, half_df]).iterrows()}
-                    full_l3, half_l3 = calc_layer3(
-                        passes_df, half_df, close_sc, vol_sc, spy_sc, perm, l0,
-                        earnings_dates, ticker_sector, rec_flags,
-                    )
-                    _render_layer3_tab(full_l3, half_l3, perm, l0, rec_flags)
-                except Exception:
-                    st.error("Could not load price data for entry trigger analysis. Try refreshing.")
-            else:
-                st.info("No candidates from screener to evaluate.")
 
     with tab6:
         passes_df = st.session_state.get("screener_passes", pd.DataFrame())
