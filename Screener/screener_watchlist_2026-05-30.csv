@@ -1,0 +1,116 @@
+Rank,Ticker,Sector,Price,MA20,MA50,Dist_MA20_pct,ROC_1m,ROC_3m,Two_Speed,RS_vs_SPY_21d,MACD_Crossover,Vol_Ratio_5d,Avg_Dollar_Vol,Entry_Zone
+1,DELL,Technology,420.91,260.0,215.62,61.9,101.4,175.0,Full,91.37,False,2.12,4061709980,Too extended
+2,WOLF,Semiconductors,59.28,56.01,35.58,5.8,100.7,179.5,Full,90.71,False,0.95,667774959,Normal
+3,MU,Semiconductors,971.0,751.46,557.54,29.2,87.8,135.4,Full,78.37,False,1.06,54237015915,Too extended
+4,SNOW,Technology,255.55,166.15,155.98,53.8,87.3,50.0,Full,77.9,False,1.83,2671135129,Too extended
+5,DDOG,Technology,247.35,198.93,153.1,24.3,87.1,122.6,Full,77.76,False,0.8,1766274450,Too extended
+6,UMC,Semiconductors,22.18,17.24,13.06,28.7,69.8,111.0,Full,61.34,False,1.11,378768530,Too extended
+7,SMCI,Semiconductors,46.09,33.77,28.67,36.5,68.2,44.8,Full,59.8,False,1.26,2099945443,Too extended
+8,ARM,Semiconductors,353.29,248.94,198.44,41.9,68.0,184.1,Full,59.58,False,0.97,4321088328,Too extended
+9,OKTA,Technology,123.27,86.03,79.52,43.3,67.4,66.6,Full,59.0,False,1.89,489718413,Too extended
+10,CRWD,Technology,731.0,582.22,482.51,25.6,64.0,89.9,Full,55.79,False,0.95,2361561290,Too extended
+11,FTNT,Technology,137.97,117.31,96.15,17.6,63.6,74.2,Full,55.46,False,0.99,921083589,Too extended
+12,DOCN,Technology,155.95,151.2,112.94,3.1,61.7,167.8,Full,53.64,False,0.55,631365901,Normal
+13,NTAP,Technology,174.29,124.71,111.96,39.8,57.3,74.9,Full,49.48,False,2.18,649806253,Too extended
+14,PANW,Technology,281.69,228.42,191.42,23.3,57.1,87.6,Full,49.23,False,1.01,2384356574,Too extended
+15,TEAM,Technology,107.61,88.66,76.12,21.4,56.9,45.8,Full,49.05,False,0.76,923583814,Too extended
+16,FSLR,Technology,306.79,240.48,212.85,27.6,52.0,53.5,Full,44.36,False,1.28,963277676,Too extended
+17,AAON,Industrials,140.2,128.03,104.22,9.5,50.3,34.0,Full,42.74,False,0.68,210041326,Extended (accel only)
+18,HPE,Technology,43.04,33.33,28.62,29.1,49.6,95.7,Full,42.12,False,1.7,880214932,Too extended
+19,AMD,Semiconductors,516.1,440.11,328.15,17.3,45.6,159.8,Full,38.31,False,0.82,20534043923,Too extended
+20,AKAM,Technology,149.54,139.93,118.97,6.9,45.2,53.2,Full,37.95,False,0.57,1116881311,Extended (accel only)
+21,SMTC,Semiconductors,152.54,136.52,108.25,11.7,45.2,58.4,Full,37.95,False,1.78,545305306,Extended (accel only)
+22,NOW,Technology,124.37,97.38,97.64,27.7,40.8,13.7,Full,33.79,False,1.19,3825590813,Too extended
+23,GTLB,Technology,31.05,25.43,23.07,22.1,40.2,18.6,Full,33.23,False,0.78,172117442,Too extended
+24,ORCL,Technology,225.78,191.63,170.96,17.8,39.9,51.8,Full,32.9,True,0.96,4783082669,Too extended
+25,QCOM,Semiconductors,251.02,211.93,165.67,18.4,39.8,79.1,Full,32.79,False,0.94,7318893621,Too extended
+26,ESTC,Technology,64.7,52.7,50.27,22.8,39.3,22.3,Full,32.38,False,1.64,147687448,Too extended
+27,APP,Technology,613.09,498.62,457.92,23.0,37.4,41.6,Full,30.49,False,1.14,3337990109,Too extended
+28,GEN,Technology,25.79,22.86,20.68,12.8,34.4,16.0,Full,27.69,False,0.89,235822865,Extended (accel only)
+29,MDB,Technology,335.55,303.75,272.42,10.5,33.8,3.2,Full,27.09,True,2.07,901601006,Extended (accel only)
+30,CSCO,Technology,120.42,107.85,93.07,11.7,31.6,52.4,Full,25.03,False,0.94,3406840702,Extended (accel only)
+31,STX,Technology,879.8,797.89,616.43,10.3,30.6,132.2,Full,24.07,True,0.82,3713648945,Extended (accel only)
+32,IBM,Technology,297.8,235.45,238.0,26.5,29.9,25.3,Full,23.38,False,1.7,2745450845,Too extended
+33,HPQ,Technology,27.04,22.28,20.53,21.4,29.6,46.9,Full,23.15,False,1.91,605383843,Too extended
+34,MTSI,Semiconductors,364.64,359.32,295.13,1.5,29.5,41.0,Full,23.01,False,0.97,583356565,Near MA (pullback)
+35,HOOD,Financial Services,94.3,77.97,76.78,20.9,29.4,19.7,Full,22.91,False,1.4,2351611041,Too extended
+36,HEI,Industrials,348.18,297.5,285.9,17.0,29.0,5.7,Full,22.54,False,1.02,318356635,Too extended
+37,BBY,Consumer Cyclical,77.95,60.81,62.05,28.2,28.9,28.5,Full,22.42,False,1.8,365960035,Too extended
+38,MNDY,Technology,83.62,75.58,70.72,10.6,26.9,17.8,Full,20.6,False,1.01,198676527,Extended (accel only)
+39,RMBS,Semiconductors,145.46,132.4,118.3,9.9,26.4,47.1,Full,20.05,False,0.99,320858592,Extended (accel only)
+40,MRVL,Semiconductors,205.0,180.41,146.66,13.6,24.1,153.7,Full,17.92,False,1.46,5687616350,Extended (accel only)
+41,GFS,Semiconductors,79.97,74.75,60.25,7.0,23.8,60.4,Full,17.6,False,1.75,551736629,Extended (accel only)
+42,LRCX,Semiconductors,318.18,293.11,263.71,8.6,23.4,37.9,Full,17.22,False,1.0,2918428028,Extended (accel only)
+43,WDC,Technology,531.21,484.93,398.18,9.5,22.3,96.8,Full,16.14,False,0.86,4062492388,Extended (accel only)
+44,ASX,Semiconductors,38.35,34.59,29.19,10.9,22.1,58.5,Full,15.99,False,1.16,342144688,Extended (accel only)
+45,FICO,Technology,1250.59,1152.64,1086.13,8.5,22.0,-11.2,Half,15.91,False,1.02,432585322,Extended (accel only)
+46,AI,Technology,10.77,9.35,8.95,15.1,22.0,24.5,Full,15.87,False,1.32,54761952,Too extended
+47,IOT,Technology,34.99,30.15,30.23,16.0,21.7,20.2,Full,15.66,False,1.04,172761033,Too extended
+48,LSCC,Semiconductors,147.08,131.37,115.78,12.0,20.3,46.0,Full,14.27,False,0.76,394250151,Extended (accel only)
+49,DLTR,Consumer Cyclical,116.44,95.02,100.44,22.5,19.9,-2.9,Half,13.91,False,1.47,531552104,Too extended
+50,ON,Semiconductors,120.62,111.18,88.97,8.5,19.7,81.4,Full,13.67,False,0.92,1610327697,Extended (accel only)
+51,WDAY,Technology,146.19,126.25,125.49,15.8,19.4,9.1,Full,13.47,False,1.31,796548390,Too extended
+52,NET,Technology,241.82,215.1,208.85,12.4,18.0,33.6,Full,12.08,False,0.75,1222709666,Extended (accel only)
+53,CROX,Consumer Cyclical,118.67,105.03,98.24,13.0,16.4,36.6,Full,10.55,False,1.21,144448681,Extended (accel only)
+54,BIRK,Consumer Cyclical,45.07,38.04,37.62,18.5,16.3,6.0,Full,10.52,False,1.01,144373631,Too extended
+55,POWI,Semiconductors,84.0,74.64,64.09,12.5,15.8,67.6,Full,10.02,False,1.53,127277640,Extended (accel only)
+56,AAPL,Technology,312.06,297.46,275.11,4.9,15.1,18.0,Full,9.35,False,1.06,15310325047,Normal
+57,ONON,Consumer Cyclical,40.82,37.03,36.01,10.2,14.6,-12.7,Half,8.9,False,0.7,307653194,Extended (accel only)
+58,MKSI,Semiconductors,324.26,308.84,276.79,5.0,14.3,32.8,Full,8.56,False,0.72,443190474,Normal
+59,AMAT,Semiconductors,450.06,427.85,396.82,5.2,14.2,21.1,Full,8.52,False,0.84,3460162524,Normal
+60,TSLA,Consumer Cyclical,435.79,421.39,391.8,3.4,14.2,8.1,Full,8.48,False,0.81,22911707636,Normal
+61,PATH,Technology,11.72,10.68,10.72,9.8,13.8,9.5,Full,8.1,False,1.41,467869735,Extended (accel only)
+62,CDNS,Technology,374.93,358.35,321.98,4.6,13.8,23.6,Full,8.07,False,1.09,801617196,Normal
+63,SNDR,Industrials,35.34,32.11,29.53,10.1,13.7,26.0,Full,7.99,False,0.73,39424774,Extended (accel only)
+64,KMX,Consumer Cyclical,44.62,39.15,40.52,14.0,13.5,6.7,Full,7.83,False,1.11,126155238,Extended (accel only)
+65,RHI,Industrials,29.44,26.21,25.58,12.3,13.1,26.9,Full,7.44,False,0.99,55201031,Extended (accel only)
+66,W,Consumer Cyclical,72.26,64.95,70.9,11.3,13.0,-2.0,Half,7.38,False,0.88,338145376,Extended (accel only)
+67,LSTR,Industrials,206.9,185.18,174.5,11.7,12.7,26.7,Full,7.02,False,1.14,110756670,Extended (accel only)
+68,WERN,Industrials,41.51,37.63,33.87,10.3,12.6,20.5,Full,6.96,False,0.92,50151964,Extended (accel only)
+69,RH,Consumer Cyclical,148.49,132.33,131.03,12.2,12.5,-5.6,Half,6.9,False,0.93,128129798,Extended (accel only)
+70,PLTR,Technology,156.54,137.81,141.79,13.6,12.5,7.8,Full,6.9,False,1.05,7052269931,Extended (accel only)
+71,WSM,Consumer Cyclical,203.57,183.51,185.32,10.9,12.3,1.5,Full,6.72,False,0.92,268345983,Extended (accel only)
+72,TXRH,Consumer Cyclical,180.62,173.91,167.55,3.9,12.2,0.7,Full,6.58,False,0.77,239610485,Normal
+73,MGM,Consumer Cyclical,43.67,38.39,38.05,13.7,12.1,22.3,Full,6.54,False,1.21,225296140,Extended (accel only)
+74,ASML,Semiconductors,1612.76,1540.97,1454.09,4.7,12.1,13.5,Full,6.47,False,0.83,2600083623,Normal
+75,SWKS,Semiconductors,77.85,71.53,62.94,8.8,11.9,33.3,Full,6.31,False,0.95,432925009,Extended (accel only)
+76,VEEV,Technology,174.34,163.54,166.51,6.6,11.8,-3.9,Half,6.19,False,0.59,795982377,Extended (accel only)
+77,AXON,Industrials,448.72,398.43,407.47,12.6,11.7,-21.6,Half,6.1,False,1.06,585954282,Extended (accel only)
+78,GE,Industrials,323.76,298.88,295.35,8.3,11.7,-6.2,Half,6.09,False,1.04,1724086804,Extended (accel only)
+79,HON,Industrials,237.86,219.48,221.92,8.4,11.6,-3.6,Half,6.01,False,1.23,1011921854,Extended (accel only)
+80,DECK,Consumer Cyclical,113.85,101.43,103.06,12.2,11.4,-0.6,Half,5.83,False,1.3,272955940,Extended (accel only)
+81,GS,Financial Services,1025.56,958.81,912.78,7.0,11.0,19.0,Full,5.47,False,1.05,2074272135,Extended (accel only)
+82,ROK,Industrials,451.06,443.41,407.51,1.7,10.6,9.8,Full,5.12,False,0.88,384774475,Near MA (pullback)
+83,MSFT,Technology,450.24,416.97,402.06,8.0,10.7,13.2,Full,5.12,True,1.19,15731903034,Extended (accel only)
+84,MIDD,Industrials,155.01,148.16,142.62,4.6,10.4,-6.0,Half,4.92,False,0.81,105534679,Normal
+85,JBHT,Industrials,276.43,254.0,237.39,8.8,10.1,19.3,Full,4.6,False,0.86,268741092,Extended (accel only)
+86,KLAC,Semiconductors,1921.71,1833.72,1730.44,4.8,9.9,25.4,Full,4.43,False,0.96,1946384716,Normal
+87,QRVO,Semiconductors,103.56,96.1,87.21,7.8,9.9,26.4,Full,4.42,False,1.13,134202883,Extended (accel only)
+88,NXPI,Semiconductors,321.35,303.83,249.54,5.8,9.5,43.7,Full,3.98,False,0.95,1241207971,Normal
+89,IVZ,Financial Services,28.46,27.22,25.4,4.6,9.4,9.8,Full,3.96,True,0.91,126783746,Normal
+90,IBKR,Financial Services,86.97,84.18,77.28,3.3,9.4,21.3,Full,3.93,False,1.4,445240312,Normal
+91,TXN,Semiconductors,305.68,299.6,251.19,2.0,9.3,46.4,Full,3.84,False,1.19,2312554734,Near MA (pullback)
+92,IT,Technology,162.2,153.78,153.66,5.5,9.2,1.8,Full,3.77,False,1.28,329932635,Normal
+93,COLM,Consumer Cyclical,66.18,61.43,59.11,7.7,9.2,11.1,Full,3.72,False,0.97,41271171,Extended (accel only)
+94,MS,Financial Services,208.0,195.23,183.5,6.5,9.1,25.2,Full,3.68,False,1.1,1151702240,Extended (accel only)
+95,TER,Semiconductors,374.31,356.9,348.54,4.9,9.0,14.9,Full,3.57,False,0.91,1388452404,Normal
+96,TDG,Industrials,1258.32,1203.88,1195.01,4.5,8.5,-4.4,Half,3.05,False,1.01,524820083,Normal
+97,FDS,Financial Services,245.47,221.89,220.6,10.6,8.4,12.2,Full,2.97,False,0.86,213819099,Extended (accel only)
+98,H,Consumer Cyclical,181.36,170.67,161.21,6.3,8.3,13.6,Full,2.9,False,1.22,159618563,Extended (accel only)
+99,CRM,Technology,191.1,179.03,180.68,6.7,8.3,-0.7,Half,2.84,False,1.4,2692865670,Extended (accel only)
+100,RCL,Consumer Cyclical,284.63,266.13,269.38,7.0,7.9,-4.9,Half,2.52,False,1.16,882876734,Extended (accel only)
+101,ZBRA,Technology,243.63,241.58,227.41,0.8,7.7,8.8,Full,2.29,False,1.45,307920308,Near MA (pullback)
+102,CRVL,Consumer Cyclical,61.75,59.08,56.68,4.5,7.5,17.8,Full,2.09,False,1.07,12437067,Normal
+103,GNRC,Industrials,277.91,265.25,231.32,4.8,7.2,20.6,Full,1.85,False,1.06,215289932,Normal
+104,MSCI,Financial Services,631.38,585.98,569.25,7.7,7.1,10.4,Full,1.79,False,1.21,424274735,Extended (accel only)
+105,AVGO,Semiconductors,446.77,422.91,385.67,5.6,7.0,40.4,Full,1.68,False,1.16,8740570089,Normal
+106,EXPD,Industrials,157.99,155.11,149.4,1.9,6.8,8.5,Full,1.49,False,1.02,178474989,Near MA (pullback)
+107,CCL,Consumer Cyclical,28.06,26.01,26.23,7.9,6.5,-3.1,Half,1.17,False,0.81,911461317,Extended (accel only)
+108,GWW,Industrials,1234.24,1227.01,1162.95,0.6,6.5,7.3,Full,1.17,False,1.07,363360253,Near MA (pullback)
+109,EVR,Financial Services,340.86,334.91,326.15,1.8,6.4,8.7,Full,1.05,False,0.84,165432985,Near MA (pullback)
+110,PAYX,Industrials,96.98,93.16,91.42,4.1,6.0,4.2,Full,0.74,False,1.01,307124517,Normal
+111,ODFL,Industrials,225.15,204.35,204.6,10.2,6.0,8.5,Full,0.69,False,1.1,424046372,Extended (accel only)
+112,TSM,Semiconductors,418.45,407.15,379.4,2.8,5.7,13.7,Full,0.37,False,0.81,5397385851,Near MA (pullback)
+113,CAKE,Consumer Cyclical,66.04,60.88,59.53,8.5,5.6,5.9,Full,0.29,False,0.9,72238185,Extended (accel only)
+114,ETSY,Consumer Cyclical,67.92,61.9,58.68,9.7,5.6,25.8,Full,0.29,False,1.11,205680772,Extended (accel only)
+115,ADBE,Technology,259.21,248.0,244.45,4.5,5.3,-0.6,Half,0.06,True,1.05,1216152365,Normal

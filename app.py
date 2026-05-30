@@ -420,6 +420,284 @@ def fetch_screener_data(sectors_key: str) -> tuple:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SCREENER V3 — AUTONOMOUS, BUTTON-TRIGGERED
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Larger universe per sector ETF (~100-200 liquid names each)
+SCREENER_UNIVERSE = {
+    "Technology": [
+        "AAPL","MSFT","NVDA","AVGO","ORCL","CRM","AMD","CSCO","ACN","ADBE",
+        "IBM","INTU","TXN","QCOM","AMAT","NOW","PANW","ADI","LRCX","KLAC",
+        "SNPS","CDNS","CRWD","MSI","APH","MCHP","FTNT","ROP","TEL","NXPI",
+        "ADSK","MPWR","ON","KEYS","CDW","FSLR","IT","HPE","HPQ",
+        "ZBRA","TYL","EPAM","AKAM","SWKS","TER","NTAP","PTC","TRMB",
+        "GEN","WDC","STX","SMCI","DELL","PLTR","NET","DDOG","ZS","MDB",
+        "SNOW","TEAM","HUBS","WDAY","VEEV","OKTA","ZM","DOCN","PATH",
+        "S","ESTC","MNDY","BILL","GTLB","IOT","AI","APP",
+        "FICO","ANET","MRVL","ARM","UBER","DASH","SHOP","TTD","COIN",
+    ],
+    "Semiconductors": [
+        "NVDA","AMD","AVGO","QCOM","TXN","AMAT","ADI","LRCX","KLAC","MCHP",
+        "NXPI","ON","MPWR","MRVL","SWKS","TER","MKSI","ENTG","AMKR",
+        "CRUS","ONTO","WOLF","RMBS","SMTC","ACLS","AOSL","ALGM","SITM","POWI",
+        "DIOD","AMBA","LSCC","MTSI","PI","COHR","MU",
+        "INTC","TSM","ASML","ARM","SMCI","GFS","UMC","ASX",
+    ],
+    "Consumer Discretionary": [
+        "AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","TJX","BKNG","ABNB",
+        "CMG","ORLY","AZO","ROST","DHI","LEN","PHM","NVR","GPC","GRMN",
+        "POOL","BBY","DRI","YUM","ULTA","LULU","DECK","TPR","RL",
+        "HAS","MAT","WYNN","LVS","MGM","CZR","RCL","CCL","NCLH","HLT",
+        "MAR","H","EXPE","LKQ","KMX","AN","LAD","CVNA","DPZ",
+        "WING","TXRH","EAT","SHAK","BROS","CAVA",
+        "BIRK","ONON","CROX","COLM","VFC","PVH","ETSY",
+        "W","RH","WSM","FIVE","OLLI","DLTR","DG","COST","WMT","TGT",
+    ],
+    "Financials": [
+        "BRK-B","JPM","V","MA","BAC","WFC","GS","MS","SPGI","BLK",
+        "SCHW","C","AXP","CB","AON","PGR","ICE","CME","MCO",
+        "MSCI","AJG","AFL","TRV","MET","AIG","PRU","ALL","COF",
+        "SYF","USB","PNC","TFC","FITB","MTB","HBAN","CFG","KEY",
+        "RF","ZION","NDAQ","CBOE","FDS","MKTX","VIRT","HOOD","IBKR",
+        "RJF","LPLA","EVR","HLI","PJT","SF","PIPR","SEIC","TROW",
+        "BEN","IVZ","WBS","FNB","EWBC","WAL","OZK","SSB","BOKF","GBCI","PNFP","WTFC",
+    ],
+    "Industrials": [
+        "GE","CAT","RTX","HON","UNP","UPS","DE","LMT","BA","ADP",
+        "ETN","ITW","GD","NOC","WM","RSG","CSX","NSC","PCAR","EMR",
+        "JCI","TT","CARR","OTIS","ROK","FAST","SWK","GWW","IR",
+        "PH","DOV","FTV","AME","XYL","IEX","RBC","GNRC","PWR","HUBB",
+        "BLDR","TTC","WAB","AGCO","AXON","TDG","HWM","HEI","TRMB",
+        "VRSK","CPRT","PAYX","CTAS","ODFL","SAIA","XPO","JBHT","CHRW",
+        "LSTR","EXPD","KEX","WERN","SNDR","MATX","GXO","ALLE","AOS",
+        "WSO","RRX","MIDD","MAS","AAON","SPXC","RHI",
+    ],
+    "Energy": [
+        "XOM","CVX","COP","EOG","SLB","MPC","PSX","VLO","OXY",
+        "HES","DVN","FANG","HAL","BKR","CTRA","MRO","APA","CHRD","OVV",
+        "EQT","RRC","AR","PR","MTDR","CRGY","SM","MGY","NOG","VTLE",
+        "CRC","TRGP","WMB","KMI","OKE","ET","MPLX",
+        "AM","DTM","DINO","PBF","PARR","CVI",
+    ],
+    "Materials": [
+        "LIN","SHW","APD","ECL","FCX","NEM","NUE","VMC","MLM","DOW",
+        "DD","PPG","CE","EMN","ALB","IFF","FMC","CF","MOS","RPM",
+        "BALL","PKG","IP","WRK","SEE","SON","AVY","AXTA",
+        "HUN","OLN","TROX","CC","IOSP","KWR","CBT","GEF",
+    ],
+    "Health Care": [
+        "UNH","JNJ","LLY","ABBV","MRK","TMO","ABT","DHR","PFE","AMGN",
+        "BMY","MDT","ISRG","SYK","BSX","GILD","VRTX","REGN","ZTS","BDX",
+        "CI","ELV","HCA","MCK","COR","HUM","CNC","MOH","GEHC","EW",
+        "DXCM","IDXX","RMD","HOLX","BAX","A","IQV","MTD","WAT",
+    ],
+    "Consumer Staples": [
+        "PG","PEP","KO","COST","WMT","PM","MO","MDLZ","CL","EL",
+        "KMB","GIS","SJM","K","HSY","MKC","HRL","CAG","CPB","TSN",
+        "BG","ADM","MNST","KDP","STZ","TAP",
+        "WBA","KR","SYY","USFD","PFGC","CHD","CLX","COTY",
+    ],
+    "Utilities": [
+        "NEE","SO","DUK","D","SRE","AEP","EXC","XEL","ED","WEC",
+        "ES","EIX","AWK","ATO","CMS","DTE","ETR","FE","PPL","CEG",
+        "AES","LNT","EVRG","NI","PNW","OGE","NRG","VST","CWEN",
+    ],
+}
+
+# Sector ETF name → SCREENER_UNIVERSE key mapping
+# (L0 uses SECTOR_ETFS keys like "Technology", "Financials" etc. which
+#  match SCREENER_UNIVERSE keys directly, except we also have "Semiconductors")
+# SMH sectors show up as "Technology" in L0 — we always include Semis when Tech is leading.
+SECTOR_TO_SCREEN = {
+    "Technology":             ["Technology", "Semiconductors"],
+    "Financials":             ["Financials"],
+    "Consumer Discretionary": ["Consumer Discretionary"],
+    "Industrials":            ["Industrials"],
+    "Energy":                 ["Energy"],
+    "Materials":              ["Materials"],
+    "Health Care":            ["Health Care"],
+    "Consumer Staples":       ["Consumer Staples"],
+    "Utilities":              ["Utilities"],
+}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def run_screener_v3(regime: str, leading_sectors: list, mixed_sectors: list) -> pd.DataFrame:
+    """
+    Autonomous screener v3 — scans sectors that are Leading or Mixed in L0.
+    Cached for 24 hours. Button-triggered.
+    Returns a DataFrame of all passing candidates, ranked by RS vs SPY.
+    """
+    # Use actual L0 sector readings — only scan what's Leading or Mixed
+    l0_sectors = leading_sectors + mixed_sectors
+    screen_sectors = []
+    for sec in l0_sectors:
+        for mapped in SECTOR_TO_SCREEN.get(sec, []):
+            if mapped not in screen_sectors:
+                screen_sectors.append(mapped)
+
+    # Fallback if L0 has nothing (shouldn't happen, but safety)
+    if not screen_sectors:
+        screen_sectors = list(SCREENER_UNIVERSE.keys())
+
+    # Build ticker universe
+    tickers = []
+    ticker_sector = {}
+    for sec in screen_sectors:
+        for t in SCREENER_UNIVERSE.get(sec, []):
+            if t not in ticker_sector:
+                tickers.append(t)
+                ticker_sector[t] = sec
+
+    if not tickers:
+        return pd.DataFrame()
+
+    # Batch download
+    all_tickers = tickers + ["SPY"]
+    frames = {}
+    batch_size = 200
+
+    for i in range(0, len(all_tickers), batch_size):
+        batch = all_tickers[i:i + batch_size]
+        try:
+            data = yf.download(batch, period="6mo", group_by="ticker",
+                               threads=True, progress=False)
+            if isinstance(data.columns, pd.MultiIndex):
+                for t in batch:
+                    try:
+                        df = data[t][["Close", "Volume"]].dropna()
+                        if len(df) >= 50:
+                            frames[t] = df
+                    except (KeyError, TypeError):
+                        pass
+            elif len(batch) == 1 and len(data) >= 50:
+                frames[batch[0]] = data[["Close", "Volume"]].dropna()
+        except Exception:
+            pass
+        if i + batch_size < len(all_tickers):
+            import time
+            time.sleep(2)
+
+    spy_data = frames.get("SPY")
+    if spy_data is None:
+        return pd.DataFrame()
+    spy_close = spy_data["Close"].squeeze()
+
+    # Compute signals
+    results = []
+    for ticker, df in frames.items():
+        if ticker == "SPY":
+            continue
+        try:
+            close = df["Close"].squeeze()
+            volume = df["Volume"].squeeze()
+            if len(close) < 50:
+                continue
+
+            price = float(close.iloc[-1])
+            if price < 5.0:
+                continue
+
+            ma20 = float(close.rolling(20).mean().iloc[-1])
+            ma50 = float(close.rolling(50).mean().iloc[-1])
+            if price < ma20 or price < ma50:
+                continue
+
+            roc_1m = (price / float(close.iloc[-21]) - 1) * 100 if len(close) >= 21 else None
+            roc_3m = (price / float(close.iloc[-63]) - 1) * 100 if len(close) >= 63 else None
+            if roc_1m is None:
+                continue
+            if roc_3m is not None:
+                if roc_1m > 0 and roc_3m > 0:
+                    two_speed = "FULL"
+                elif roc_1m > 0 or roc_3m > 0:
+                    two_speed = "HALF"
+                else:
+                    continue
+            else:
+                two_speed = "HALF" if roc_1m > 0 else None
+                if two_speed is None:
+                    continue
+
+            avg_vol = float(volume.tail(20).mean())
+            avg_dollar_vol = avg_vol * price
+            if avg_dollar_vol < 50000:
+                continue
+
+            common = close.index.intersection(spy_close.index)
+            if len(common) < 21:
+                continue
+            rs = close.reindex(common) / spy_close.reindex(common)
+            rs_chg = (float(rs.iloc[-1]) / float(rs.iloc[-21]) - 1) * 100
+            if rs_chg <= 0:
+                continue
+
+            dist_ma20 = ((price - ma20) / ma20) * 100
+            pct_above_20 = (price / ma20 - 1)
+
+            # RS new high (within 2% of 3-month peak)
+            rs_line = close.reindex(common) / spy_close.reindex(common)
+            rs_new_hi = bool(rs_line.iloc[-1] >= rs_line.iloc[-min(63, len(rs_line)):].max() * 0.98)
+            rs_rising = bool(len(rs_line) >= 21 and rs_line.iloc[-1] > rs_line.iloc[-21])
+
+            # MACD crossover
+            ema12 = close.ewm(span=12).mean()
+            ema26 = close.ewm(span=26).mean()
+            histogram = (ema12 - ema26) - (ema12 - ema26).ewm(span=9).mean()
+            macd_cross = bool(len(histogram) >= 2 and float(histogram.iloc[-2]) < 0 and float(histogram.iloc[-1]) > 0)
+
+            # Volume ratio
+            recent_vol = float(volume.tail(5).mean())
+            vol_ratio = round(recent_vol / avg_vol, 2) if avg_vol > 0 else 0
+
+            # Entry zone
+            if dist_ma20 <= 3.0:
+                entry_zone = "Near MA (pullback)"
+            elif dist_ma20 <= 6.0:
+                entry_zone = "Normal"
+            elif dist_ma20 <= 15.0:
+                entry_zone = "Extended (accel only)"
+            else:
+                entry_zone = "Too extended"
+
+            # Passes = full L2 criteria (same as old calc_layer2 PASS logic)
+            passes = (two_speed == "FULL" and rs_new_hi and rs_rising
+                      and avg_dollar_vol >= 10_000_000)
+
+            results.append({
+                "Ticker": ticker,
+                "Sector": ticker_sector.get(ticker, "Unknown"),
+                "Price": round(price, 2),
+                "vs 20MA": True,
+                "vs 50MA": True,
+                "% > 20MA": round(pct_above_20, 4),
+                "1M Ret": roc_1m / 100,
+                "3M Ret": roc_3m / 100 if roc_3m else 0,
+                "RS Hi": rs_new_hi,
+                "RS ↑": rs_rising,
+                "RSI": 50.0,  # placeholder — full RSI computed in L3
+                "MACD": macd_cross,
+                "MACD Hist": 0,
+                "Avg $Vol(M)": round(avg_dollar_vol / 1e6, 1),
+                "2-Speed": two_speed,
+                "PASS": passes,
+                "RS_vs_SPY_21d": round(rs_chg, 2),
+                "Dist_MA20_pct": round(dist_ma20, 1),
+                "Entry_Zone": entry_zone,
+                "MACD_Crossover": macd_cross,
+                "Vol_Ratio_5d": vol_ratio,
+            })
+        except Exception:
+            continue
+
+    if not results:
+        return pd.DataFrame()
+
+    df_out = pd.DataFrame(results).sort_values("RS_vs_SPY_21d", ascending=False).reset_index(drop=True)
+    return df_out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 0 — MACRO REGIME FILTER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1743,113 +2021,195 @@ def _render_layer15_tab(l15_data: list) -> None:
         st.markdown(cb_table(pd.DataFrame(all_rows)), unsafe_allow_html=True)
 
 
-def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
-                       half_df: pd.DataFrame, perm: str,
-                       active_sectors: list, show_half: bool, show_all: bool,
-                       l0: dict = None) -> None:
-    """Render the Layer 2 — Screener tab."""
+def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
+    """Render the Layer 2 — Screener tab (v3, button-triggered with 24h cache)."""
 
-    # Red state bar
     if perm == "Red":
         st.markdown(
             _gate_bar_html("Red", "RED STATE — No new entries. Results shown for reference only."),
             unsafe_allow_html=True,
         )
 
-    # ── Stats tile row ────────────────────────────────────────────────────────
-    no_trade = len(results_df[results_df["2-Speed"] == "NO TRADE"])
-    sector_str = ", ".join(active_sectors)
+    # ── Run Screener button ──────────────────────────────────────────────────
+    leading = l0.get("leading_sectors", [])
+    mixed   = l0.get("mixed_sectors", [])
+    l0_sectors = leading + mixed
+    screen_sectors = []
+    for sec in l0_sectors:
+        for mapped in SECTOR_TO_SCREEN.get(sec, []):
+            if mapped not in screen_sectors:
+                screen_sectors.append(mapped)
+    if not screen_sectors:
+        screen_sectors = list(SCREENER_UNIVERSE.keys())
+    universe_size = sum(len(SCREENER_UNIVERSE.get(s, [])) for s in screen_sectors)
+
+    # Show which L0 sectors are driving the scan
+    leading_str = ", ".join(leading) if leading else "None"
+    mixed_str   = ", ".join(mixed) if mixed else "None"
+
+    col_btn, col_info = st.columns([1, 3])
+    with col_btn:
+        run_clicked = st.button("🔍 Run Screener", use_container_width=True, type="primary")
+    with col_info:
+        st.caption(
+            f"L0 Leading: {leading_str} · Mixed: {mixed_str} → "
+            f"Scanning: {', '.join(screen_sectors)} ({universe_size} stocks). Cached 24h."
+        )
+
+    # Run or load cached
+    if run_clicked:
+        with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
+            results_df = run_screener_v3(regime, leading, mixed)
+        st.session_state["screener_results"] = results_df
+        st.session_state["screener_regime"] = regime
+    else:
+        results_df = st.session_state.get("screener_results")
+        # Try loading from cache on first visit
+        if results_df is None:
+            results_df = run_screener_v3(regime, leading, mixed)
+            if results_df is not None and not results_df.empty:
+                st.session_state["screener_results"] = results_df
+                st.session_state["screener_regime"] = regime
+
+    if results_df is None or results_df.empty:
+        st.markdown(
+            '<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">'
+            'Click <b>Run Screener</b> to scan the universe. First run takes ~30 seconds.</p>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # Check if regime changed since last run
+    cached_regime = st.session_state.get("screener_regime", "")
+    if cached_regime and cached_regime != regime:
+        st.markdown(
+            _gate_bar_html("Yellow", f"Screener was run for {cached_regime} regime. Current regime is {regime}. Re-run to update."),
+            unsafe_allow_html=True,
+        )
+
+    # ── Split into passes / half ─────────────────────────────────────────────
+    passes_df = results_df[results_df["PASS"]].copy()
+    half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].copy()
+    no_trade  = len(results_df) - len(passes_df) - len(half_df)
+
+    # Store for L3 consumption
+    st.session_state["screener_passes"] = passes_df
+    st.session_state["screener_half"]   = half_df
+
+    # ── Stats tiles ──────────────────────────────────────────────────────────
     stats_html = (
         f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
-        f'Sectors: {sector_str} &nbsp;·&nbsp; Universe: {len(results_df)} stocks</div>'
+        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Universe: {len(results_df)} passing L2 filters</div>'
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
-        + _tile("Screened",    str(len(results_df)), "")
-        + _tile("Full Signal", str(len(passes_df)),  "● Both signals positive", "#27500A")
-        + _tile("Half Signal", str(len(half_df)),    "● Mixed signals",         "#E07800")
-        + _tile("No Trade",    str(no_trade),        "● Both signals negative", "#CC1111")
+        + _tile("Candidates", str(len(results_df)), "Above both MAs + RS positive")
+        + _tile("Full Signal", str(len(passes_df)),  "● RS new high + volume OK", "#27500A")
+        + _tile("Half Signal", str(len(half_df)),    "● Mixed two-speed",         "#E07800")
+        + _tile("Near MA",     str(len(results_df[results_df["Dist_MA20_pct"] <= 3.0])), "● Pullback entry zone", "#288CFA")
         + '</div></div>'
     )
     st.markdown(stats_html, unsafe_allow_html=True)
 
-    # ── Full Signal card ──────────────────────────────────────────────────────
+    # ── Top Setups card (Full signal + near entry zone) ──────────────────────
+    top_setups = results_df[
+        (results_df["PASS"]) & (results_df["Dist_MA20_pct"] <= 6.0)
+    ].head(15)
+    if not top_setups.empty:
+        top_disp = pd.DataFrame({
+            "Ticker":    top_setups["Ticker"],
+            "Sector":    top_setups["Sector"],
+            "Price":     top_setups["Price"].apply(lambda x: f"${x:.2f}"),
+            "2-Speed":   top_setups["2-Speed"],
+            "RS vs SPY": top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            "vs 20MA":   top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "Entry Zone": top_setups["Entry_Zone"],
+            "MACD ×":    top_setups["MACD_Crossover"].apply(lambda x: "🟢" if x else ""),
+            "Vol 5d":    top_setups["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
+        })
+        st.markdown(
+            _card(f"Top Setups — Full Signal + Near Entry Zone", cb_table(top_disp, bordered=False), pill=f"✅ {len(top_setups)}"),
+            unsafe_allow_html=True,
+        )
+
+    # ── Full Signal card ─────────────────────────────────────────────────────
     if not passes_df.empty:
+        full_show = passes_df.head(50)
+        full_disp = pd.DataFrame({
+            "Ticker":    full_show["Ticker"],
+            "Sector":    full_show["Sector"],
+            "Price":     full_show["Price"].apply(lambda x: f"${x:.2f}"),
+            "RS vs SPY": full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            "vs 20MA":   full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "Entry Zone": full_show["Entry_Zone"],
+            "MACD ×":    full_show["MACD_Crossover"].apply(lambda x: "🟢" if x else ""),
+            "Vol 5d":    full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
+            "Avg $Vol":  full_show["Avg $Vol(M)"].apply(lambda x: f"${x:.0f}M"),
+        })
+        showing = f"top 50 of {len(passes_df)}" if len(passes_df) > 50 else str(len(passes_df))
         st.markdown(
-            _card(f"Full Signal — {len(passes_df)} candidates",
-                  cb_table(fmt_df(passes_df), bordered=False),
-                  pill="✅ Full"),
+            _card(f"Full Signal — {showing} candidates", cb_table(full_disp, bordered=False), pill="✅ Full"),
             unsafe_allow_html=True,
         )
-        st.text_area(
-            "Copy tickers",
-            value="  ".join(passes_df["Ticker"].tolist()),
-            height=60,
-            label_visibility="collapsed",
-            help="Full Signal tickers — copy and paste into Claude",
-        )
-    else:
-        st.markdown(
-            _gate_bar_html("Yellow", "No stocks passing all Layer 2 filters in the current regime."),
-            unsafe_allow_html=True,
-        )
+        st.text_area("Copy tickers", value="  ".join(passes_df["Ticker"].tolist()),
+                     height=50, label_visibility="collapsed")
 
-    # ── Half Signal card ──────────────────────────────────────────────────────
-    if show_half:
+    # ── Half Signal card ─────────────────────────────────────────────────────
+    if not half_df.empty:
         half_show = half_df.head(15)
-        if not half_show.empty:
-            st.markdown(
-                _card(f"Half Signal — {len(half_df)} candidates",
-                      cb_table(fmt_df(half_show), bordered=False),
-                      pill="⚠️ Half"),
-                unsafe_allow_html=True,
-            )
-            st.text_area(
-                "Copy half tickers",
-                value="  ".join(half_show["Ticker"].tolist()),
-                height=60,
-                label_visibility="collapsed",
-                help="Half Signal tickers — copy and paste into Claude",
-            )
-        else:
-            st.markdown(
-                _gate_bar_html("Yellow", "No half-signal candidates."),
-                unsafe_allow_html=True,
-            )
+        half_disp = pd.DataFrame({
+            "Ticker":    half_show["Ticker"],
+            "Sector":    half_show["Sector"],
+            "Price":     half_show["Price"].apply(lambda x: f"${x:.2f}"),
+            "RS vs SPY": half_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            "vs 20MA":   half_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "Entry Zone": half_show["Entry_Zone"],
+        })
+        st.markdown(
+            _card(f"Half Signal — {len(half_df)} candidates", cb_table(half_disp, bordered=False), pill="⚠️ Half"),
+            unsafe_allow_html=True,
+        )
 
-    # ── Accelerating Protocol candidates (v4) ──────────────────────────────
+    # ── Accelerating Protocol (v4) ───────────────────────────────────────────
     accel_sectors = l0.get("accelerating", []) if l0 else []
-    if accel_sectors and not results_df.empty:
-        # Find stocks in accelerating sectors that are 0-15% above 20d MA
-        accel_sector_names = set(accel_sectors)
+    if accel_sectors:
         accel_mask = (
-            results_df["Sector"].isin(accel_sector_names)
+            results_df["Sector"].isin(set(accel_sectors))
             & (results_df["% > 20MA"] > 0)
             & (results_df["% > 20MA"] <= 0.15)
             & (results_df["2-Speed"].isin(["FULL", "HALF"]))
         )
-        accel_df = results_df[accel_mask].sort_values("% > 20MA", ascending=True)
+        accel_df = results_df[accel_mask].sort_values("% > 20MA")
         if not accel_df.empty:
+            accel_disp = pd.DataFrame({
+                "Ticker":    accel_df["Ticker"],
+                "Sector":    accel_df["Sector"],
+                "Price":     accel_df["Price"].apply(lambda x: f"${x:.2f}"),
+                "vs 20MA":   accel_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+                "2-Speed":   accel_df["2-Speed"],
+                "RS vs SPY": accel_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+            })
             st.markdown(
                 _card(f"🔥 Accelerating Protocol — {len(accel_df)} candidates",
-                      cb_table(fmt_df(accel_df), bordered=False)
+                      cb_table(accel_disp, bordered=False)
                       + '<p style="font-size:11px; color:#CC1111; font-weight:500; margin-top:6px;">'
                       'Half size · 10d EMA stop · 6-week max hold · Max 3 simultaneous</p>',
                       pill="v4"),
                 unsafe_allow_html=True,
             )
-        else:
-            st.markdown(
-                _gate_bar_html("Yellow", f"Accelerating sectors ({', '.join(accel_sectors)}) — no stocks within 0–15% above 20d MA."),
-                unsafe_allow_html=True,
-            )
 
-    # ── Full Universe card ────────────────────────────────────────────────────
-    if show_all:
-        all_s = results_df.sort_values(["PASS", "2-Speed", "3M Ret"], ascending=[False, True, False])
+    # ── MACD Crossovers ──────────────────────────────────────────────────────
+    macd_cross = results_df[results_df["MACD_Crossover"]].head(10)
+    if not macd_cross.empty:
+        mc_disp = pd.DataFrame({
+            "Ticker":    macd_cross["Ticker"],
+            "Sector":    macd_cross["Sector"],
+            "Price":     macd_cross["Price"].apply(lambda x: f"${x:.2f}"),
+            "vs 20MA":   macd_cross["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
+            "RS vs SPY": macd_cross["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
+        })
         st.markdown(
-            _card(f"Full Universe — {len(results_df)} stocks",
-                  cb_table(fmt_df(all_s), bordered=False)),
+            _card("MACD Histogram Crossover (red → green)", cb_table(mc_disp, bordered=False), pill=f"🟢 {len(macd_cross)}"),
             unsafe_allow_html=True,
         )
 
@@ -2905,11 +3265,7 @@ def main():
         perm_ov   = st.selectbox("Permission State", ["Auto", "Green", "Yellow", "Red"])
 
         st.divider()
-        st.subheader("Screener Settings")
-        min_vol   = st.number_input("Min Avg Dollar Volume ($M)", value=10, step=5, format="%d") * 1_000_000
-        rs_lb     = st.slider("RS Lookback (days)", 21, 126, LB_3M)
-        show_half = st.checkbox("Show Half Signal watchlist", value=True)
-        show_all  = st.checkbox("Show full universe table",   value=False)
+        st.caption("Screener runs on-demand from the Screener tab.")
 
     # ── DATA LOADING ──────────────────────────────────────────────────────────
     with st.spinner("Loading market data..."):
@@ -2934,60 +3290,6 @@ def main():
     rec_total      = len(rec_indicators)
 
     perm, limits = calc_layer1(l0, rec_flags, st.session_state.eps_signal, perm_ov)
-
-    # Sectors to screen — auto-set from regime, user can override in sidebar
-    regime_sectors = {
-        "Risk-on":     list(RISK_ON_SECTORS),
-        "Reflation":   list(REFLATION_SECTORS),
-        "Deflation":   list(DEFENSIVE_SECTORS),
-        "Stagflation": list(REFLATION_SECTORS | {"Consumer Staples", "Utilities"}),
-    }
-    mixed_auto   = l0.get("leading_sectors", []) + l0.get("mixed_sectors", [])
-    auto_sectors = regime_sectors.get(regime, mixed_auto or ALL_SECTORS)
-
-    with st.sidebar:
-        st.divider()
-        st.subheader("Sectors to Screen")
-        selected_sectors = st.multiselect(
-            "Override if needed",
-            ALL_SECTORS,
-            default=auto_sectors,
-            help="Auto-set from regime. Adjust to add/remove sectors.",
-        )
-    active_sectors = selected_sectors if selected_sectors else auto_sectors
-
-    # ── SCREENER DATA ─────────────────────────────────────────────────────────
-    universe_size = sum(len(SECTOR_TICKERS.get(s, [])) for s in active_sectors)
-    with st.spinner(f"Loading {universe_size} stocks..."):
-        try:
-            sectors_key             = ",".join(sorted(active_sectors))
-            close_sc, vol_sc, all_t = fetch_screener_data(sectors_key)
-        except RuntimeError as e:
-            st.error(str(e))
-            return
-
-    ticker_sector = {t: sec for sec in active_sectors for t in SECTOR_TICKERS.get(sec, [])}
-    spy_sc        = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
-
-    with st.spinner("Running screener..."):
-        results_df = calc_layer2(close_sc, vol_sc, all_t, ticker_sector, spy_sc, min_vol, rs_lb)
-
-    if results_df.empty:
-        st.error("Screener returned no results. Check your internet connection and refresh.")
-        return
-
-    passes_df = results_df[results_df["PASS"]].sort_values(["Sector", "3M Ret"], ascending=[True, False])
-    half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].sort_values("3M Ret", ascending=False)
-
-    # ── LAYER 3 — ENTRY TRIGGERS ──────────────────────────────────────────────
-    all_cands    = list(passes_df["Ticker"]) + list(half_df.head(15)["Ticker"])
-    earnings_key = ",".join(sorted(set(all_cands))) if all_cands else ""
-    with st.spinner("Checking earnings dates..."):
-        earnings_dates = fetch_earnings_dates(earnings_key) if earnings_key else {}
-    full_l3, half_l3 = calc_layer3(
-        passes_df, half_df, close_sc, vol_sc, spy_sc, perm, l0,
-        earnings_dates, ticker_sector, rec_flags,
-    )
 
     # ── PAGE HEADER ───────────────────────────────────────────────────────────
     liq_override = l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
@@ -3110,12 +3412,47 @@ def main():
         _render_core_tab(l0, l15_data, perm)
 
     with tab4:
-        _render_layer2_tab(results_df, passes_df, half_df, perm, active_sectors, show_half, show_all, l0)
+        _render_layer2_tab(perm, regime, l0)
 
     with tab5:
-        _render_layer3_tab(full_l3, half_l3, perm, l0, rec_flags)
+        # L3 uses screener results from session state (populated by L2 tab)
+        passes_df = st.session_state.get("screener_passes", pd.DataFrame())
+        half_df   = st.session_state.get("screener_half", pd.DataFrame())
+        if passes_df.empty and half_df.empty:
+            st.markdown(
+                '<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">'
+                'Run the screener first (Screener tab) to populate entry trigger candidates.</p>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Compute L3 from screener results
+            # Build close/volume data from cached screener download
+            all_cands = list(passes_df["Ticker"]) + list(half_df.head(15)["Ticker"])
+            if all_cands:
+                earnings_key = ",".join(sorted(set(all_cands)))
+                with st.spinner("Checking earnings dates..."):
+                    earnings_dates = fetch_earnings_dates(earnings_key)
+
+                # Fetch price data for L3 candidates directly
+                try:
+                    l3_tickers = list(set(all_cands))
+                    l3_raw = yf.download(l3_tickers + ["SPY"], period="1y", auto_adjust=True, progress=False)
+                    close_sc = l3_raw["Close"]
+                    vol_sc = l3_raw["Volume"]
+                    spy_sc = close_sc["SPY"] if "SPY" in close_sc.columns else pd.Series(dtype=float)
+                    ticker_sector = {row["Ticker"]: row["Sector"] for _, row in pd.concat([passes_df, half_df]).iterrows()}
+                    full_l3, half_l3 = calc_layer3(
+                        passes_df, half_df, close_sc, vol_sc, spy_sc, perm, l0,
+                        earnings_dates, ticker_sector, rec_flags,
+                    )
+                    _render_layer3_tab(full_l3, half_l3, perm, l0, rec_flags)
+                except Exception:
+                    st.error("Could not load price data for entry trigger analysis. Try refreshing.")
+            else:
+                st.info("No candidates from screener to evaluate.")
 
     with tab6:
+        passes_df = st.session_state.get("screener_passes", pd.DataFrame())
         _render_charts_tab(passes_df)
 
     with tab7:
