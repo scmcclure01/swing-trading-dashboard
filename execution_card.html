@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pre-Trade Execution Card</title>
+<style>
+:root{--bg:#ffffff;--bg2:#f5f5f5;--bg3:#eaeaea;--text:#1a1a1a;--text2:#666;--text3:#999;--border:#ddd;--pass-bg:#e6f9ed;--pass-text:#0a7c3e;--pass-border:#0a7c3e;--fail-bg:#fce8e8;--fail-text:#a32d2d;--fail-border:#a32d2d;--warn-bg:#fef3d6;--warn-text:#854f0b;--warn-border:#854f0b}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#2a2a2a;--bg3:#333;--text:#e0e0e0;--text2:#aaa;--text3:#777;--border:#444;--pass-bg:#0a3320;--pass-text:#5dcaa5;--pass-border:#1d9e75;--fail-bg:#3a1515;--fail-text:#f09595;--fail-border:#e24b4a;--warn-bg:#3a2a08;--warn-text:#fac775;--warn-border:#ba7517}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:420px;margin:0 auto}
+h1{font-size:18px;font-weight:500;margin-bottom:4px}
+.sub{font-size:12px;color:var(--text3);margin-bottom:16px}
+.gate{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.gate-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.gate-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:13px;font-weight:500;background:var(--bg2);color:var(--text2)}
+.gate-num.pass{background:var(--pass-bg);color:var(--pass-text)}
+.gate-num.fail{background:var(--fail-bg);color:var(--fail-text)}
+.gate-num.warn{background:var(--warn-bg);color:var(--warn-text)}
+.gate-title{font-size:15px;font-weight:500}
+.gate-q{font-size:13px;color:var(--text2);margin-bottom:8px;line-height:1.5}
+.gate-opts{display:flex;gap:6px;flex-wrap:wrap}
+.gate-btn{font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;color:var(--text);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.gate-btn:active{transform:scale(0.97)}
+.gate-btn.sel-pass{background:var(--pass-bg);color:var(--pass-text);border-color:var(--pass-border)}
+.gate-btn.sel-fail{background:var(--fail-bg);color:var(--fail-text);border-color:var(--fail-border)}
+.gate-btn.sel-warn{background:var(--warn-bg);color:var(--warn-text);border-color:var(--warn-border)}
+.note{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.4}
+.calc-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.calc-row label{font-size:13px;color:var(--text2);min-width:72px}
+.calc-row input{flex:1;font-size:16px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);-webkit-appearance:none}
+.calc-result{background:var(--bg2);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--text);line-height:1.7;white-space:pre-line;margin-top:4px}
+.verdict{border-radius:12px;padding:18px;margin-top:14px;text-align:center;font-size:16px;font-weight:500;background:var(--bg2);color:var(--text2)}
+.reset{display:block;margin:14px auto 0;font-size:13px;color:var(--text3);cursor:pointer;background:none;border:none;text-decoration:underline;padding:8px}
+.ref{margin-top:20px;border-top:1px solid var(--border);padding-top:14px}
+.ref h2{font-size:14px;font-weight:500;margin-bottom:8px;color:var(--text2)}
+.ref-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ref-item{font-size:11px;color:var(--text3);background:var(--bg2);padding:6px 8px;border-radius:6px;line-height:1.4}
+.ref-item b{font-weight:500;color:var(--text2);display:block}
+</style>
+</head>
+<body>
+<h1>Pre-trade execution card</h1>
+<p class="sub">5 gates. All must pass before you buy.</p>
+
+<div class="gate" id="g1">
+<div class="gate-header"><span class="gate-num" id="g1n">1</span><span class="gate-title">Permission state</span></div>
+<div class="gate-q">What's the current market permission?</div>
+<div class="gate-opts">
+<button class="gate-btn" onclick="setGate(1,'green','pass')">Green</button>
+<button class="gate-btn" onclick="setGate(1,'yellow','warn')">Yellow</button>
+<button class="gate-btn" onclick="setGate(1,'red','fail')">Red</button>
+</div>
+<div class="note" id="g1note"></div>
+</div>
+
+<div class="gate" id="g2">
+<div class="gate-header"><span class="gate-num" id="g2n">2</span><span class="gate-title">Sector fit</span></div>
+<div class="gate-q">Does this stock's sector align with the current regime?</div>
+<div class="gate-opts">
+<button class="gate-btn" onclick="setGate(2,'yes','pass')">Yes — regime-aligned</button>
+<button class="gate-btn" onclick="setGate(2,'no','fail')">No — mismatched</button>
+</div>
+<div class="note" id="g2note"></div>
+</div>
+
+<div class="gate" id="g3">
+<div class="gate-header"><span class="gate-num" id="g3n">3</span><span class="gate-title">Entry type</span></div>
+<div class="gate-q">What's the trigger?</div>
+<div class="gate-opts">
+<button class="gate-btn" onclick="setGate(3,'breakout','pass')">Breakout</button>
+<button class="gate-btn" onclick="setGate(3,'pullback','pass')">Pullback</button>
+<button class="gate-btn" onclick="setGate(3,'accel','warn')">Accelerating</button>
+<button class="gate-btn" onclick="setGate(3,'none','fail')">No trigger</button>
+</div>
+<div class="note" id="g3note"></div>
+</div>
+
+<div class="gate" id="g4">
+<div class="gate-header"><span class="gate-num" id="g4n">4</span><span class="gate-title">Position size</span></div>
+<div class="gate-q">Calculate shares and dollar risk:</div>
+<div>
+<div class="calc-row"><label>Account $</label><input type="number" id="acct" value="71000" inputmode="numeric" /></div>
+<div class="calc-row"><label>Entry $</label><input type="number" id="entry" step="0.01" inputmode="decimal" placeholder="e.g. 197.00" /></div>
+<div class="calc-row"><label>Stop $</label><input type="number" id="stop" step="0.01" inputmode="decimal" placeholder="e.g. 190.00" /></div>
+<div class="calc-result" id="sizeResult">Enter entry and stop prices above</div>
+</div>
+<div class="note" id="g4note"></div>
+</div>
+
+<div class="gate" id="g5">
+<div class="gate-header"><span class="gate-num" id="g5n">5</span><span class="gate-title">Portfolio heat check</span></div>
+<div class="gate-q">Does adding this trade stay within limits?</div>
+<div class="gate-opts">
+<button class="gate-btn" onclick="setGate(5,'yes','pass')">Within limits</button>
+<button class="gate-btn" onclick="setGate(5,'no','fail')">Exceeds limits</button>
+</div>
+<div class="note" id="g5note"></div>
+</div>
+
+<div class="verdict" id="verdict">Answer all 5 gates</div>
+<button class="reset" onclick="resetAll()">Reset card</button>
+
+<div class="ref">
+<h2>Quick reference</h2>
+<div class="ref-grid">
+<div class="ref-item"><b>Green</b>20 pos, 0.75-1% risk, Core 40%</div>
+<div class="ref-item"><b>Yellow</b>8-12 pos, 0.25-0.5% risk, Core 20%</div>
+<div class="ref-item"><b>Heat caps</b>Green 15% / Yellow 8% / Red 3%</div>
+<div class="ref-item"><b>Accelerating</b>Half size, 10d EMA stop, 6wk hold</div>
+<div class="ref-item"><b>Max position</b>10% acct (Tactical), 15% (Core ETF)</div>
+<div class="ref-item"><b>Earnings</b>No entry within 10 biz days</div>
+</div>
+</div>
+
+<script>
+var state={1:null,2:null,3:null,4:null,5:null};
+var vals={1:null,2:null,3:null,4:null,5:null};
+
+function setGate(n,val,type){
+  vals[n]=val;state[n]=type;
+  var g=document.getElementById('g'+n);
+  g.querySelectorAll('.gate-btn').forEach(function(b){b.className='gate-btn'});
+  event.target.closest('.gate-btn').classList.add('sel-'+type);
+  document.getElementById('g'+n+'n').className='gate-num '+type;
+  var note=document.getElementById('g'+n+'note');
+  if(n===1){
+    if(val==='green')note.textContent='Up to 20 positions, 0.75-1% risk, full Core deployment.';
+    else if(val==='yellow')note.textContent='8-12 positions, 0.25-0.5% risk, half Core.';
+    else note.textContent='STOP. No new entries. Exit Core positions.';
+    calcSize();
+  }
+  if(n===2){note.textContent=val==='no'?'Don\'t override regime for a chart that looks good.':'';}
+  if(n===3){
+    if(val==='accel')note.textContent='Half size, 10d EMA stop, 6-week hold. Max 3 simultaneous.';
+    else if(val==='breakout')note.textContent='40%+ above-avg volume. Stop below base low.';
+    else if(val==='pullback')note.textContent='Reversal candle at MA, declining volume. Stop 1-2% below MA.';
+    else note.textContent='No trigger = no trade. Add to watchlist and wait.';
+    calcSize();
+  }
+  updateVerdict();
+}
+
+function calcSize(){
+  var acct=parseFloat(document.getElementById('acct').value)||0;
+  var ent=parseFloat(document.getElementById('entry').value);
+  var stp=parseFloat(document.getElementById('stop').value);
+  if(!ent||!stp||ent<=stp){document.getElementById('sizeResult').textContent='Enter valid entry > stop';state[4]=null;updateVerdict();return;}
+  var perm=vals[1]||'green';
+  var riskPct=perm==='green'?0.0075:(perm==='yellow'?0.005:0);
+  if(perm==='red'){document.getElementById('sizeResult').textContent='RED state — no new entries';state[4]='fail';document.getElementById('g4n').className='gate-num fail';updateVerdict();return;}
+  var riskDollars=Math.round(acct*riskPct);
+  var riskPerShare=ent-stp;
+  var shares=Math.floor(riskDollars/riskPerShare);
+  var isAccel=vals[3]==='accel';
+  if(isAccel)shares=Math.floor(shares/2);
+  var posValue=Math.round(shares*ent);
+  var maxPos=Math.round(acct*0.10);
+  var capped=false;
+  if(posValue>maxPos){shares=Math.floor(maxPos/ent);posValue=Math.round(shares*ent);capped=true;}
+  var actualRisk=Math.round(shares*riskPerShare);
+  var r=shares+' shares × $'+ent.toFixed(2)+' = $'+posValue.toLocaleString();
+  r+='\nRisk: $'+actualRisk+' ('+((actualRisk/acct)*100).toFixed(2)+'%)';
+  if(isAccel)r+='\n⚠ Half-sized (Accelerating Protocol)';
+  if(capped)r+='\n⚠ Capped at 10% of account';
+  document.getElementById('sizeResult').textContent=r;
+  state[4]='pass';document.getElementById('g4n').className='gate-num pass';
+  updateVerdict();
+}
+
+document.getElementById('entry').addEventListener('input',calcSize);
+document.getElementById('stop').addEventListener('input',calcSize);
+document.getElementById('acct').addEventListener('input',calcSize);
+
+function updateVerdict(){
+  var v=document.getElementById('verdict');
+  var filled=Object.values(state).filter(function(s){return s!==null}).length;
+  if(filled<5){v.style.background='var(--bg2)';v.style.color='var(--text2)';v.textContent='Answer all 5 gates ('+filled+'/5)';return;}
+  var fails=Object.values(state).filter(function(s){return s==='fail'}).length;
+  var warns=Object.values(state).filter(function(s){return s==='warn'}).length;
+  if(fails>0){v.style.background='var(--fail-bg)';v.style.color='var(--fail-text)';v.textContent='NO TRADE — '+fails+' gate'+(fails>1?'s':'')+' failed';}
+  else if(warns>0){v.style.background='var(--warn-bg)';v.style.color='var(--warn-text)';v.textContent='Proceed with caution — reduced size';}
+  else{v.style.background='var(--pass-bg)';v.style.color='var(--pass-text)';v.textContent='All gates pass — execute trade';}
+}
+
+function resetAll(){
+  state={1:null,2:null,3:null,4:null,5:null};vals={1:null,2:null,3:null,4:null,5:null};
+  for(var i=1;i<=5;i++){
+    document.getElementById('g'+i+'n').className='gate-num';
+    document.getElementById('g'+i).querySelectorAll('.gate-btn').forEach(function(b){b.className='gate-btn'});
+    var n=document.getElementById('g'+i+'note');if(n)n.textContent='';
+  }
+  document.getElementById('sizeResult').textContent='Enter entry and stop prices above';
+  document.getElementById('entry').value='';document.getElementById('stop').value='';
+  updateVerdict();
+}
+</script>
+</body>
+</html>

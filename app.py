@@ -1854,6 +1854,194 @@ def _render_layer2_tab(results_df: pd.DataFrame, passes_df: pd.DataFrame,
         )
 
 
+def _render_position_sizer(
+    full_l3: pd.DataFrame,
+    half_l3: pd.DataFrame,
+    perm: str,
+    l0: dict,
+) -> None:
+    """
+    Render the Layer 4 — Position Sizer section within the Entry Trigger tab.
+    Auto-populates entry/stop from L3 candidates. Computes shares, risk, and
+    flags Accelerating half-sizing, 10% cap, and drawdown-adjusted risk.
+    """
+    st.markdown("---")
+    st.markdown(
+        _card(
+            "Layer 4 — Position Sizer",
+            '<p style="font-size:12px; color:#5A7BAA; margin:0;">'
+            'Select a candidate or enter custom values. Risk % auto-adjusts to permission state and drawdown tier.</p>',
+            pill="v4",
+        ),
+        unsafe_allow_html=True,
+    )
+
+    account = st.session_state.account_value
+    drawdown_state = st.session_state.drawdown_state
+
+    # ── Build candidate list from L3 results ──────────────────────────────────
+    candidates = {}
+    for df in [full_l3, half_l3]:
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                if pd.notna(row.get("Entry")) and pd.notna(row.get("Stop")):
+                    trigger = row.get("Trigger", "Standard")
+                    label = f"{row['Ticker']}  —  {row['Verdict']}  ({trigger})"
+                    candidates[label] = {
+                        "ticker": row["Ticker"],
+                        "entry": float(row["Entry"]),
+                        "stop": float(row["Stop"]),
+                        "trigger": trigger,
+                        "sector": row.get("Sector", ""),
+                    }
+
+    col_sel, col_spacer = st.columns([3, 1])
+    with col_sel:
+        options = ["Custom entry"] + list(candidates.keys())
+        selected = st.selectbox("Select candidate", options, label_visibility="collapsed")
+
+    # ── Determine defaults ────────────────────────────────────────────────────
+    if selected != "Custom entry" and selected in candidates:
+        cand = candidates[selected]
+        default_entry = cand["entry"]
+        default_stop = cand["stop"]
+        default_trigger = cand["trigger"]
+    else:
+        default_entry = 0.0
+        default_stop = 0.0
+        default_trigger = "Standard"
+
+    # ── Input columns ─────────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        entry_px = st.number_input("Entry $", value=default_entry, step=0.01, format="%.2f", key="sizer_entry")
+    with c2:
+        stop_px = st.number_input("Stop $", value=default_stop, step=0.01, format="%.2f", key="sizer_stop")
+    with c3:
+        trigger_type = st.selectbox(
+            "Trigger type",
+            ["Breakout", "Pullback", "Accelerating"],
+            index=["Breakout", "Pullback", "Accelerating"].index(default_trigger)
+                  if default_trigger in ["Breakout", "Pullback", "Accelerating"] else 0,
+            key="sizer_trigger",
+        )
+    with c4:
+        acct_override = st.number_input("Account $", value=account, step=1000, format="%d", key="sizer_acct")
+
+    # ── Compute sizing ────────────────────────────────────────────────────────
+    if entry_px > 0 and stop_px > 0 and entry_px > stop_px:
+        # Base risk % from permission state
+        risk_pct_map = {"Green": 0.0075, "Yellow": 0.005, "Red": 0.0}
+        base_risk_pct = risk_pct_map.get(perm, 0.0075)
+
+        # Drawdown adjustment (Layer 7)
+        if "7–10%" in drawdown_state or "Tier 2" in drawdown_state:
+            drawdown_mult = 0.50
+            dd_note = "Tier 2 drawdown — risk reduced 50%"
+        elif "10–15%" in drawdown_state or "Tier 3" in drawdown_state:
+            drawdown_mult = 0.0
+            dd_note = "Tier 3 drawdown — no new Tactical entries"
+        elif ">15%" in drawdown_state:
+            drawdown_mult = 0.0
+            dd_note = "Emergency — no new positions"
+        else:
+            drawdown_mult = 1.0
+            dd_note = ""
+
+        adj_risk_pct = base_risk_pct * drawdown_mult
+        is_accel = trigger_type == "Accelerating"
+
+        risk_dollars = round(acct_override * adj_risk_pct)
+        risk_per_share = entry_px - stop_px
+        shares = int(risk_dollars / risk_per_share) if risk_per_share > 0 else 0
+
+        if is_accel:
+            shares = shares // 2
+
+        pos_value = round(shares * entry_px)
+        max_pos_value = round(acct_override * 0.10)
+        capped = False
+        if pos_value > max_pos_value:
+            shares = int(max_pos_value / entry_px)
+            pos_value = round(shares * entry_px)
+            capped = True
+
+        actual_risk = round(shares * risk_per_share)
+        actual_risk_pct = (actual_risk / acct_override * 100) if acct_override > 0 else 0
+
+        # T1 / T2 targets
+        if is_accel:
+            t1_pct, t2_pct = 0.09, 0.175
+            t1_label, t2_label = "+8-10%", "+15-20%"
+            max_hold = "6 weeks"
+        else:
+            t1_pct, t2_pct = 0.10, 0.225
+            t1_label, t2_label = "+8-12%", "+20-25%"
+            max_hold = "12 weeks"
+
+        t1_price = round(entry_px * (1 + t1_pct), 2)
+        t2_price = round(entry_px * (1 + t2_pct), 2)
+        breakeven_trigger = round(entry_px * 1.05, 2)
+
+        # Build result rows
+        result_rows = [
+            {"Metric": "Shares",           "Value": f"{shares:,}"},
+            {"Metric": "Position Value",   "Value": f"${pos_value:,}  ({pos_value/acct_override*100:.1f}% of account)"},
+            {"Metric": "Risk Dollars",     "Value": f"${actual_risk:,}  ({actual_risk_pct:.2f}% of account)"},
+            {"Metric": "Risk / Share",     "Value": f"${risk_per_share:.2f}"},
+            {"Metric": "Risk %",           "Value": f"{adj_risk_pct*100:.3f}%  ({perm} state{', drawdown adjusted' if drawdown_mult < 1 else ''})"},
+        ]
+
+        target_rows = [
+            {"Level": "Breakeven stop",  "Price": f"${breakeven_trigger:.2f}", "Action": "Move stop to breakeven at +5%"},
+            {"Level": f"T1 ({t1_label})", "Price": f"${t1_price:.2f}",         "Action": "Sell 1/3, stop → breakeven"},
+            {"Level": f"T2 ({t2_label})", "Price": f"${t2_price:.2f}",         "Action": "Sell 1/3, trail at 20d MA"},
+            {"Level": "Max hold",         "Price": max_hold,                    "Action": "Exit if insufficient progress"},
+        ]
+
+        # Warnings
+        warnings = []
+        if is_accel:
+            warnings.append("🔥 Accelerating Protocol — half-sized, 10d EMA stop, 6-week hold")
+        if capped:
+            warnings.append(f"⚠️ Position capped at 10% of account (${max_pos_value:,})")
+        if dd_note:
+            warnings.append(f"⚠️ {dd_note}")
+        if perm == "Red":
+            warnings.append("❌ RED state — no new positions allowed")
+
+        warn_html = ""
+        if warnings:
+            warn_html = '<div style="margin-bottom:8px;">' + "".join(
+                f'<p style="font-size:12px; font-weight:500; color:#CC1111; margin:2px 0;">{w}</p>'
+                for w in warnings
+            ) + '</div>'
+
+        sizing_html = warn_html + cb_table(pd.DataFrame(result_rows), bordered=False)
+        targets_html = cb_table(pd.DataFrame(target_rows), bordered=False)
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown(
+                _card("Position Size", sizing_html, pill=f"{shares:,} shares"),
+                unsafe_allow_html=True,
+            )
+        with col_b:
+            st.markdown(
+                _card("Profit Targets & Management", targets_html, pill=trigger_type),
+                unsafe_allow_html=True,
+            )
+    else:
+        if entry_px > 0 and stop_px > 0 and entry_px <= stop_px:
+            st.warning("Entry price must be greater than stop price.")
+        else:
+            st.markdown(
+                '<p style="font-size:13px; color:#5A7BAA; text-align:center; padding:20px;">'
+                'Select a candidate above or enter entry/stop prices to calculate position size.</p>',
+                unsafe_allow_html=True,
+            )
+
+
 def _render_layer3_tab(
     full_l3: pd.DataFrame,
     half_l3: pd.DataFrame,
@@ -1985,6 +2173,9 @@ def _render_layer3_tab(
         "Entry and stop prices are algorithmic estimates based on price data. "
         "Always confirm base structure, candle quality, and exact pivot in TradingView before entering."
     )
+
+    # ── L4 Position Sizer ─────────────────────────────────────────────────────
+    _render_position_sizer(full_l3, half_l3, perm, l0)
 
 
 def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
