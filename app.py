@@ -2477,27 +2477,10 @@ def _render_position_sizer_tab(
     queue = st.session_state.get("sizer_queue", [])
     candidates = {}
 
-    # Add queued tickers first (selected via checkboxes)
+    # Only show queued tickers (selected via checkboxes on Screener tab)
     for item in queue:
         label = f"{item['ticker']}  —  {item.get('verdict', '')}  ({item.get('trigger', 'Breakout')})  ${item.get('price', 0):.2f}"
         candidates[label] = item
-
-    # Also add all screener candidates as fallback
-    if candidates_df is not None and not candidates_df.empty:
-        for _, row in candidates_df.iterrows():
-            trigger = row.get("Trigger", "Breakout")
-            verdict = row.get("Verdict", "")
-            label = f"{row['Ticker']}  —  {verdict}  ({trigger})  ${row['Price']:.2f}"
-            if label not in candidates:
-                candidates[label] = {
-                    "ticker": row["Ticker"],
-                    "entry": float(row["Entry"]),
-                    "stop": float(row["Stop"]),
-                    "trigger": trigger,
-                    "sector": row.get("Sector", ""),
-                    "price": float(row["Price"]),
-                    "verdict": verdict,
-                }
 
     st.session_state["_sizer_candidates"] = candidates
 
@@ -3424,8 +3407,8 @@ def main():
     # ── CSS ───────────────────────────────────────────────────────────────────
     st.markdown(APP_CSS, unsafe_allow_html=True)
 
-    # ── SESSION STATE ─────────────────────────────────────────────────────────
-    # Manual signals (set once per weekly review)
+    # ── SESSION STATE (with URL persistence for manual signals) ─────────────
+    # Manual signals (set once per weekly review, persisted in URL query params)
     defaults = {
         "eps_signal":    "Not set",
         "drawdown_state": "At or near peak — full risk",
@@ -3440,9 +3423,40 @@ def main():
     for etf in SECTOR_ETFS.values():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
+    # Keys that persist across refreshes via URL query params
+    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule",
+                     "core_pct_deployed", "core_positions", "account_value"]
+
+    # Load persisted values from URL on first visit
+    qp = st.query_params
     for k, v in defaults.items():
         if k not in st.session_state:
-            st.session_state[k] = v
+            if k in _persist_keys and k in qp:
+                # Restore from URL
+                url_val = qp[k]
+                if isinstance(v, float):
+                    try:
+                        st.session_state[k] = float(url_val)
+                    except (ValueError, TypeError):
+                        st.session_state[k] = v
+                elif isinstance(v, int):
+                    try:
+                        st.session_state[k] = int(url_val)
+                    except (ValueError, TypeError):
+                        st.session_state[k] = v
+                else:
+                    st.session_state[k] = url_val
+            else:
+                st.session_state[k] = v
+
+    def _save_manual_signals():
+        """Persist manual signal values to URL query params."""
+        params = {}
+        for k in _persist_keys:
+            val = st.session_state.get(k)
+            if val is not None and val != defaults.get(k):
+                params[k] = str(val)
+        st.query_params.update(params)
 
     # ── SIDEBAR ───────────────────────────────────────────────────────────────
     with st.sidebar:
@@ -3456,10 +3470,11 @@ def main():
         st.subheader("Manual Signals")
         st.caption("Set once at the start of each weekly review.")
 
+        _eps_opts = ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"]
         st.session_state.eps_signal = st.selectbox(
-            "EPS Revisions (FactSet)",
-            ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"],
-            index=["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"].index(st.session_state.eps_signal),
+            "EPS Revisions (FactSet)", _eps_opts,
+            index=_eps_opts.index(st.session_state.eps_signal),
+            on_change=_save_manual_signals,
         )
         _drawdown_opts = [
             "At or near peak — full risk",
@@ -3468,18 +3483,18 @@ def main():
             "Tier 3: 10–15% drawdown — defensive",
             ">15% drawdown — 100% cash",
         ]
-        # Migrate old v3 values to v4 if needed
         if st.session_state.drawdown_state not in _drawdown_opts:
             st.session_state.drawdown_state = _drawdown_opts[0]
         st.session_state.drawdown_state = st.selectbox(
-            "Drawdown from Peak Equity",
-            _drawdown_opts,
+            "Drawdown from Peak Equity", _drawdown_opts,
             index=_drawdown_opts.index(st.session_state.drawdown_state),
+            on_change=_save_manual_signals,
         )
+        _lei_opts = ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"]
         st.session_state.lei_signal = st.selectbox(
-            "Conference Board LEI",
-            ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"],
-            index=["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"].index(st.session_state.lei_signal),
+            "Conference Board LEI", _lei_opts,
+            index=_lei_opts.index(st.session_state.lei_signal),
+            on_change=_save_manual_signals,
         )
         _taylor_opts = [
             "Not set",
@@ -3488,9 +3503,9 @@ def main():
             "Negative <−1% — Fed too tight ✅",
         ]
         st.session_state.taylor_rule = st.selectbox(
-            "Taylor Rule Deviation (monthly)",
-            _taylor_opts,
+            "Taylor Rule Deviation (monthly)", _taylor_opts,
             index=_taylor_opts.index(st.session_state.taylor_rule),
+            on_change=_save_manual_signals,
         )
 
         st.divider()
@@ -3498,15 +3513,18 @@ def main():
         st.caption("Track Core ETF positions and deployment floor.")
         st.session_state.account_value = st.number_input(
             "Account Value ($)", value=st.session_state.account_value, step=1000, format="%d",
+            on_change=_save_manual_signals,
         )
         st.session_state.core_positions = st.text_input(
             "Core ETF Positions (comma-separated)", value=st.session_state.core_positions,
             placeholder="e.g. XLK, XLI",
             help="Enter ETF tickers of current Core positions.",
+            on_change=_save_manual_signals,
         )
         st.session_state.core_pct_deployed = st.slider(
             "Core % Deployed", 0.0, 60.0, st.session_state.core_pct_deployed, step=1.0,
             help="Percentage of account in Core ETFs.",
+            on_change=_save_manual_signals,
         )
 
         st.divider()
