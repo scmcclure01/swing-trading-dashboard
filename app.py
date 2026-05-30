@@ -2254,103 +2254,154 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     )
     st.markdown(stats_html, unsafe_allow_html=True)
 
-    # ── Ticker selector — radio buttons to push to Position Sizer ────────────
-    actionable = results_df[
-        results_df["Entry"].notna() & results_df["Stop"].notna()
-    ].copy()
+    # ── Helper: render a selectable table with checkboxes ────────────────────
+    def _selectable_table(df_raw, display_cols, section_key, heading, pill=""):
+        """
+        Render a table with checkbox selection. Selected tickers are stored
+        in session state and pushed to the Position Sizer tab.
+        df_raw must have Ticker, Entry, Stop, Trigger columns for sizing.
+        display_cols is a dict of {display_name: series}.
+        """
+        # Build display df with a "Size" checkbox column
+        disp = pd.DataFrame(display_cols)
+        disp.insert(0, "Size", False)
+        disp = disp.reset_index(drop=True)
 
-    if not actionable.empty:
-        # Build radio options: ticker + key info
-        radio_labels = [f"None selected"]
-        radio_map = {}
-        for _, row in actionable.iterrows():
-            verdict_short = row["Verdict"].split(" ", 1)[-1] if " " in str(row["Verdict"]) else ""
-            label = (f"{row['Ticker']}  ·  {row['Sector']}  ·  "
-                     f"${row['Price']:.2f}  ·  {verdict_short}  ·  "
-                     f"Entry ${row['Entry']:.2f} / Stop ${row['Stop']:.2f}")
-            radio_labels.append(label)
-            radio_map[label] = row
-
-        def _on_radio_select():
-            sel = st.session_state.get("screener_ticker_radio", "None selected")
-            if sel != "None selected" and sel in radio_map:
-                row = radio_map[sel]
-                st.session_state["sizer_entry"] = float(row["Entry"])
-                st.session_state["sizer_stop"] = float(row["Stop"])
-                trigger = row.get("Trigger", "Breakout")
-                if trigger in ["Breakout", "Pullback", "Accelerating"]:
-                    st.session_state["sizer_trigger"] = trigger
-
-        st.radio(
-            "Select a ticker → then go to **Position Sizer** tab",
-            radio_labels,
-            key="screener_ticker_radio",
-            on_change=_on_radio_select,
+        st.markdown(
+            f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+            f' padding:15px 17px; margin-bottom:4px;">'
+            f'<div style="display:flex; align-items:center; justify-content:space-between;'
+            f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
+            f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+            f' letter-spacing:0.04em;">{heading}</span>'
+            + (f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
+               f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
+               if pill else "")
+            + f'</div></div>',
+            unsafe_allow_html=True,
         )
 
-    # ── Top Setups card (Full signal + near entry zone) ──────────────────────
+        edited = st.data_editor(
+            disp,
+            column_config={
+                "Size": st.column_config.CheckboxColumn("Size", default=False, width="small"),
+            },
+            disabled=[c for c in disp.columns if c != "Size"],
+            hide_index=True,
+            use_container_width=True,
+            key=f"sel_{section_key}",
+        )
+
+        # Collect selected tickers and push to session state
+        if edited is not None and "Size" in edited.columns:
+            selected_rows = edited[edited["Size"] == True]
+            if not selected_rows.empty:
+                selected_tickers = selected_rows["Ticker"].tolist()
+                # Merge with existing selections from other sections
+                existing = st.session_state.get("sizer_queue", [])
+                for t in selected_tickers:
+                    match = df_raw[df_raw["Ticker"] == t]
+                    if not match.empty:
+                        row = match.iloc[0]
+                        entry = {
+                            "ticker": t,
+                            "entry": float(row["Entry"]) if pd.notna(row.get("Entry")) else 0,
+                            "stop": float(row["Stop"]) if pd.notna(row.get("Stop")) else 0,
+                            "trigger": row.get("Trigger", "Breakout"),
+                            "price": float(row["Price"]),
+                            "sector": row.get("Sector", ""),
+                            "verdict": row.get("Verdict", ""),
+                        }
+                        # Avoid duplicates
+                        if not any(e["ticker"] == t for e in existing):
+                            existing.append(entry)
+                st.session_state["sizer_queue"] = existing
+
+        st.markdown('<div style="margin-bottom:10px"></div>', unsafe_allow_html=True)
+
+    # Initialize sizer queue
+    if "sizer_queue" not in st.session_state:
+        st.session_state["sizer_queue"] = []
+
+    # Clear queue button
+    if st.session_state.get("sizer_queue"):
+        queue_tickers = [e["ticker"] for e in st.session_state["sizer_queue"]]
+        st.markdown(
+            _gate_bar_html("Green", f"Sizing queue: {', '.join(queue_tickers)} → go to Position Sizer tab"),
+            unsafe_allow_html=True,
+        )
+        if st.button("Clear sizing queue", key="clear_queue"):
+            st.session_state["sizer_queue"] = []
+            st.rerun()
+
+    # ── Top Setups (Full signal + near entry zone) ───────────────────────────
     top_setups = results_df[
         (results_df["PASS"]) & (results_df["Dist_MA20_pct"] <= 6.0)
     ].head(15)
     if not top_setups.empty:
-        top_disp = pd.DataFrame({
-            "Ticker":     top_setups["Ticker"],
-            "Sector":     top_setups["Sector"],
-            "Price":      top_setups["Price"].apply(lambda x: f"${x:.2f}"),
-            "Verdict":    top_setups["Verdict"],
-            "Trigger":    top_setups["Trigger"],
-            "Entry":      top_setups["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Stop":       top_setups["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "RS vs SPY":  top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            "vs 20MA":    top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "Notes":      top_setups["Notes"],
-        })
         ready_n = int((top_setups["Verdict"] == "🟢 ENTRY READY").sum())
         watch_n = int((top_setups["Verdict"] == "🟡 WATCH").sum())
-        st.markdown(
-            _card(f"Top Setups — Full Signal + Near Entry Zone",
-                  cb_table(top_disp, bordered=False),
-                  pill=f"✅ {ready_n} ready · 🟡 {watch_n} watch"),
-            unsafe_allow_html=True,
+        _selectable_table(
+            top_setups,
+            {
+                "Ticker":     top_setups["Ticker"].values,
+                "Sector":     top_setups["Sector"].values,
+                "Price":      top_setups["Price"].apply(lambda x: f"${x:.2f}").values,
+                "Verdict":    top_setups["Verdict"].values,
+                "Trigger":    top_setups["Trigger"].values,
+                "Entry":      top_setups["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+                "Stop":       top_setups["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+                "RS vs SPY":  top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+                "vs 20MA":    top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+                "Notes":      top_setups["Notes"].values,
+            },
+            "top_setups",
+            "Top Setups — Full Signal + Near Entry Zone",
+            pill=f"✅ {ready_n} ready · 🟡 {watch_n} watch",
         )
 
-    # ── Full Signal card ─────────────────────────────────────────────────────
+    # ── Full Signal ──────────────────────────────────────────────────────────
     if not passes_df.empty:
         full_show = passes_df.head(50)
-        full_disp = pd.DataFrame({
-            "Ticker":     full_show["Ticker"],
-            "Sector":     full_show["Sector"],
-            "Price":      full_show["Price"].apply(lambda x: f"${x:.2f}"),
-            "Verdict":    full_show["Verdict"],
-            "Trigger":    full_show["Trigger"],
-            "Entry":      full_show["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Stop":       full_show["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "RS vs SPY":  full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            "vs 20MA":    full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "Vol 5d":     full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x"),
-        })
         showing = f"top 50 of {len(passes_df)}" if len(passes_df) > 50 else str(len(passes_df))
-        st.markdown(
-            _card(f"Full Signal — {showing} candidates", cb_table(full_disp, bordered=False), pill="✅ Full"),
-            unsafe_allow_html=True,
+        _selectable_table(
+            full_show,
+            {
+                "Ticker":     full_show["Ticker"].values,
+                "Sector":     full_show["Sector"].values,
+                "Price":      full_show["Price"].apply(lambda x: f"${x:.2f}").values,
+                "Verdict":    full_show["Verdict"].values,
+                "Trigger":    full_show["Trigger"].values,
+                "Entry":      full_show["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+                "Stop":       full_show["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+                "RS vs SPY":  full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+                "vs 20MA":    full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+                "Vol 5d":     full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
+            },
+            "full_signal",
+            f"Full Signal — {showing} candidates",
+            pill="✅ Full",
         )
         st.text_area("Copy tickers", value="  ".join(passes_df["Ticker"].tolist()),
                      height=50, label_visibility="collapsed")
 
-    # ── Half Signal card ─────────────────────────────────────────────────────
+    # ── Half Signal ──────────────────────────────────────────────────────────
     if not half_df.empty:
         half_show = half_df.head(15)
-        half_disp = pd.DataFrame({
-            "Ticker":    half_show["Ticker"],
-            "Sector":    half_show["Sector"],
-            "Price":     half_show["Price"].apply(lambda x: f"${x:.2f}"),
-            "RS vs SPY": half_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            "vs 20MA":   half_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "Entry Zone": half_show["Entry_Zone"],
-        })
-        st.markdown(
-            _card(f"Half Signal — {len(half_df)} candidates", cb_table(half_disp, bordered=False), pill="⚠️ Half"),
-            unsafe_allow_html=True,
+        _selectable_table(
+            half_show,
+            {
+                "Ticker":     half_show["Ticker"].values,
+                "Sector":     half_show["Sector"].values,
+                "Price":      half_show["Price"].apply(lambda x: f"${x:.2f}").values,
+                "Verdict":    half_show["Verdict"].values,
+                "RS vs SPY":  half_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+                "vs 20MA":    half_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+                "Entry Zone": half_show["Entry_Zone"].values,
+            },
+            "half_signal",
+            f"Half Signal — {len(half_df)} candidates",
+            pill="⚠️ Half",
         )
 
     # ── Accelerating Protocol (v4) ───────────────────────────────────────────
@@ -2364,36 +2415,37 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
         )
         accel_df = results_df[accel_mask].sort_values("% > 20MA")
         if not accel_df.empty:
-            accel_disp = pd.DataFrame({
-                "Ticker":    accel_df["Ticker"],
-                "Sector":    accel_df["Sector"],
-                "Price":     accel_df["Price"].apply(lambda x: f"${x:.2f}"),
-                "vs 20MA":   accel_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-                "2-Speed":   accel_df["2-Speed"],
-                "RS vs SPY": accel_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-            })
-            st.markdown(
-                _card(f"🔥 Accelerating Protocol — {len(accel_df)} candidates",
-                      cb_table(accel_disp, bordered=False)
-                      + '<p style="font-size:11px; color:#CC1111; font-weight:500; margin-top:6px;">'
-                      'Half size · 10d EMA stop · 6-week max hold · Max 3 simultaneous</p>',
-                      pill="v4"),
-                unsafe_allow_html=True,
+            _selectable_table(
+                accel_df,
+                {
+                    "Ticker":     accel_df["Ticker"].values,
+                    "Sector":     accel_df["Sector"].values,
+                    "Price":      accel_df["Price"].apply(lambda x: f"${x:.2f}").values,
+                    "vs 20MA":    accel_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+                    "2-Speed":    accel_df["2-Speed"].values,
+                    "RS vs SPY":  accel_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+                },
+                "accel",
+                f"🔥 Accelerating Protocol — {len(accel_df)} candidates",
+                pill="v4",
             )
+            st.caption("Half size · 10d EMA stop · 6-week max hold · Max 3 simultaneous")
 
     # ── MACD Crossovers ──────────────────────────────────────────────────────
     macd_cross = results_df[results_df["MACD_Crossover"]].head(10)
     if not macd_cross.empty:
-        mc_disp = pd.DataFrame({
-            "Ticker":    macd_cross["Ticker"],
-            "Sector":    macd_cross["Sector"],
-            "Price":     macd_cross["Price"].apply(lambda x: f"${x:.2f}"),
-            "vs 20MA":   macd_cross["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%"),
-            "RS vs SPY": macd_cross["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%"),
-        })
-        st.markdown(
-            _card("MACD Histogram Crossover (red → green)", cb_table(mc_disp, bordered=False), pill=f"🟢 {len(macd_cross)}"),
-            unsafe_allow_html=True,
+        _selectable_table(
+            macd_cross,
+            {
+                "Ticker":     macd_cross["Ticker"].values,
+                "Sector":     macd_cross["Sector"].values,
+                "Price":      macd_cross["Price"].apply(lambda x: f"${x:.2f}").values,
+                "vs 20MA":    macd_cross["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+                "RS vs SPY":  macd_cross["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+            },
+            "macd",
+            "MACD Histogram Crossover (red → green)",
+            pill=f"🟢 {len(macd_cross)}",
         )
 
 
@@ -2421,20 +2473,31 @@ def _render_position_sizer_tab(
     account = st.session_state.account_value
     drawdown_state = st.session_state.drawdown_state
 
-    # ── Build candidate list ──────────────────────────────────────────────────
+    # ── Build candidate list from sizer_queue (selected on Screener tab) ─────
+    queue = st.session_state.get("sizer_queue", [])
     candidates = {}
+
+    # Add queued tickers first (selected via checkboxes)
+    for item in queue:
+        label = f"{item['ticker']}  —  {item.get('verdict', '')}  ({item.get('trigger', 'Breakout')})  ${item.get('price', 0):.2f}"
+        candidates[label] = item
+
+    # Also add all screener candidates as fallback
     if candidates_df is not None and not candidates_df.empty:
         for _, row in candidates_df.iterrows():
             trigger = row.get("Trigger", "Breakout")
             verdict = row.get("Verdict", "")
             label = f"{row['Ticker']}  —  {verdict}  ({trigger})  ${row['Price']:.2f}"
-            candidates[label] = {
-                "ticker": row["Ticker"],
-                "entry": float(row["Entry"]),
-                "stop": float(row["Stop"]),
-                "trigger": trigger,
-                "sector": row.get("Sector", ""),
-            }
+            if label not in candidates:
+                candidates[label] = {
+                    "ticker": row["Ticker"],
+                    "entry": float(row["Entry"]),
+                    "stop": float(row["Stop"]),
+                    "trigger": trigger,
+                    "sector": row.get("Sector", ""),
+                    "price": float(row["Price"]),
+                    "verdict": verdict,
+                }
 
     st.session_state["_sizer_candidates"] = candidates
 
@@ -2443,16 +2506,24 @@ def _render_position_sizer_tab(
         cands = st.session_state.get("_sizer_candidates", {})
         if sel != "Custom entry" and sel in cands:
             c = cands[sel]
-            st.session_state["sizer_entry"] = c["entry"]
-            st.session_state["sizer_stop"] = c["stop"]
+            st.session_state["sizer_entry"] = c.get("entry", 0.0)
+            st.session_state["sizer_stop"] = c.get("stop", 0.0)
             trigger_opts = ["Breakout", "Pullback", "Accelerating"]
-            if c["trigger"] in trigger_opts:
+            if c.get("trigger") in trigger_opts:
                 st.session_state["sizer_trigger"] = c["trigger"]
 
     if "sizer_entry" not in st.session_state:
         st.session_state["sizer_entry"] = 0.0
     if "sizer_stop" not in st.session_state:
         st.session_state["sizer_stop"] = 0.0
+
+    # Show queue status
+    if queue:
+        queue_tickers = [e["ticker"] for e in queue]
+        st.markdown(
+            _gate_bar_html("Green", f"From screener: {', '.join(queue_tickers)}"),
+            unsafe_allow_html=True,
+        )
 
     options = ["Custom entry"] + list(candidates.keys())
     st.selectbox(
