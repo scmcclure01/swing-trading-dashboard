@@ -1,0 +1,271 @@
+{
+  "account_size": 100000,
+  "last_updated": "2026-05-28",
+  "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
+  "open_positions": [
+    {
+      "ticker": "QCOM",
+      "layer": "Tactical",
+      "entry_date": "2026-05-27",
+      "entry_price": 240.00,
+      "shares": 41,
+      "stop_price": 225.00,
+      "current_price": 243.29,
+      "notes": "Accelerating Protocol. GTC stop $225 set in broker (order 1790W5BX). Risk: $615 (0.62%). SMH ROC 21 +22%. Max hold 2026-07-08."
+    },
+    {
+      "ticker": "LRCX",
+      "layer": "Tactical",
+      "entry_date": "2026-05-28",
+      "entry_price": 310.00,
+      "shares": 16,
+      "stop_price": 295.00,
+      "current_price": 318.00,
+      "notes": "Accelerating Protocol. GTC stop $295 set in broker (order 1790T7JB). Risk: $240 (0.24%). Two-speed Full, carry Positive. Max hold 2026-07-09."
+    }
+  ],
+  "closed_positions": [
+    {
+      "ticker": "NVDA",
+      "layer": "Tactical",
+      "entry_date": "2026-05-04",
+      "exit_date": "2026-05-27",
+      "entry_price": 201.70,
+      "exit_price": 211.00,
+      "shares": 35,
+      "exit_reason": "Stop",
+      "notes": "Breakeven stop triggered at $211 (+4.6%). $0.16 fee. P&L: +$325.34."
+    },
+    {
+      "ticker": "VRT",
+      "layer": "Tactical",
+      "entry_date": "2025-09-18",
+      "exit_date": "2026-05-18",
+      "entry_price": 139.29,
+      "exit_price": 339.00,
+      "shares": 7,
+      "exit_reason": "Rule-based",
+      "notes": "Runner leg — trailed 20d MA, 8-month hold. $0.05 fee. VRT combined P&L (all legs): +$2,883.23."
+    },
+    {
+      "ticker": "SM",
+      "layer": "Tactical",
+      "entry_date": "2025-10-01",
+      "exit_date": "2026-05-06",
+      "entry_price": 24.89,
+      "exit_price": 29.31,
+      "shares": 17,
+      "exit_reason": "Stop",
+      "notes": "GTC stop triggered. Final leg after 2/3 partial taken Mar 30. $0.02 fee."
+    },
+    {
+      "ticker": "DUK",
+      "layer": "Tactical",
+      "entry_date": "2025-09-23",
+      "exit_date": "2026-04-27",
+      "entry_price": 121.60,
+      "exit_price": 126.98,
+      "shares": 25,
+      "exit_reason": "Stop",
+      "notes": "GTC stop triggered 3:29pm ET. Held from defensive regime; exited as regime rotated Risk-On."
+    },
+    {
+      "ticker": "XOM",
+      "layer": "Tactical",
+      "entry_date": "2026-02-26",
+      "exit_date": "2026-04-27",
+      "entry_price": 147.00,
+      "exit_price": 147.99,
+      "shares": 13,
+      "exit_reason": "Stop",
+      "notes": "GTC stop triggered 1:06pm ET (2 partial fills). Final leg; 1/3 partial taken Mar 30 at $175."
+    },
+    {
+      "ticker": "VRT",
+      "layer": "Tactical",
+      "entry_date": "2025-09-18",
+      "exit_date": "2026-03-30",
+      "entry_price": 139.29,
+      "exit_price": 253.71,
+      "shares": 13,
+      "exit_reason": "Target",
+      "notes": "2/3 partial taken well past 2nd target. 7-share runner remained open."
+    },
+    {
+      "ticker": "SM",
+      "layer": "Tactical",
+      "entry_date": "2025-10-01",
+      "exit_date": "2026-03-30",
+      "entry_price": 24.89,
+      "exit_price": 33.00,
+      "shares": 33,
+      "exit_reason": "Target",
+      "notes": "2/3 partial taken past 2nd target. 17-share remainder still running."
+    },
+    {
+      "ticker": "XOM",
+      "layer": "Tactical",
+      "entry_date": "2026-02-26",
+      "exit_date": "2026-03-30",
+      "entry_price": 147.00,
+      "exit_price": 175.00,
+      "shares": 7,
+      "exit_reason": "Target",
+      "notes": "1/3 partial at 1st target (+19%). 13-share remainder continued."
+    },
+    {
+      "ticker": "SCCO",
+      "layer": "Tactical",
+      "entry_date": "2026-03-03",
+      "exit_date": "2026-03-30",
+      "entry_price": 200.00,
+      "exit_price": 166.60,
+      "shares": 12,
+      "exit_reason": "Stop",
+      "notes": "Cut loss — thesis broken, regime deterioration. Lesson: pre-set stops in broker."
+    },
+    {
+      "ticker": "RTX",
+      "layer": "Tactical",
+      "entry_date": "2026-02-17",
+      "exit_date": "2026-03-24",
+      "entry_price": 204.00,
+      "exit_price": 191.42,
+      "shares": 10,
+      "exit_reason": "Stop",
+      "notes": "Stopped out — regime deterioration."
+    },
+    {
+      "ticker": "ITA",
+      "layer": "Tactical",
+      "entry_date": "2026-02-11",
+      "exit_date": "2026-03-19",
+      "entry_price": 230.00,
+      "exit_price": 224.85,
+      "shares": 17,
+      "exit_reason": "Stop",
+      "notes": "Defense ETF lot 1."
+    },
+    {
+      "ticker": "ITA",
+      "layer": "Tactical",
+      "entry_date": "2026-02-02",
+      "exit_date": "2026-03-19",
+      "entry_price": 230.00,
+      "exit_price": 224.85,
+      "shares": 17,
+      "exit_reason": "Stop",
+      "notes": "Defense ETF lot 2."
+    },
+    {
+      "ticker": "FCX",
+      "layer": "Tactical",
+      "entry_date": "2026-02-13",
+      "exit_date": "2026-03-09",
+      "entry_price": 60.90,
+      "exit_price": 57.42,
+      "shares": 66,
+      "exit_reason": "Stop",
+      "notes": "Copper/mining; early regime deterioration."
+    },
+    {
+      "ticker": "GEV",
+      "layer": "Tactical",
+      "entry_date": "2026-02-02",
+      "exit_date": "2026-03-03",
+      "entry_price": 752.19,
+      "exit_price": 829.50,
+      "shares": 5,
+      "exit_reason": "Target",
+      "notes": "Lot 1 (3 shares @$752.20 + 2 shares @$752.17). Sold into strength. Avg exit $829.50."
+    },
+    {
+      "ticker": "GEV",
+      "layer": "Tactical",
+      "entry_date": "2026-02-17",
+      "exit_date": "2026-03-05",
+      "entry_price": 822.00,
+      "exit_price": 795.50,
+      "shares": 5,
+      "exit_reason": "Stop",
+      "notes": "Lot 2 — tight stop, stopped out."
+    },
+    {
+      "ticker": "CAT",
+      "layer": "Tactical",
+      "entry_date": "2026-02-26",
+      "exit_date": "2026-03-05",
+      "entry_price": 750.00,
+      "exit_price": 699.60,
+      "shares": 5,
+      "exit_reason": "Stop",
+      "notes": "Stopped out — regime shift."
+    },
+    {
+      "ticker": "HUBB",
+      "layer": "Tactical",
+      "entry_date": "2026-02-20",
+      "exit_date": "2026-03-03",
+      "entry_price": 532.04,
+      "exit_price": 498.28,
+      "shares": 10,
+      "exit_reason": "Stop",
+      "notes": "Stopped out — regime shift."
+    },
+    {
+      "ticker": "SMH",
+      "layer": "Tactical",
+      "entry_date": "2026-02-03",
+      "exit_date": "2026-03-03",
+      "entry_price": 395.00,
+      "exit_price": 390.00,
+      "shares": 10,
+      "exit_reason": "Stop",
+      "notes": "Stopped out."
+    },
+    {
+      "ticker": "LRCX",
+      "layer": "Tactical",
+      "entry_date": "2026-02-04",
+      "exit_date": "2026-03-03",
+      "entry_price": 218.50,
+      "exit_price": 218.50,
+      "shares": 17,
+      "exit_reason": "Rule-based",
+      "notes": "Exited flat at breakeven."
+    },
+    {
+      "ticker": "XME",
+      "layer": "Tactical",
+      "entry_date": "2026-02-11",
+      "exit_date": "2026-02-13",
+      "entry_price": 122.00,
+      "exit_price": 115.05,
+      "shares": 24,
+      "exit_reason": "Stop",
+      "notes": "Stopped out quickly."
+    },
+    {
+      "ticker": "ETN",
+      "layer": "Tactical",
+      "entry_date": "2026-02-19",
+      "exit_date": "2026-02-23",
+      "entry_price": 378.00,
+      "exit_price": 367.48,
+      "shares": 10,
+      "exit_reason": "Stop",
+      "notes": "Stopped out."
+    },
+    {
+      "ticker": "LMND",
+      "layer": "Tactical",
+      "entry_date": "2021-03-22",
+      "exit_date": "2026-02-23",
+      "entry_price": 99.70,
+      "exit_price": 57.20,
+      "shares": 30,
+      "exit_reason": "Rule-based",
+      "notes": "Pre-framework bag finally exited. Not counted in framework stats."
+    }
+  ]
+}

@@ -15,6 +15,7 @@ __pycache__/
 
 # Sensitive / local only
 *.json
+!portfolio.json
 trade_journal.md
 screening_log.md
 
