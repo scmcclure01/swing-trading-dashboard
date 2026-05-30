@@ -1895,34 +1895,44 @@ def _render_position_sizer(
                         "sector": row.get("Sector", ""),
                     }
 
+    # Store candidates in session state so callback can access them
+    st.session_state["_sizer_candidates"] = candidates
+
+    def _on_candidate_change():
+        sel = st.session_state.get("sizer_select", "Custom entry")
+        cands = st.session_state.get("_sizer_candidates", {})
+        if sel != "Custom entry" and sel in cands:
+            c = cands[sel]
+            st.session_state["sizer_entry"] = c["entry"]
+            st.session_state["sizer_stop"] = c["stop"]
+            trigger_opts = ["Breakout", "Pullback", "Accelerating"]
+            if c["trigger"] in trigger_opts:
+                st.session_state["sizer_trigger"] = c["trigger"]
+
+    # Initialize sizer fields if not present
+    if "sizer_entry" not in st.session_state:
+        st.session_state["sizer_entry"] = 0.0
+    if "sizer_stop" not in st.session_state:
+        st.session_state["sizer_stop"] = 0.0
+
     col_sel, col_spacer = st.columns([3, 1])
     with col_sel:
         options = ["Custom entry"] + list(candidates.keys())
-        selected = st.selectbox("Select candidate", options, label_visibility="collapsed")
-
-    # ── Determine defaults ────────────────────────────────────────────────────
-    if selected != "Custom entry" and selected in candidates:
-        cand = candidates[selected]
-        default_entry = cand["entry"]
-        default_stop = cand["stop"]
-        default_trigger = cand["trigger"]
-    else:
-        default_entry = 0.0
-        default_stop = 0.0
-        default_trigger = "Standard"
+        selected = st.selectbox(
+            "Select candidate", options, label_visibility="collapsed",
+            key="sizer_select", on_change=_on_candidate_change,
+        )
 
     # ── Input columns ─────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        entry_px = st.number_input("Entry $", value=default_entry, step=0.01, format="%.2f", key="sizer_entry")
+        entry_px = st.number_input("Entry $", step=0.01, format="%.2f", key="sizer_entry")
     with c2:
-        stop_px = st.number_input("Stop $", value=default_stop, step=0.01, format="%.2f", key="sizer_stop")
+        stop_px = st.number_input("Stop $", step=0.01, format="%.2f", key="sizer_stop")
     with c3:
         trigger_type = st.selectbox(
             "Trigger type",
             ["Breakout", "Pullback", "Accelerating"],
-            index=["Breakout", "Pullback", "Accelerating"].index(default_trigger)
-                  if default_trigger in ["Breakout", "Pullback", "Accelerating"] else 0,
             key="sizer_trigger",
         )
     with c4:
