@@ -2254,36 +2254,38 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     )
     st.markdown(stats_html, unsafe_allow_html=True)
 
-    # ── Ticker selector for Position Sizer ──────────────────────────────────
-    # Actionable candidates: entry-ready or watch, with entry/stop prices
+    # ── Ticker selector — radio buttons to push to Position Sizer ────────────
     actionable = results_df[
-        results_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"])
-        & results_df["Entry"].notna() & results_df["Stop"].notna()
+        results_df["Entry"].notna() & results_df["Stop"].notna()
     ].copy()
 
     if not actionable.empty:
-        size_options = ["— Select a ticker to size —"] + [
-            f"{row['Ticker']}  ({row['Verdict'].split(' ', 1)[-1]})  ${row['Price']:.2f}  →  Entry ${row['Entry']:.2f} / Stop ${row['Stop']:.2f}"
-            for _, row in actionable.iterrows()
-        ]
+        # Build radio options: ticker + key info
+        radio_labels = [f"None selected"]
+        radio_map = {}
+        for _, row in actionable.iterrows():
+            verdict_short = row["Verdict"].split(" ", 1)[-1] if " " in str(row["Verdict"]) else ""
+            label = (f"{row['Ticker']}  ·  {row['Sector']}  ·  "
+                     f"${row['Price']:.2f}  ·  {verdict_short}  ·  "
+                     f"Entry ${row['Entry']:.2f} / Stop ${row['Stop']:.2f}")
+            radio_labels.append(label)
+            radio_map[label] = row
 
-        def _on_size_select():
-            sel = st.session_state.get("screener_size_select", "")
-            if sel and not sel.startswith("—"):
-                ticker = sel.split("  ")[0].strip()
-                match = actionable[actionable["Ticker"] == ticker]
-                if not match.empty:
-                    row = match.iloc[0]
-                    st.session_state["sizer_entry"] = float(row["Entry"])
-                    st.session_state["sizer_stop"] = float(row["Stop"])
-                    trigger = row.get("Trigger", "Breakout")
-                    if trigger in ["Breakout", "Pullback", "Accelerating"]:
-                        st.session_state["sizer_trigger"] = trigger
+        def _on_radio_select():
+            sel = st.session_state.get("screener_ticker_radio", "None selected")
+            if sel != "None selected" and sel in radio_map:
+                row = radio_map[sel]
+                st.session_state["sizer_entry"] = float(row["Entry"])
+                st.session_state["sizer_stop"] = float(row["Stop"])
+                trigger = row.get("Trigger", "Breakout")
+                if trigger in ["Breakout", "Pullback", "Accelerating"]:
+                    st.session_state["sizer_trigger"] = trigger
 
-        st.selectbox(
-            "Size a candidate → then go to Position Sizer tab",
-            size_options, key="screener_size_select",
-            on_change=_on_size_select,
+        st.radio(
+            "Select a ticker → then go to **Position Sizer** tab",
+            radio_labels,
+            key="screener_ticker_radio",
+            on_change=_on_radio_select,
         )
 
     # ── Top Setups card (Full signal + near entry zone) ──────────────────────
@@ -2843,7 +2845,7 @@ def _render_charts_tab(passes_df: pd.DataFrame) -> None:
     """Render the Charts tab — individual stock charts for Full Signal candidates."""
 
     if passes_df.empty:
-        st.info("No Full Signal candidates to chart.")
+        st.info("Run the screener first to populate charts.")
         return
 
     sel = st.selectbox(
@@ -2853,11 +2855,10 @@ def _render_charts_tab(passes_df: pd.DataFrame) -> None:
     )
     if sel:
         row = passes_df[passes_df["Ticker"] == sel].iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Price",  f"${row['Price']:.2f}")
-        c2.metric("1M Ret", pct(row["1M Ret"]))
-        c3.metric("3M Ret", pct(row["3M Ret"]))
-        c4.metric("RSI",    f"{row['RSI']:.1f}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Price",    f"${row['Price']:.2f}")
+        c2.metric("RS vs SPY", f"+{row.get('RS_vs_SPY_21d', 0):.1f}%")
+        c3.metric("vs 20MA",   f"+{row.get('Dist_MA20_pct', 0):.1f}%")
         with st.spinner(f"Building {sel} chart..."):
             fig = build_chart(sel)
         if fig:
@@ -2866,9 +2867,10 @@ def _render_charts_tab(passes_df: pd.DataFrame) -> None:
             st.error(f"Could not load chart data for {sel}.")
 
     if st.checkbox("Show all Full Signal charts"):
-        for _, row in passes_df.iterrows():
+        for _, row in passes_df.head(20).iterrows():
             t = row["Ticker"]
-            with st.expander(f"{t}  —  {row['Sector']}  |  1M: {pct(row['1M Ret'])}  |  3M: {pct(row['3M Ret'])}", expanded=False):
+            rs = row.get("RS_vs_SPY_21d", 0)
+            with st.expander(f"{t}  —  {row['Sector']}  |  RS: +{rs:.1f}%", expanded=False):
                 with st.spinner(f"Loading {t}..."):
                     fig = build_chart(t)
                 if fig:
