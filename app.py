@@ -2983,6 +2983,7 @@ def _pnl_color(v: float) -> str:
 def _build_open_table(positions: list, prices: dict, account_size: float):
     rows = []
     total_mv = total_cb = total_upnl = total_risk = 0.0
+    sector_exposure = {}  # ticker → cost basis for concentration calc
     for p in positions:
         ticker     = p["ticker"]
         entry_px   = p["entry_price"]
@@ -3001,24 +3002,73 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
         total_cb   += cost_basis
         total_upnl += upnl_d
         total_risk += risk_d
+
+        # L6: Determine if Accelerating based on notes
+        is_accel = "Accelerating" in (p.get("notes") or "")
+
+        # L6: Profit targets
+        if is_accel:
+            t1_px = round(entry_px * 1.09, 2)   # +8-10%
+            t2_px = round(entry_px * 1.175, 2)  # +15-20%
+            max_hold_weeks = 6
+        elif layer == "Core":
+            t1_px = None  # Core doesn't use T1/T2
+            t2_px = None
+            max_hold_weeks = None
+        else:
+            t1_px = round(entry_px * 1.10, 2)   # +8-12%
+            t2_px = round(entry_px * 1.225, 2)  # +20-25%
+            max_hold_weeks = 12
+
+        be_px = round(entry_px * 1.05, 2)  # Breakeven stop at +5%
+
+        # Max hold date
+        if max_hold_weeks:
+            max_hold_date = entry_dt + timedelta(weeks=max_hold_weeks)
+            days_remaining = (max_hold_date - date.today()).days
+            if days_remaining <= 0:
+                hold_status = "⚠️ EXPIRED"
+            elif days_remaining <= 7:
+                hold_status = f"⚠️ {days_remaining}d left"
+            else:
+                hold_status = f"{days_remaining}d left"
+        else:
+            max_hold_date = None
+            hold_status = "No limit" if layer == "Core" else "—"
+
+        # L6: Trade management status
+        if cur_px >= (t2_px or 999999):
+            mgmt_status = "🟢 Past T2 — trail 20MA"
+        elif cur_px >= (t1_px or 999999):
+            mgmt_status = "🟡 Past T1 — sell 1/3, BE stop"
+        elif cur_px >= be_px:
+            mgmt_status = "Move stop → BE"
+        else:
+            mgmt_status = "Hold — below +5%"
+
+        if layer == "Core":
+            mgmt_status = "Trail 20d MA"
+
         rows.append({
             "Ticker":     ticker,
             "Layer":      layer,
-            "Entry Date": str(entry_dt),
             "Entry":      f"${entry_px:.2f}",
             "Current":    f"${cur_px:.2f}",
             "Shares":     shares,
-            "Cost Basis": f"${cost_basis:,.0f}",
-            "Mkt Value":  f"${mkt_val:,.0f}",
             "P&L $":      _dollar_fmt(upnl_d),
             "P&L %":      _pct_fmt(upnl_pct),
-            "Days":       days_held,
             "Stop":       f"${stop_px:.2f}",
+            "BE":         f"${be_px:.2f}",
+            "T1":         f"${t1_px:.2f}" if t1_px else "—",
+            "T2":         f"${t2_px:.2f}" if t2_px else "—",
+            "Days":       days_held,
+            "Hold":       hold_status,
+            "Status":     mgmt_status,
             "Risk $":     f"${risk_d:,.0f}",
         })
     df = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["Ticker","Layer","Entry Date","Entry","Current","Shares",
-                 "Cost Basis","Mkt Value","P&L $","P&L %","Days","Stop","Risk $"])
+        columns=["Ticker","Layer","Entry","Current","Shares","P&L $","P&L %",
+                 "Stop","BE","T1","T2","Days","Hold","Status","Risk $"])
     return df, total_mv, total_cb, total_upnl, total_risk
 
 
@@ -3216,15 +3266,110 @@ def _render_portfolio_tab() -> None:
     )
     st.markdown(summary_html, unsafe_allow_html=True)
 
+    # ── L5 / L7 Compliance checks ───────────────────────────────────────────
+    perm_state = st.session_state.get("_current_perm", "Green")  # set by main()
+    perm_limits = PERM_LIMITS.get(perm_state, PERM_LIMITS["Green"])
+    max_pos = perm_limits["max_pos"]
+    max_heat_pct = perm_limits["heat"] / 100
+    pos_count = len(open_pos)
+    n_core     = sum(1 for p in open_pos if p.get("layer") == "Core")
+    n_tactical = pos_count - n_core
+
+    # Deployment floor
+    floor_map = {"Green": (40, 60), "Yellow": (20, 35), "Red": (0, 0)}
+    floor_lo, floor_hi = floor_map.get(perm_state, (0, 0))
+
+    # Sector concentration (by ticker → sector from SECTOR_TICKERS lookup)
+    sector_cost = {}
+    for p in open_pos:
+        sec = "Unknown"
+        for s, tickers in SECTOR_TICKERS.items():
+            if p["ticker"] in tickers:
+                sec = s
+                break
+        cb = p["entry_price"] * p["shares"]
+        sector_cost[sec] = sector_cost.get(sec, 0) + cb
+    max_sector_pct = max(v / account_size for v in sector_cost.values()) * 100 if sector_cost else 0
+    max_sector_name = max(sector_cost, key=sector_cost.get) if sector_cost else "—"
+
+    # Drawdown from peak (computed from account value + unrealized P&L)
+    # Use account_value from sidebar as peak reference
+    current_equity = account_size + total_upnl + perf["realized_pnl"]
+    peak_equity = account_size  # simplified — sidebar account value = peak
+    drawdown_pct = ((current_equity - peak_equity) / peak_equity) * 100 if peak_equity > 0 else 0
+
+    if drawdown_pct >= 0:
+        dd_tier = "At peak"
+        dd_color = "#27500A"
+    elif drawdown_pct > -7:
+        dd_tier = "Tier 1: Normal"
+        dd_color = "#27500A"
+    elif drawdown_pct > -10:
+        dd_tier = "Tier 2: Reduce risk 50%"
+        dd_color = "#E07800"
+    elif drawdown_pct > -15:
+        dd_tier = "Tier 3: Defensive"
+        dd_color = "#CC1111"
+    else:
+        dd_tier = "Emergency: 100% cash"
+        dd_color = "#CC1111"
+
+    # Build compliance rows
+    compliance_rows = [
+        {"Check": "Position Count",
+         "Current": f"{pos_count} ({n_core}C / {n_tactical}T)",
+         "Limit": f"Max {perm_limits['max_pos_label']} ({perm_state})",
+         "Status": "✅ OK" if pos_count <= max_pos else "❌ Over limit"},
+        {"Check": "Portfolio Heat",
+         "Current": f"{heat_pct*100:.1f}%",
+         "Limit": f"Max {perm_limits['heat']}%",
+         "Status": "✅ OK" if heat_pct <= max_heat_pct else "❌ Over limit"},
+        {"Check": "Deployed Capital",
+         "Current": f"{deployed_pct*100:.1f}%",
+         "Limit": f"Floor {floor_lo}–{floor_hi}%",
+         "Status": "✅ OK" if deployed_pct * 100 >= floor_lo else "⚠️ Below floor"},
+        {"Check": "Max Sector",
+         "Current": f"{max_sector_name}: {max_sector_pct:.0f}%",
+         "Limit": "Max 25%",
+         "Status": "✅ OK" if max_sector_pct <= 25 else "❌ Over concentrated"},
+        {"Check": "Drawdown",
+         "Current": f"{drawdown_pct:+.1f}%",
+         "Limit": dd_tier,
+         "Status": f"{'✅ OK' if drawdown_pct > -7 else '⚠️ Caution' if drawdown_pct > -10 else '❌ Action required'}"},
+    ]
+    compliance_html = cb_table(pd.DataFrame(compliance_rows), bordered=False)
+
+    # Compliance warnings
+    warnings = []
+    if pos_count > max_pos:
+        warnings.append(f"🔴 Over position limit: {pos_count} vs max {max_pos} in {perm_state}")
+    if heat_pct > max_heat_pct:
+        warnings.append(f"🔴 Portfolio heat {heat_pct*100:.1f}% exceeds {perm_limits['heat']}% cap")
+    if deployed_pct * 100 < floor_lo and floor_lo > 0:
+        warnings.append(f"⚠️ Below deployment floor: {deployed_pct*100:.1f}% vs {floor_lo}% minimum")
+    if drawdown_pct <= -7:
+        warnings.append(f"⚠️ Drawdown {drawdown_pct:.1f}% — {dd_tier}")
+
+    warn_html = ""
+    if warnings:
+        warn_html = '<div style="margin-top:6px;">' + "".join(
+            f'<p style="font-size:12px; font-weight:500; color:#CC1111; margin:2px 0;">{w}</p>'
+            for w in warnings
+        ) + '</div>'
+
+    st.markdown(
+        _card("L5 / L7 — Portfolio Compliance", compliance_html + warn_html,
+              pill=f"{'✅ All clear' if not warnings else '⚠️ ' + str(len(warnings)) + ' issue(s)'}"),
+        unsafe_allow_html=True,
+    )
+
     # ── Open positions ────────────────────────────────────────────────────────
     open_df, _, _, _, _ = _build_open_table(open_pos, prices, account_size)
-    n_core     = sum(1 for p in open_pos if p.get("layer") == "Core")
-    n_tactical = len(open_pos) - n_core
-    open_pill  = f"{len(open_pos)} positions · {n_core} Core / {n_tactical} Tactical"
+    open_pill  = f"{pos_count} positions · {n_core} Core / {n_tactical} Tactical"
 
     if not open_df.empty:
         st.markdown(
-            _card("Open Positions", cb_table(open_df, bordered=False), pill=open_pill),
+            _card("Open Positions — L6 Trade Management", cb_table(open_df, bordered=False), pill=open_pill),
             unsafe_allow_html=True,
         )
     else:
@@ -3558,6 +3703,7 @@ def main():
     rec_total      = len(rec_indicators)
 
     perm, limits = calc_layer1(l0, rec_flags, st.session_state.eps_signal, perm_ov)
+    st.session_state["_current_perm"] = perm
 
     # ── PAGE HEADER ───────────────────────────────────────────────────────────
     liq_override = l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
