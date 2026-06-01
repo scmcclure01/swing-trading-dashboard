@@ -746,41 +746,35 @@ def run_screener_v3(
                 verdict = "❌ RED"
                 notes.append("No new entries")
             elif trigger_type == "Breakout":
+                # Entry = top of base (pivot). Stop = just below bottom of base.
                 near_top = pct_above_20 <= 0.08 and price <= base_high * 1.05
                 vol_ok = last_vol_ratio >= 1.4
+                entry_px_suggest = round(base_high, 2)
+                stop_px_suggest = round(base_low * 0.99, 2)
                 if near_top and vol_ok and rs_rising:
                     verdict = "🟢 ENTRY READY"
-                    entry_px_suggest = round(price, 2)
-                    stop_px_suggest = round(base_low * 0.99, 2)
                 elif near_top and last_vol_ratio >= 1.0:
                     verdict = "🟡 WATCH"
-                    entry_px_suggest = round(base_high * 1.001, 2)
-                    stop_px_suggest = round(base_low * 0.99, 2)
                     notes.append(f"Vol {last_vol_ratio:.1f}x — needs 1.4x")
                 else:
-                    entry_px_suggest = round(base_high * 1.001, 2)
-                    stop_px_suggest = round(base_low * 0.99, 2)
                     if not near_top:
                         notes.append("Not at pivot")
             elif trigger_type == "Pullback":
+                # Entry = at the 20d or 50d MA. Stop = 1-2% below that MA.
                 near_20 = abs(pct_above_20) <= 0.03
                 near_50 = abs(pct_vs_50) <= 0.03
                 vol_decl = last_vol_ratio <= 1.0
+                ref_ma = ma20 if (near_20 or not near_50) else ma50
+                entry_px_suggest = round(ref_ma, 2)
+                stop_px_suggest = round(ref_ma * 0.98, 2)
                 if (near_20 or near_50) and vol_decl:
                     verdict = "🟢 ENTRY READY"
-                    ref_ma = ma20 if near_20 else ma50
-                    entry_px_suggest = round(price, 2)
-                    stop_px_suggest = round(ref_ma * 0.98, 2)
                     notes.append("At 20d MA" if near_20 else "At 50d MA")
                 elif near_20 or near_50:
                     verdict = "🟡 WATCH"
-                    ref_ma = ma20 if near_20 else ma50
-                    entry_px_suggest = round(ref_ma, 2)
-                    stop_px_suggest = round(ref_ma * 0.98, 2)
                     notes.append(f"Vol {last_vol_ratio:.1f}x — need declining")
                 else:
-                    entry_px_suggest = round(ma20, 2)
-                    stop_px_suggest = round(ma20 * 0.98, 2)
+                    pass  # remains NOT READY
             elif trigger_type == "Accelerating":
                 in_range = 0 <= pct_above_20 <= 0.15
                 vol_ok = last_vol_ratio >= 1.0
@@ -2253,16 +2247,19 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     st.session_state["screener_half"]   = half_df
 
     # ── Stats tiles ──────────────────────────────────────────────────────────
+    full_ready = int((passes_df["Verdict"] == "🟢 ENTRY READY").sum()) if not passes_df.empty else 0
+    full_watch = int((passes_df["Verdict"] == "🟡 WATCH").sum()) if not passes_df.empty else 0
+    half_ready_watch = int(half_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"]).sum()) if not half_df.empty else 0
     stats_html = (
         f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
-        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Universe: {len(results_df)} passing L2 filters</div>'
+        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L2 filters</div>'
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
-        + _tile("Candidates", str(len(results_df)), "Above both MAs + RS positive")
-        + _tile("Full Signal", str(len(passes_df)),  "● RS new high + volume OK", "#27500A")
-        + _tile("Half Signal", str(len(half_df)),    "● Mixed two-speed",         "#E07800")
-        + _tile("Near MA",     str(len(results_df[results_df["Dist_MA20_pct"] <= 3.0])), "● Pullback entry zone", "#288CFA")
+        + _tile("Entry Ready", str(full_ready), "Full signal + trigger confirmed", "#27500A")
+        + _tile("Watch", str(full_watch), "Full signal, trigger pending", "#E07800")
+        + _tile("Half Signal", str(half_ready_watch), "Mixed two-speed, actionable", "#288CFA")
+        + _tile("Scanned", str(len(results_df)), "Total passing L2 filters")
         + '</div></div>'
     )
     st.markdown(stats_html, unsafe_allow_html=True)
@@ -2347,118 +2344,72 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             st.session_state["sizer_queue"] = []
             st.rerun()
 
-    # ── Top Setups (Full signal + near entry zone) ───────────────────────────
-    top_setups = results_df[
-        (results_df["PASS"]) & (results_df["Dist_MA20_pct"] <= 6.0)
-    ].head(15)
-    if not top_setups.empty:
-        ready_n = int((top_setups["Verdict"] == "🟢 ENTRY READY").sum())
-        watch_n = int((top_setups["Verdict"] == "🟡 WATCH").sum())
+    # ── Standard column set for both tables ────────────────────────────────
+    def _std_cols(df):
+        return {
+            "Ticker":     df["Ticker"].values,
+            "Sector":     df["Sector"].values,
+            "Price":      df["Price"].apply(lambda x: f"${x:.2f}").values,
+            "Trigger":    df["Trigger"].values,
+            "Entry":      df["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+            "Stop":       df["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
+            "Verdict":    df["Verdict"].values,
+            "RS vs SPY":  df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+            "vs 20MA":    df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+            "Vol 5d":     df["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
+            "MACD":       df["MACD_Crossover"].apply(lambda x: "✓" if x else "").values,
+            "Notes":      df["Notes"].values,
+        }
+
+    # ── Table 1: Actionable Setups (Full signal, ENTRY READY + WATCH) ─────
+    actionable_mask = (
+        passes_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"])
+    ) if not passes_df.empty else pd.Series(dtype=bool)
+    actionable_df = passes_df[actionable_mask].copy() if not passes_df.empty else pd.DataFrame()
+
+    if not actionable_df.empty:
+        # Sort: ENTRY READY first, then by RS strength
+        actionable_df["_sort"] = actionable_df["Verdict"].map({"🟢 ENTRY READY": 0, "🟡 WATCH": 1}).fillna(2)
+        actionable_df = actionable_df.sort_values(["_sort", "RS_vs_SPY_21d"], ascending=[True, False]).drop(columns="_sort")
+        actionable_show = actionable_df.head(50)
+
+        ready_n = int((actionable_show["Verdict"] == "🟢 ENTRY READY").sum())
+        watch_n = int((actionable_show["Verdict"] == "🟡 WATCH").sum())
+        showing = f"top 50 of {len(actionable_df)}" if len(actionable_df) > 50 else str(len(actionable_df))
+
         _selectable_table(
-            top_setups,
-            {
-                "Ticker":     top_setups["Ticker"].values,
-                "Sector":     top_setups["Sector"].values,
-                "Price":      top_setups["Price"].apply(lambda x: f"${x:.2f}").values,
-                "Verdict":    top_setups["Verdict"].values,
-                "Trigger":    top_setups["Trigger"].values,
-                "Entry":      top_setups["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
-                "Stop":       top_setups["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
-                "RS vs SPY":  top_setups["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-                "vs 20MA":    top_setups["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
-                "Notes":      top_setups["Notes"].values,
-            },
-            "top_setups",
-            "Top Setups — Full Signal + Near Entry Zone",
+            actionable_show,
+            _std_cols(actionable_show),
+            "actionable",
+            f"Actionable Setups — Full Signal — {showing}",
             pill=f"✅ {ready_n} ready · 🟡 {watch_n} watch",
         )
-
-    # ── Full Signal ──────────────────────────────────────────────────────────
-    if not passes_df.empty:
-        full_show = passes_df.head(50)
-        showing = f"top 50 of {len(passes_df)}" if len(passes_df) > 50 else str(len(passes_df))
-        _selectable_table(
-            full_show,
-            {
-                "Ticker":     full_show["Ticker"].values,
-                "Sector":     full_show["Sector"].values,
-                "Price":      full_show["Price"].apply(lambda x: f"${x:.2f}").values,
-                "Verdict":    full_show["Verdict"].values,
-                "Trigger":    full_show["Trigger"].values,
-                "Entry":      full_show["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
-                "Stop":       full_show["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
-                "RS vs SPY":  full_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-                "vs 20MA":    full_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
-                "Vol 5d":     full_show["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
-            },
-            "full_signal",
-            f"Full Signal — {showing} candidates",
-            pill="✅ Full",
-        )
-        st.text_area("Copy tickers", value="  ".join(passes_df["Ticker"].tolist()),
+        st.text_area("Copy tickers", value="  ".join(actionable_df["Ticker"].tolist()),
                      height=50, label_visibility="collapsed")
+    else:
+        st.markdown(
+            '<p style="font-size:13px; color:#5A7BAA; text-align:center; padding:20px;">'
+            'No actionable full-signal setups in this scan.</p>',
+            unsafe_allow_html=True,
+        )
 
-    # ── Half Signal ──────────────────────────────────────────────────────────
-    if not half_df.empty:
-        half_show = half_df.head(15)
+    # ── Table 2: Watchlist (Half signal, ENTRY READY + WATCH) ─────────────
+    watchlist_mask = (
+        half_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"])
+    ) if not half_df.empty else pd.Series(dtype=bool)
+    watchlist_df = half_df[watchlist_mask].copy() if not half_df.empty else pd.DataFrame()
+
+    if not watchlist_df.empty:
+        watchlist_df["_sort"] = watchlist_df["Verdict"].map({"🟢 ENTRY READY": 0, "🟡 WATCH": 1}).fillna(2)
+        watchlist_df = watchlist_df.sort_values(["_sort", "RS_vs_SPY_21d"], ascending=[True, False]).drop(columns="_sort")
+        watchlist_show = watchlist_df.head(20)
+
         _selectable_table(
-            half_show,
-            {
-                "Ticker":     half_show["Ticker"].values,
-                "Sector":     half_show["Sector"].values,
-                "Price":      half_show["Price"].apply(lambda x: f"${x:.2f}").values,
-                "Verdict":    half_show["Verdict"].values,
-                "RS vs SPY":  half_show["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-                "vs 20MA":    half_show["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
-                "Entry Zone": half_show["Entry_Zone"].values,
-            },
-            "half_signal",
-            f"Half Signal — {len(half_df)} candidates",
+            watchlist_show,
+            _std_cols(watchlist_show),
+            "watchlist",
+            f"Watchlist — Half Signal — {len(watchlist_df)} candidates (half-size eligible)",
             pill="⚠️ Half",
-        )
-
-    # ── Accelerating Protocol (v4) ───────────────────────────────────────────
-    accel_sectors = l0.get("accelerating", []) if l0 else []
-    if accel_sectors:
-        accel_mask = (
-            results_df["Sector"].isin(set(accel_sectors))
-            & (results_df["% > 20MA"] > 0)
-            & (results_df["% > 20MA"] <= 0.15)
-            & (results_df["2-Speed"].isin(["FULL", "HALF"]))
-        )
-        accel_df = results_df[accel_mask].sort_values("% > 20MA")
-        if not accel_df.empty:
-            _selectable_table(
-                accel_df,
-                {
-                    "Ticker":     accel_df["Ticker"].values,
-                    "Sector":     accel_df["Sector"].values,
-                    "Price":      accel_df["Price"].apply(lambda x: f"${x:.2f}").values,
-                    "vs 20MA":    accel_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
-                    "2-Speed":    accel_df["2-Speed"].values,
-                    "RS vs SPY":  accel_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-                },
-                "accel",
-                f"🔥 Accelerating Protocol — {len(accel_df)} candidates",
-                pill="v4",
-            )
-            st.caption("Half size · 10d EMA stop · 6-week max hold · Max 3 simultaneous")
-
-    # ── MACD Crossovers ──────────────────────────────────────────────────────
-    macd_cross = results_df[results_df["MACD_Crossover"]].head(10)
-    if not macd_cross.empty:
-        _selectable_table(
-            macd_cross,
-            {
-                "Ticker":     macd_cross["Ticker"].values,
-                "Sector":     macd_cross["Sector"].values,
-                "Price":      macd_cross["Price"].apply(lambda x: f"${x:.2f}").values,
-                "vs 20MA":    macd_cross["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
-                "RS vs SPY":  macd_cross["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-            },
-            "macd",
-            "MACD Histogram Crossover (red → green)",
-            pill=f"🟢 {len(macd_cross)}",
         )
 
 
