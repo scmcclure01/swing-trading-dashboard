@@ -2199,6 +2199,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
 
     # Run or load cached
     if run_clicked:
+        run_screener_v3.clear()
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
             accel_key = ",".join(l0.get("accelerating", []))
             rec_indicators = score_recession_composite(
