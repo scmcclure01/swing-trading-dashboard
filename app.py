@@ -2506,20 +2506,65 @@ def _render_position_sizer_tab(
             st.session_state["sizer_live_quote"] = None
         elif sel in cands:
             c = cands[sel]
-            st.session_state["sizer_entry"] = c.get("entry", 0.0)
-            st.session_state["sizer_stop"] = c.get("stop", 0.0)
             trigger_opts = ["Breakout", "Pullback", "Accelerating"]
             if c.get("trigger") in trigger_opts:
                 st.session_state["sizer_trigger"] = c["trigger"]
-            # Fetch live quote
+            trigger = c.get("trigger", "Breakout")
+
+            # Fetch live data and compute entry/stop per framework L3 rules
             try:
-                t = yf.Ticker(c["ticker"])
-                info = t.fast_info
+                tkr = yf.Ticker(c["ticker"])
+                hist = tkr.history(period="6mo")
+                close = hist["Close"]
+                volume = hist["Volume"]
+                price = round(float(close.iloc[-1]), 2)
+                ma20 = round(float(close.rolling(20).mean().iloc[-1]), 2)
+                ma50 = round(float(close.rolling(50).mean().iloc[-1]), 2)
+                ema10 = round(float(close.ewm(span=10, adjust=False).mean().iloc[-1]), 2)
+
+                # 6-week base range
+                base_px = close.iloc[-30:]
+                base_high = round(float(base_px.max()), 2)
+                base_low = round(float(base_px.min()), 2)
+
+                if trigger == "Breakout":
+                    # Entry: top of base (pivot). Stop: just below bottom of base.
+                    entry = round(base_high * 1.001, 2)
+                    stop = round(base_low * 0.99, 2)
+                elif trigger == "Pullback":
+                    # Entry: at the 20d or 50d MA. Stop: 1-2% below that MA.
+                    pct_vs_20 = abs(price / ma20 - 1)
+                    pct_vs_50 = abs(price / ma50 - 1)
+                    if pct_vs_20 <= 0.03:
+                        entry = round(ma20, 2)
+                        stop = round(ma20 * 0.98, 2)
+                    elif pct_vs_50 <= 0.03:
+                        entry = round(ma50, 2)
+                        stop = round(ma50 * 0.98, 2)
+                    else:
+                        # Not near either MA — suggest 20d MA as target entry
+                        entry = round(ma20, 2)
+                        stop = round(ma20 * 0.98, 2)
+                else:  # Accelerating
+                    # Entry: current price (up to 15% above 20d MA). Stop: 10d EMA.
+                    entry = price
+                    stop = round(ema10 * 0.99, 2)
+
+                st.session_state["sizer_entry"] = entry
+                st.session_state["sizer_stop"] = stop
                 st.session_state["sizer_live_quote"] = {
-                    "price": round(float(info["lastPrice"]), 2),
+                    "price": price,
                     "ticker": c["ticker"],
+                    "ma20": ma20,
+                    "ma50": ma50,
+                    "ema10": ema10,
+                    "base_high": base_high,
+                    "base_low": base_low,
                 }
             except Exception:
+                # Fallback to screener values
+                st.session_state["sizer_entry"] = c.get("entry", 0.0)
+                st.session_state["sizer_stop"] = c.get("stop", 0.0)
                 st.session_state["sizer_live_quote"] = None
 
     if "sizer_entry" not in st.session_state:
@@ -2543,7 +2588,7 @@ def _render_position_sizer_tab(
         on_change=_on_candidate_change,
     )
 
-    # ── Live quote ─────────────────────────────────────────────────────────────
+    # ── Live quote & reference levels ────────────────────────────────────────
     live = st.session_state.get("sizer_live_quote")
     if live:
         sel_key = st.session_state.get("sizer_select", "Custom entry")
@@ -2552,10 +2597,21 @@ def _render_position_sizer_tab(
         chg = live["price"] - screener_px if screener_px else 0
         chg_pct = (chg / screener_px * 100) if screener_px else 0
         chg_color = "#22C55E" if chg >= 0 else "#EF4444"
+        ref_parts = []
+        if live.get("ma20"):
+            ref_parts.append(f'20d MA: ${live["ma20"]:.2f}')
+        if live.get("ma50"):
+            ref_parts.append(f'50d MA: ${live["ma50"]:.2f}')
+        if live.get("ema10"):
+            ref_parts.append(f'10d EMA: ${live["ema10"]:.2f}')
+        if live.get("base_high"):
+            ref_parts.append(f'Base: ${live["base_low"]:.2f}–${live["base_high"]:.2f}')
+        ref_str = " · ".join(ref_parts)
         st.markdown(
-            f'<p style="font-size:13px; margin:4px 0 8px 0;">'
+            f'<p style="font-size:13px; margin:4px 0 2px 0;">'
             f'<b>{live["ticker"]}</b> live: <b>${live["price"]:.2f}</b> '
-            f'<span style="color:{chg_color};">({chg:+.2f} / {chg_pct:+.1f}% vs screener)</span></p>',
+            f'<span style="color:{chg_color};">({chg:+.2f} / {chg_pct:+.1f}% vs screener)</span></p>'
+            f'<p style="font-size:11px; color:#5A7BAA; margin:0 0 8px 0;">{ref_str}</p>',
             unsafe_allow_html=True,
         )
 
