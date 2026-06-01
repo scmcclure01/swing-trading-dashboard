@@ -2182,7 +2182,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     leading_str = ", ".join(leading) if leading else "None"
     mixed_str   = ", ".join(mixed) if mixed else "None"
 
-    col_btn, col_info = st.columns([1, 3])
+    col_btn, col_info, col_ts = st.columns([1, 3, 1])
     with col_btn:
         run_clicked = st.button("🔍 Run Screener", use_container_width=True, type="primary")
     with col_info:
@@ -2190,6 +2190,12 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             f"L0 Leading: {leading_str} · Mixed: {mixed_str} → "
             f"Scanning: {', '.join(screen_sectors)} ({universe_size} stocks). Cached 24h."
         )
+    with col_ts:
+        last_run = st.session_state.get("screener_last_run")
+        if last_run:
+            st.caption(f"Last scanned: {last_run.strftime('%b %d, %I:%M %p')}")
+        else:
+            st.caption("Not yet scanned")
 
     # Run or load cached
     if run_clicked:
@@ -2201,6 +2207,9 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
         st.session_state["screener_results"] = results_df
         st.session_state["screener_regime"] = regime
+        st.session_state["screener_last_run"] = datetime.now()
+        n_pass = len(results_df[results_df["PASS"]]) if results_df is not None and not results_df.empty else 0
+        st.toast(f"✅ Screener complete — {n_pass} passes found", icon="🔍")
     else:
         results_df = st.session_state.get("screener_results")
         # Try loading from cache on first visit
@@ -2213,6 +2222,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             if results_df is not None and not results_df.empty:
                 st.session_state["screener_results"] = results_df
                 st.session_state["screener_regime"] = regime
+                st.session_state["screener_last_run"] = datetime.now()
 
     if results_df is None or results_df.empty:
         st.markdown(
