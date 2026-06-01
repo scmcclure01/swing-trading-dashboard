@@ -2500,13 +2500,27 @@ def _render_position_sizer_tab(
     def _on_candidate_change():
         sel = st.session_state.get("sizer_select", "Custom entry")
         cands = st.session_state.get("_sizer_candidates", {})
-        if sel != "Custom entry" and sel in cands:
+        if sel == "Custom entry":
+            st.session_state["sizer_entry"] = 0.0
+            st.session_state["sizer_stop"] = 0.0
+            st.session_state["sizer_live_quote"] = None
+        elif sel in cands:
             c = cands[sel]
             st.session_state["sizer_entry"] = c.get("entry", 0.0)
             st.session_state["sizer_stop"] = c.get("stop", 0.0)
             trigger_opts = ["Breakout", "Pullback", "Accelerating"]
             if c.get("trigger") in trigger_opts:
                 st.session_state["sizer_trigger"] = c["trigger"]
+            # Fetch live quote
+            try:
+                t = yf.Ticker(c["ticker"])
+                info = t.fast_info
+                st.session_state["sizer_live_quote"] = {
+                    "price": round(float(info["lastPrice"]), 2),
+                    "ticker": c["ticker"],
+                }
+            except Exception:
+                st.session_state["sizer_live_quote"] = None
 
     if "sizer_entry" not in st.session_state:
         st.session_state["sizer_entry"] = 0.0
@@ -2528,6 +2542,22 @@ def _render_position_sizer_tab(
         key="sizer_select",
         on_change=_on_candidate_change,
     )
+
+    # ── Live quote ─────────────────────────────────────────────────────────────
+    live = st.session_state.get("sizer_live_quote")
+    if live:
+        sel_key = st.session_state.get("sizer_select", "Custom entry")
+        cands_ref = st.session_state.get("_sizer_candidates", {})
+        screener_px = cands_ref.get(sel_key, {}).get("price", 0)
+        chg = live["price"] - screener_px if screener_px else 0
+        chg_pct = (chg / screener_px * 100) if screener_px else 0
+        chg_color = "#22C55E" if chg >= 0 else "#EF4444"
+        st.markdown(
+            f'<p style="font-size:13px; margin:4px 0 8px 0;">'
+            f'<b>{live["ticker"]}</b> live: <b>${live["price"]:.2f}</b> '
+            f'<span style="color:{chg_color};">({chg:+.2f} / {chg_pct:+.1f}% vs screener)</span></p>',
+            unsafe_allow_html=True,
+        )
 
     # ── Input columns ─────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
