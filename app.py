@@ -12,6 +12,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ta.momentum import RSIIndicator
@@ -2193,7 +2194,8 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     with col_ts:
         last_run = st.session_state.get("screener_last_run")
         if last_run:
-            st.caption(f"Last scanned: {last_run.strftime('%b %d, %I:%M %p')}")
+            cst_time = last_run.astimezone(ZoneInfo("America/Chicago"))
+            st.caption(f"Last scanned: {cst_time.strftime('%b %d, %I:%M %p')} CST")
         else:
             st.caption("Not yet scanned")
 
@@ -2208,7 +2210,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
         st.session_state["screener_results"] = results_df
         st.session_state["screener_regime"] = regime
-        st.session_state["screener_last_run"] = datetime.now()
+        st.session_state["screener_last_run"] = datetime.now(ZoneInfo("UTC"))
         n_pass = len(results_df[results_df["PASS"]]) if results_df is not None and not results_df.empty else 0
         st.toast(f"✅ Screener complete — {n_pass} passes found", icon="🔍")
     else:
@@ -2223,7 +2225,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
             if results_df is not None and not results_df.empty:
                 st.session_state["screener_results"] = results_df
                 st.session_state["screener_regime"] = regime
-                st.session_state["screener_last_run"] = datetime.now()
+                st.session_state["screener_last_run"] = datetime.now(ZoneInfo("UTC"))
 
     if results_df is None or results_df.empty:
         st.markdown(
