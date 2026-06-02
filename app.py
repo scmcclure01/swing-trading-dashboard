@@ -2561,6 +2561,22 @@ def _render_position_sizer_tab(
             unsafe_allow_html=True,
         )
 
+    # ── Recompute entry/stop when trigger type changes ──────────────────────
+    def _on_trigger_change():
+        live = st.session_state.get("sizer_live_quote")
+        if not live:
+            return
+        trig = st.session_state.get("sizer_trigger", "Breakout")
+        if trig == "Breakout":
+            st.session_state["sizer_entry"] = round(live["base_high"] * 1.001, 2)
+            st.session_state["sizer_stop"] = round(live["base_low"] * 0.99, 2)
+        elif trig == "Pullback":
+            st.session_state["sizer_entry"] = round(live["ma20"], 2)
+            st.session_state["sizer_stop"] = round(live["ma20"] * 0.98, 2)
+        else:  # Accelerating
+            st.session_state["sizer_entry"] = round(live["price"], 2)
+            st.session_state["sizer_stop"] = round(live["ema10"] * 0.99, 2)
+
     # ── Input columns ─────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -2572,6 +2588,7 @@ def _render_position_sizer_tab(
             "Trigger type",
             ["Breakout", "Pullback", "Accelerating"],
             key="sizer_trigger",
+            on_change=_on_trigger_change,
         )
     with c4:
         acct_override = st.number_input("Account $", value=account, step=1000, format="%d", key="sizer_acct")
