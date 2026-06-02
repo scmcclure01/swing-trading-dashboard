@@ -3002,9 +3002,34 @@ PORTFOLIO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portf
 
 def _portfolio_load() -> dict:
     if not os.path.exists(PORTFOLIO_PATH):
-        return {"account_size": 100000, "open_positions": [], "closed_positions": []}
+        return {"cash_balance": 100000, "open_positions": [], "closed_positions": []}
     with open(PORTFOLIO_PATH, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+    # Migrate legacy field name
+    if "account_size" in data and "cash_balance" not in data:
+        open_cb = sum(p["entry_price"] * p["shares"] for p in data.get("open_positions", []))
+        data["cash_balance"] = data.pop("account_size") - open_cb
+    return data
+
+
+def _compute_account_value(data: dict, live_prices: dict) -> tuple:
+    """
+    Compute total account value dynamically.
+    Returns (account_value, cash_balance, total_market_value, total_cost_basis).
+    account_value = cash_balance + sum(open shares × live price)
+    """
+    cash = data.get("cash_balance", 100000)
+    open_pos = data.get("open_positions", [])
+    total_mv = 0.0
+    total_cb = 0.0
+    for p in open_pos:
+        shares = p["shares"]
+        entry = p["entry_price"]
+        cur_px = live_prices.get(p["ticker"], p.get("current_price") or entry)
+        total_mv += shares * cur_px
+        total_cb += shares * entry
+    account_value = cash + total_mv
+    return account_value, cash, total_mv, total_cb
 
 
 def _portfolio_save(data: dict) -> None:
@@ -3193,7 +3218,6 @@ def _render_portfolio_tab() -> None:
     """Render the Portfolio Tracker tab."""
     today = date.today()
     data         = _portfolio_load()
-    account_size = data.get("account_size", 100000)
     open_pos     = data.get("open_positions", [])
     closed_pos   = data.get("closed_positions", [])
 
@@ -3204,17 +3228,25 @@ def _render_portfolio_tab() -> None:
         with st.spinner("Fetching live prices…"):
             prices = fetch_portfolio_prices(",".join(open_tickers))
 
+    # ── Dynamic account value ─────────────────────────────────────────────────
+    account_value, cash_balance, total_mv, total_cb_live = _compute_account_value(data, prices)
+    account_size = account_value  # alias for compatibility with downstream calcs
+
+    # Push to session state so position sizer and Core tab can read it
+    st.session_state["account_value"] = round(account_value)
+
     # ── Sidebar controls ──────────────────────────────────────────────────────
     with st.sidebar:
         st.divider()
         st.subheader("Portfolio")
-        account_size = st.number_input(
-            "Account Size ($)", value=account_size, min_value=1000, step=1000, format="%d",
-            key="port_acct_size",
+        st.markdown(
+            f'<div style="background:#EEF3FA; border-radius:9px; padding:10px 12px; margin-bottom:8px;">'
+            f'<div style="font-size:11px; color:#5A7BAA;">Account Value (live)</div>'
+            f'<div style="font-size:17px; font-weight:500; color:#103766;">${account_value:,.0f}</div>'
+            f'<div style="font-size:11px; color:#5A7BAA;">Cash: ${cash_balance:,.0f} · Positions: ${total_mv:,.0f}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
-        if account_size != data.get("account_size"):
-            data["account_size"] = account_size
-            _portfolio_save(data)
 
         # Add position form
         with st.expander("➕ Add Open Position"):
@@ -3227,12 +3259,14 @@ def _render_portfolio_tab() -> None:
                 stop_px    = st.number_input("Stop Price", min_value=0.01, step=0.01, format="%.2f", key="add_stop")
                 notes      = st.text_input("Notes", key="add_notes")
                 if st.form_submit_button("Add") and ticker and entry_px > 0 and shares > 0:
+                    cost = entry_px * int(shares)
                     data["open_positions"].append({
                         "ticker": ticker, "layer": layer,
                         "entry_date": str(entry_date), "entry_price": entry_px,
                         "shares": int(shares), "stop_price": stop_px,
                         "current_price": None, "notes": notes,
                     })
+                    data["cash_balance"] = data.get("cash_balance", 0) - cost
                     _portfolio_save(data)
                     st.cache_data.clear()
                     st.rerun()
@@ -3249,6 +3283,7 @@ def _render_portfolio_tab() -> None:
                     if st.form_submit_button("Close") and exit_px > 0:
                         pos = next((p for p in data["open_positions"] if p["ticker"] == sel_ticker), None)
                         if pos:
+                            proceeds = exit_px * pos["shares"]
                             data["closed_positions"].insert(0, {
                                 "ticker": pos["ticker"], "layer": pos.get("layer","Tactical"),
                                 "entry_date": pos["entry_date"], "exit_date": str(exit_date),
@@ -3257,6 +3292,7 @@ def _render_portfolio_tab() -> None:
                                 "notes": close_notes,
                             })
                             data["open_positions"] = [p for p in data["open_positions"] if p["ticker"] != sel_ticker]
+                            data["cash_balance"] = data.get("cash_balance", 0) + proceeds
                             _portfolio_save(data)
                             st.cache_data.clear()
                             st.rerun()
@@ -3354,10 +3390,13 @@ def _render_portfolio_tab() -> None:
     max_sector_pct = max(v / account_size for v in sector_cost.values()) * 100 if sector_cost else 0
     max_sector_name = max(sector_cost, key=sector_cost.get) if sector_cost else "—"
 
-    # Drawdown from peak (computed from account value + unrealized P&L)
-    # Use account_value from sidebar as peak reference
-    current_equity = account_size + total_upnl + perf["realized_pnl"]
-    peak_equity = account_size  # simplified — sidebar account value = peak
+    # Drawdown from peak — track high-water mark in portfolio.json
+    current_equity = account_value  # already computed dynamically above
+    peak_equity = data.get("peak_equity", current_equity)
+    if current_equity > peak_equity:
+        peak_equity = current_equity
+        data["peak_equity"] = round(peak_equity, 2)
+        _portfolio_save(data)
     drawdown_pct = ((current_equity - peak_equity) / peak_equity) * 100 if peak_equity > 0 else 0
 
     if drawdown_pct >= 0:
@@ -3624,7 +3663,6 @@ def main():
         # Core Allocation (v4)
         "core_pct_deployed": 0.0,
         "core_positions":    "",     # Comma-separated ETF tickers, e.g. "XLK,XLI"
-        "account_value":     71000,
     }
     # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
     for etf in SECTOR_ETFS.values():
@@ -3632,7 +3670,7 @@ def main():
 
     # Keys that persist across refreshes via URL query params
     _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule",
-                     "core_pct_deployed", "core_positions", "account_value"]
+                     "core_pct_deployed", "core_positions"]
 
     # Load persisted values from URL on first visit
     qp = st.query_params
@@ -3717,11 +3755,7 @@ def main():
 
         st.divider()
         st.subheader("Core Allocation (v4)")
-        st.caption("Track Core ETF positions and deployment floor.")
-        st.session_state.account_value = st.number_input(
-            "Account Value ($)", value=st.session_state.account_value, step=1000, format="%d",
-            on_change=_save_manual_signals,
-        )
+        st.caption("Account value computed from portfolio.json + live prices.")
         st.session_state.core_positions = st.text_input(
             "Core ETF Positions (comma-separated)", value=st.session_state.core_positions,
             placeholder="e.g. XLK, XLI",
@@ -3743,6 +3777,14 @@ def main():
         st.caption("Screener runs on-demand from the Screener tab.")
 
     # ── DATA LOADING ──────────────────────────────────────────────────────────
+    # ── PORTFOLIO VALUE (computed before tabs so all tabs can use it) ────────
+    _port_data = _portfolio_load()
+    _port_open = _port_data.get("open_positions", [])
+    _port_tickers = [p["ticker"] for p in _port_open]
+    _port_prices = fetch_portfolio_prices(",".join(_port_tickers)) if _port_tickers else {}
+    _acct_val, _, _, _ = _compute_account_value(_port_data, _port_prices)
+    st.session_state["account_value"] = round(_acct_val)
+
     with st.spinner("Loading market data..."):
         macro_close = fetch_macro_data()
         l0          = calc_layer0(macro_close)

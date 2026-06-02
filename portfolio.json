@@ -1,7 +1,8 @@
 {
-  "account_size": 100000,
+  "cash_balance": 85200,
   "last_updated": "2026-06-01",
   "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
+  "note": "Account value = cash_balance + open positions at market. cash_balance = total account minus cost basis of open positions. Update cash_balance when positions are opened or closed.",
   "pending_orders": [
     {
       "ticker": "XLK",
