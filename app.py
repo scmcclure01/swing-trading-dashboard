@@ -3075,7 +3075,7 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
         ticker     = p["ticker"]
         entry_px   = p["entry_price"]
         shares     = p["shares"]
-        stop_px    = p["stop_price"]
+        stop_px    = p["stop_price"]  # may be None if stop not yet set
         entry_dt   = datetime.strptime(p["entry_date"], "%Y-%m-%d").date()
         days_held  = (date.today() - entry_dt).days
         layer      = p.get("layer", "Tactical")
@@ -3084,7 +3084,7 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
         mkt_val    = cur_px * shares
         upnl_d     = mkt_val - cost_basis
         upnl_pct   = upnl_d / cost_basis if cost_basis else 0.0
-        risk_d     = (entry_px - stop_px) * shares
+        risk_d     = (entry_px - stop_px) * shares if stop_px is not None else 0.0
         total_mv   += mkt_val
         total_cb   += cost_basis
         total_upnl += upnl_d
@@ -3144,7 +3144,7 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
             "Shares":     shares,
             "P&L $":      _dollar_fmt(upnl_d),
             "P&L %":      _pct_fmt(upnl_pct),
-            "Stop":       f"${stop_px:.2f}",
+            "Stop":       f"${stop_px:.2f}" if stop_px is not None else "TBD",
             "BE":         f"${be_px:.2f}",
             "T1":         f"${t1_px:.2f}" if t1_px else "—",
             "T2":         f"${t2_px:.2f}" if t2_px else "—",

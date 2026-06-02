@@ -1,6 +1,6 @@
 {
-  "cash_balance": 56764.25,
-  "last_updated": "2026-06-01",
+  "cash_balance": 54244.25,
+  "last_updated": "2026-06-02",
   "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
   "note": "Account value = cash_balance + open positions at market. cash_balance = total account minus cost basis of open positions. Update cash_balance when positions are opened or closed.",
   "pending_orders": [
@@ -16,22 +16,19 @@
       "order_expiration": "2026-11-20",
       "order_number": "17C303DL",
       "notes": "Core sector ETF — Technology. Brokerage Link ***0700."
-    },
-    {
-      "ticker": "DOCN",
-      "layer": "Tactical",
-      "action": "Buy",
-      "order_type": "Limit",
-      "limit_price": 168.00,
-      "shares": 15,
-      "time_in_force": "GTC",
-      "order_date": "2026-06-01",
-      "order_expiration": "2026-11-27",
-      "order_number": "17C343PS",
-      "notes": "Tactical swing entry. Brokerage Link ***0700."
     }
   ],
   "open_positions": [
+    {
+      "ticker": "DOCN",
+      "layer": "Tactical",
+      "entry_date": "2026-06-02",
+      "entry_price": 168.00,
+      "shares": 15,
+      "stop_price": 153.00,
+      "current_price": 168.00,
+      "notes": "Accelerating Protocol. GTC stop $153 — user to set in broker. Technology sector. Risk: $225 (0.31%). Max hold 2026-07-14."
+    },
     {
       "ticker": "QCOM",
       "layer": "Tactical",
