@@ -3342,17 +3342,17 @@ def _render_portfolio_tab() -> None:
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px; font-weight:500;">'
         f'PERFORMANCE SUMMARY &nbsp;·&nbsp; {period_label}</div>'
-        f'<div style="display:grid; grid-template-columns:repeat(8,1fr); gap:9px;">'
+        f'<div style="display:grid; grid-template-columns:repeat(9,1fr); gap:9px;">'
+        + _tile("Account Value",  f"${account_value:,.0f}",
+                f"Cash + positions", "#103766")
+        + _tile("Cash to Trade",  f"${cash_balance:,.0f}",
+                f"{cash_balance/account_value*100:.0f}% of account" if account_value else "")
         + _tile("Realized P&L",   _dollar_fmt(perf["realized_pnl"]),
                 f"{perf['count']} closed trades", rpnl_color)
         + _tile("Unrealized P&L", _dollar_fmt(total_upnl),
                 f"{len(open_pos)} open positions", upnl_color)
         + _tile("Win Rate",       f"{perf['win_rate']*100:.0f}%" if perf["count"] else "—",
                 f"{perf.get('n_wins',0)}W / {perf.get('n_losses',0)}L" if perf["count"] else "")
-        + _tile("Avg Win",        _pct_fmt(perf["avg_win"]) if perf["avg_win"] else "—",
-                "", "#27500A" if perf["avg_win"] > 0 else "#5A7BAA")
-        + _tile("Avg Loss",       _pct_fmt(perf["avg_loss"]) if perf["avg_loss"] else "—",
-                "", "#CC1111" if perf["avg_loss"] < 0 else "#5A7BAA")
         + _tile("Profit Factor",  pf_str,
                 "≥ 1.5 target", "#27500A" if pf_val >= 1.5 else "#E07800" if pf_val >= 1.0 else "#CC1111")
         + _tile("Deployed",       f"{deployed_pct*100:.1f}%",
@@ -3360,6 +3360,9 @@ def _render_portfolio_tab() -> None:
         + _tile("Portfolio Heat", f"{heat_pct*100:.1f}%",
                 "risk $ / account",
                 "#CC1111" if heat_pct > 0.15 else "#E07800" if heat_pct > 0.08 else "#27500A")
+        + _tile("Avg Win / Loss",
+                f"{_pct_fmt(perf['avg_win'])} / {_pct_fmt(perf['avg_loss'])}" if perf["count"] else "—",
+                "")
         + '</div></div>'
     )
     st.markdown(summary_html, unsafe_allow_html=True)
