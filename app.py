@@ -2466,8 +2466,11 @@ def _render_position_sizer_tab(
             try:
                 tkr = yf.Ticker(c["ticker"])
                 hist = tkr.history(period="6mo")
-                close = hist["Close"]
-                volume = hist["Volume"]
+                close = hist["Close"].squeeze()
+                volume = hist["Volume"].squeeze()
+                if isinstance(close, pd.DataFrame):
+                    close = close.iloc[:, 0]
+                close = close.dropna()
                 price = round(float(close.iloc[-1]), 2)
                 ma20 = round(float(close.rolling(20).mean().iloc[-1]), 2)
                 ma50 = round(float(close.rolling(50).mean().iloc[-1]), 2)
@@ -2484,18 +2487,8 @@ def _render_position_sizer_tab(
                     stop = round(base_low * 0.99, 2)
                 elif trigger == "Pullback":
                     # Entry: at the 20d or 50d MA. Stop: 1-2% below that MA.
-                    pct_vs_20 = abs(price / ma20 - 1)
-                    pct_vs_50 = abs(price / ma50 - 1)
-                    if pct_vs_20 <= 0.03:
-                        entry = round(ma20, 2)
-                        stop = round(ma20 * 0.98, 2)
-                    elif pct_vs_50 <= 0.03:
-                        entry = round(ma50, 2)
-                        stop = round(ma50 * 0.98, 2)
-                    else:
-                        # Not near either MA — suggest 20d MA as target entry
-                        entry = round(ma20, 2)
-                        stop = round(ma20 * 0.98, 2)
+                    entry = round(ma20, 2)
+                    stop = round(ma20 * 0.98, 2)
                 else:  # Accelerating
                     # Entry: current price (up to 15% above 20d MA). Stop: 10d EMA.
                     entry = price
@@ -2512,7 +2505,9 @@ def _render_position_sizer_tab(
                     "base_high": base_high,
                     "base_low": base_low,
                 }
-            except Exception:
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
                 # Fallback to screener values
                 st.session_state["sizer_entry"] = c.get("entry", 0.0)
                 st.session_state["sizer_stop"] = c.get("stop", 0.0)
