@@ -9,7 +9,7 @@ The swing trading framework has been operational since April 2026. It has not pr
 
 **The problem is capital utilization.** In a confirmed GREEN state with 18 open position slots and 12.1% remaining heat capacity, the framework kept ~85% of the account in cash while the leading sector (XLK/Tech) ran +40%. YTD realized P&L of +$768 on a $71K account translates to ~9% annualized — well below the 25-35% target.
 
-**Root cause:** The entry trigger (Layer 3) is binary and speed-blind. It requires either a breakout on 40%+ volume or a pullback to 20d MA with reversal candle. In a normal rotation, this works. In a white-hot sector move, the pullback never comes and the framework says "wait" indefinitely.
+**Root cause:** The entry trigger (Layer 5) is binary and speed-blind. It requires either a breakout on 40%+ volume or a pullback to 20d MA with reversal candle. In a normal rotation, this works. In a white-hot sector move, the pullback never comes and the framework says "wait" indefinitely.
 
 **Solution:** Restructure from pure swing to Core-Satellite, add a Velocity Flag to Layer 0, and recalibrate drawdown tiers to match expanded tolerance.
 
@@ -42,21 +42,21 @@ The swing trading framework has been operational since April 2026. It has not pr
 
 **Core Allocation: 40% (~$28K)**
 - 2-3 regime-aligned sector ETFs
-- Entry: at market when Layer 0 confirms regime + Layer 1.5 confirms Phase 2
+- Entry: at market when Layer 0 confirms regime + Layer 3 confirms Phase 2
 - No breakout or volume threshold required for Core entries
 - Stop: 20d MA (same as current ETF positions)
 - Hold: as long as regime supports — no fixed max hold
 - Exit: close below 20d MA on volume, regime goes RED, or RS declining for 2 consecutive weeks
 
 **Tactical Allocation: 60% (~$43K)**
-- Current swing framework (Layers 2-6) for individual stocks
+- Current swing framework (Layers 4-6) for individual stocks
 - Entry criteria unchanged in normal conditions
 - Modified entry criteria when Velocity Flag is active (see below)
 
 **Rules:**
 - Core positions count toward portfolio heat on equal footing
 - In RED state, Core exits to cash with everything else
-- Core ETFs are selected from Layer 1.5 Phase 2 Confirmed sectors only
+- Core ETFs are selected from Layer 3 Phase 2 Confirmed sectors only
 - Maximum 3 Core ETF positions simultaneously
 - Each Core ETF max 15% of account (~$10.7K)
 
@@ -73,7 +73,7 @@ The swing trading framework has been operational since April 2026. It has not pr
 
 **When flag deactivates (ROC 21 drops below +15%):**
 - No new Accelerating entries
-- Existing positions managed normally under Layer 6 rules
+- Existing positions managed normally under Layer 8 rules
 - Stop reverts to 20d MA after first partial taken
 
 ### 3. Drawdown Tiers Recalibrated

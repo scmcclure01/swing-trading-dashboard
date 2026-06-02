@@ -202,7 +202,7 @@ bordered=False (inside a _card):
 
 ## Layout patterns
 
-### Two-column tab layout (L0/L1)
+### Two-column tab layout (L0/L2)
 
 ```
 display: grid
@@ -212,7 +212,7 @@ gap: 12px
 
 Each column contains stacked `_card()` components.
 
-### Stats tile row (L2 Screener)
+### Stats tile row (L4 Screener)
 
 White outer card wrapping a tile grid:
 ```
@@ -247,6 +247,6 @@ The following Streamlit native components are replaced by custom HTML in this ap
 | `st.metric` | `_tile()` inside a white card |
 | `st.success / st.warning / st.error` | `_gate_bar_html()` |
 | `st.expander` | `_card()` |
-| `st.dataframe` (in L0/L1/L1.5/L2) | `cb_table()` inside `_card()` |
+| `st.dataframe` (in L0/L2/L3/L4) | `cb_table()` inside `_card()` |
 | `st.subheader` (section headers) | Card heading inside `_card()` |
 | `st.divider` | Not used — card spacing handles separation |

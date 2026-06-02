@@ -1,6 +1,6 @@
 ---
 name: trade-eval
-description: Evaluate a specific trade candidate through the swing trading framework. Use this skill when the user shares a ticker and asks whether to trade it, asks for a framework evaluation, says "evaluate [ticker]", "run the framework on [ticker]", "is [ticker] a buy", or wants entry, stop, and size for a specific stock or ETF. Also use for Core ETF entry decisions and Layer 1.5 sector ETF evaluations.
+description: Evaluate a specific trade candidate through the swing trading framework. Use this skill when the user shares a ticker and asks whether to trade it, asks for a framework evaluation, says "evaluate [ticker]", "run the framework on [ticker]", "is [ticker] a buy", or wants entry, stop, and size for a specific stock or ETF. Also use for Core ETF entry decisions and Layer 3 sector ETF evaluations.
 ---
 
 # Trade Evaluation
@@ -15,7 +15,7 @@ Identify the trade type first, then run the appropriate path.
 
 **Requires from user or recent weekly review:** current permission state, current regime, Velocity Flag status for this sector.
 
-### Layer 2 — Stock Qualification
+### Layer 4 — Stock Qualification
 
 Pull via yfinance:
 ```python
@@ -49,7 +49,7 @@ Check:
 - **Earnings carry:** (forward earnings yield minus 3M T-bill). Positive = full; slightly negative = reduce 25% or skip
 - **Energy stocks only:** run 3-layer check (CL1-CL2 term structure, COT percentile, XLE vs 50d SMA)
 
-### Layer 3 — Entry Trigger
+### Layer 5 — Entry Trigger
 
 **Check which protocol applies:**
 
@@ -69,7 +69,7 @@ Check:
 - Max 3 Accelerating positions simultaneously
 - Permission state YELLOW → quarter size (not half)
 
-### Layer 4 — Position Sizing
+### Layer 6 — Position Sizing
 
 ```
 Shares = (Account × Risk%) ÷ (Entry − Stop)
@@ -90,7 +90,7 @@ Adjustments:
 ```
 TICKER — [TRADE / HALF SIZE / PASS]
 
-Layer 2:
+Layer 4:
 - Two-speed: ROC21 X% / ROC63 X% → [Full / Half / PASS]
 - Price vs MAs: above 20d ($X) and 50d ($X)? [Yes/No]
 - RS vs SPY: [outperforming / underperforming]
@@ -98,13 +98,13 @@ Layer 2:
 - Sector: [name] — regime-aligned? [Yes/No]
 - Carry: [positive/negative]
 
-Layer 3:
+Layer 5:
 - Protocol: [Standard / Accelerating]
 - Trigger: [Breakout above $X / Pullback to 20d at $X / Extended entry at $X]
 - Volume: [X.Xx average]
 - Initial stop: $X ([X]% risk)
 
-Layer 4:
+Layer 6:
 - Account risk: $X (X% of account)
 - Shares: X
 - Position value: $X (X% of Tactical sleeve)
@@ -127,7 +127,7 @@ Targets:
 
 1. Permission state GREEN or YELLOW? (RED = no Core entries)
 2. Sector regime-aligned?
-3. Layer 1.5 Phase 2 Confirmed? (3+ weeks sustained inflows, RS at new highs, individual stocks showing full two-speed signals)
+3. Layer 3 Phase 2 Confirmed? (3+ weeks sustained inflows, RS at new highs, individual stocks showing full two-speed signals)
 4. Current Core ETF count < 3?
 5. Adding this ETF stays within: 15% per ETF cap, 25% sector concentration cap, deployment floor target?
 
@@ -152,7 +152,7 @@ Deployment floor: [met / X% below floor]
 
 ---
 
-## Trade Type C — Layer 1.5 Sector ETF
+## Trade Type C — Layer 3 Sector ETF
 
 **Requires:** current permission state, current regime, ETF.com flow data (user provides or Claude fetches via web search).
 
@@ -168,10 +168,10 @@ Deployment floor: [met / X% below floor]
 5. RS line inflecting up vs SPY?
 6. Any regime mismatch? (flag as anomaly, do not enter)
 
-### Output Format — Layer 1.5 ETF
+### Output Format — Layer 3 ETF
 
 ```
-[ETF] Layer 1.5 — [ENTRY SIZE / WATCH / PASS]
+[ETF] Layer 3 — [ENTRY SIZE / WATCH / PASS]
 
 Flow signal: [Weak/Moderate/Strong] — X weeks directional inflows
 RS vs SPY: [inflecting up / at new highs / flat / declining]

@@ -61,7 +61,7 @@ Score: X/5 models in recession territory.
 
 ---
 
-## Step 3 — Set Permission State (Layer 1)
+## Step 3 — Set Permission State (Layer 2)
 
 | SPY signals | Recession composite | State |
 |---|---|---|
@@ -76,7 +76,7 @@ Check for liquidity override: HYG/IEF widening rapidly OR Fed Net Liquidity -$20
 
 ---
 
-## Step 4 — Layer 1.5: Sector Rotation ETF Check
+## Step 4 — Layer 3: Sector Rotation ETF Check
 
 Pull from ETF.com fund flows tool and SSGA Sector Tracker (web search):
 - Top 3 sectors by 1-week net inflows
@@ -89,7 +89,7 @@ For each sector with consistent inflows:
 - Flow signal strength: 1 week = weak / 2 weeks consistent = moderate / 2+ weeks accelerating = strong
 - Score: no action / watch / quarter / half / full entry
 
-For any active Layer 1.5 ETF positions (from playbook):
+For any active Layer 3 ETF positions (from playbook):
 - Flow reversal? (2 consecutive weeks outflows → exit)
 - ETF above 20d MA? (below on volume → exit)
 - RS line vs SPY declining 2+ weeks? (exit)
@@ -113,7 +113,7 @@ Evaluate:
 
 ---
 
-## Step 6 — Open Position Management (Layer 6)
+## Step 6 — Open Position Management (Layer 8)
 
 For each open Tactical position in the playbook, check:
 - Hit +5%? → stop should be at breakeven
@@ -128,7 +128,7 @@ For Accelerating Protocol positions: check 10d EMA stop specifically.
 
 ---
 
-## Step 7 — Watchlist Rescore (Layer 2)
+## Step 7 — Watchlist Rescore (Layer 4)
 
 For each watchlist candidate, use yfinance to calculate:
 - ROC 21 (1-month return)
@@ -139,7 +139,7 @@ Flag:
 - Regime-aligned sector?
 - Any new entry trigger visible? (breakout setup, pullback to MA)
 - Velocity Flag active for this sector? → evaluate under Accelerating Protocol
-- Active Core or Layer 1.5 ETF in this sector? → priority candidate
+- Active Core or Layer 3 ETF in this sector? → priority candidate
 
 ---
 
@@ -157,7 +157,7 @@ Produce a concise weekly summary covering:
 - FactSet revision direction
 - Velocity Flag: sectors flagged and ROC 21 readings
 
-**Layer 1.5 Snapshot:**
+**Layer 3 Snapshot:**
 - Top inflow sectors (1W and 4W)
 - Any new ETF entry opportunities (with sizing)
 - Active ETF position status

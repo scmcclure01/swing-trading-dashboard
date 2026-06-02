@@ -31,7 +31,7 @@ Execute in order:
 
 3. Score the recession composite (__/5 models in recession territory).
 
-4. Identify the current macro regime and permission state (Layer 1).
+4. Identify the current macro regime and permission state (Layer 2).
 
 5. Flag any liquidity override conditions.
 
@@ -45,7 +45,7 @@ Execute in order:
       - YELLOW floor: 20-35%
       - If below floor: recommend Core ETF entries to fill
 
-7. LAYER 1.5 — Sector Rotation ETF review:
+7. LAYER 3 — Sector Rotation ETF review:
    a. Pull top 3 sectors by 1-week and 4-week net inflows from ETF.com fund flows tool
    b. Cross-reference with SSGA Sector Tracker for 1M and 3M price performance rank
    c. For each sector with consistent inflows:
@@ -60,7 +60,7 @@ Execute in order:
       - Any individual stocks from that sector now entering (Phase 3 transition)?
    e. Flag any regime mismatch anomalies (inflows into non-regime-aligned sector)
 
-8. LAYER 2 — For each OPEN POSITION in the playbook:
+8. LAYER 4 — For each OPEN POSITION in the playbook:
    - Check if first target (+8-12%), second target (+20-25%), or stop has been hit
    - Check if close below 20d MA on volume
    - Check if RS line is declining
@@ -73,12 +73,12 @@ Execute in order:
    - Note any new entry trigger
    - If Velocity Flag active for this sector [v4]: evaluate under Accelerating Protocol
      (entries up to 12-15% above 20d MA, half size, 10d EMA stop, 6-week hold)
-   - For stocks in sectors with active Core or Layer 1.5 ETF positions: flag as priority
+   - For stocks in sectors with active Core or Layer 3 ETF positions: flag as priority
 
 10. Output an UPDATED playbook with:
     - New Last Updated date
     - New Layer 0 Weekly Snapshot filled in (including Velocity Flag status)
-    - New Layer 1.5 Snapshot filled in (flow readings, ETF position status, any new opportunities)
+    - New Layer 3 Snapshot filled in (flow readings, ETF position status, any new opportunities)
     - Core Allocation status [v4] (positions, % deployed, vs floor)
     - Updated permission state and composite scores
     - Updated Week's Rules
@@ -96,7 +96,7 @@ Be direct. No background. Just the readings, the state, and what to do.
 
 1. Open a chat in this project
 2. Paste the prompt above — no attachment needed, Claude reads the playbook directly
-3. Claude runs the full Layer 0 + Velocity Flag + Core Check + Layer 1.5 checklist via web search, updates the playbook, and flags all position and ETF actions
+3. Claude runs the full Layer 0 + Velocity Flag + Core Check + Layer 3 checklist via web search, updates the playbook, and flags all position and ETF actions
 4. Save the output as the new weekly playbook xlsx in the Playbooks/ folder
 
 **Monthly cadence (after CPI or PCE release):**
@@ -104,7 +104,7 @@ Be direct. No background. Just the readings, the state, and what to do.
 Add this to the end of the prompt:
 
 ```
-Also run LAYER 0.5 monthly mispricing check:
+Also run LAYER 1 monthly mispricing check:
 - Forward earnings yield vs 10Y TIPS (DFII10) spread
 - Equity risk premium vs 10Y nominal (DGS10)
 - GDPNow direction vs FactSet consensus EPS direction
@@ -120,13 +120,13 @@ Evaluate [TICKER] through the framework.
 Current permission state: [from last weekly review]
 Current regime: [from last weekly review]
 Velocity Flag active for this sector? [yes/no — check ROC 21]
-Any active Core or Layer 1.5 ETF in this sector? [yes/no — from playbook]
+Any active Core or Layer 3 ETF in this sector? [yes/no — from playbook]
 
-Run Layers 2, 3, 4 and tell me: trade, half-size, or pass.
+Run Layers 4, 3, 4 and tell me: trade, half-size, or pass.
 If Velocity Flag active: evaluate under Accelerating Protocol (half size, 10d EMA stop, 6-week hold).
 If trade: entry trigger, stop, shares for $X account risk, targets.
 If Core active in this sector: note — Core persists, no transition needed.
-If Layer 1.5 ETF active in this sector: note Phase 3 transition plan.
+If Layer 3 ETF active in this sector: note Phase 3 transition plan.
 ```
 
 **Per-trade cadence — Core ETF entry [v4]:**
@@ -144,10 +144,10 @@ If yes: entry at market, stop at 20d MA, size up to 15% of account.
 Check deployment floor status after adding this position.
 ```
 
-**Per-trade cadence — sector ETF (Layer 1.5):**
+**Per-trade cadence — sector ETF (Layer 3):**
 
 ```
-Layer 1.5 evaluation for [SECTOR / ETF ticker].
+Layer 3 evaluation for [SECTOR / ETF ticker].
 
 Current permission state: [from last weekly review]
 Current regime: [from last weekly review]
@@ -180,7 +180,7 @@ Note: if sector reaches Phase 2, evaluate for Core allocation upgrade.
 - HYG/IEF ratio 4-week direction (TradingView)
 - Chauvet-Piger recession probability (FRED: RECPROUSM156N — sometimes accessible)
 - Conference Board LEI trend (conference-board.org — paywalled)
-- Sector ETF 20d MA exact level for Layer 1.5 and Core entry (TradingView — can approximate via yfinance)
+- Sector ETF 20d MA exact level for Layer 3 and Core entry (TradingView — can approximate via yfinance)
 
 ---
 
@@ -188,7 +188,7 @@ Note: if sector reaches Phase 2, evaluate for Core allocation upgrade.
 
 - Takes 30-60 seconds from your end. Claude handles the rest.
 - If any data source is down or paywalled, Claude will flag it and use the most recent available reading.
-- Layer 1.5 flow data from ETF.com may have a 1-day lag — use directional signal, not precise numbers.
+- Layer 3 flow data from ETF.com may have a 1-day lag — use directional signal, not precise numbers.
 - Position data comes from your playbook file — Claude cannot access your brokerage account.
 - Velocity Flag ROC 21 is calculated automatically via yfinance — no manual input needed [v4].
 - Core allocation check runs automatically as part of every weekly review [v4].

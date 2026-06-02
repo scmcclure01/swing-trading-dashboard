@@ -11,7 +11,7 @@ Usage:
 How it works:
     1. Regime → aligned sector ETFs → pull ETF holdings (top constituents)
     2. Batch download 6-month OHLCV for those ~500-1200 names
-    3. Apply L2 filters: price > 20d/50d MA, two-speed signal, RS vs SPY, volume
+    3. Apply L4 filters: price > 20d/50d MA, two-speed signal, RS vs SPY, volume
     4. Rank by RS strength, output CSV + summary
 """
 
@@ -201,8 +201,8 @@ def download_data(tickers, period="6mo"):
 
 
 def compute_and_filter(frames, sector_labels, min_price=5.0, min_advol=50000):
-    """Compute L2 signals and filter."""
-    print(f"\nComputing L2 signals...")
+    """Compute L4 signals and filter."""
+    print(f"\nComputing L4 signals...")
 
     spy = frames.get("SPY")
     if spy is None:
@@ -309,7 +309,7 @@ def compute_and_filter(frames, sector_labels, min_price=5.0, min_advol=50000):
             continue
 
     df_out = pd.DataFrame(results)
-    print(f"  Passing all L2 filters: {len(df_out)} stocks")
+    print(f"  Passing all L4 filters: {len(df_out)} stocks")
     return df_out
 
 

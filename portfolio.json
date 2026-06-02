@@ -1,7 +1,35 @@
 {
   "account_size": 100000,
-  "last_updated": "2026-05-28",
+  "last_updated": "2026-06-01",
   "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
+  "pending_orders": [
+    {
+      "ticker": "XLK",
+      "layer": "Core",
+      "action": "Buy",
+      "order_type": "Limit",
+      "limit_price": 188.00,
+      "shares": 40,
+      "time_in_force": "GTC",
+      "order_date": "2026-06-01",
+      "order_expiration": "2026-11-20",
+      "order_number": "17C303DL",
+      "notes": "Core sector ETF — Technology. Brokerage Link ***0700."
+    },
+    {
+      "ticker": "DOCN",
+      "layer": "Tactical",
+      "action": "Buy",
+      "order_type": "Limit",
+      "limit_price": 168.00,
+      "shares": 15,
+      "time_in_force": "GTC",
+      "order_date": "2026-06-01",
+      "order_expiration": "2026-11-27",
+      "order_number": "17C343PS",
+      "notes": "Tactical swing entry. Brokerage Link ***0700."
+    }
+  ],
   "open_positions": [
     {
       "ticker": "QCOM",

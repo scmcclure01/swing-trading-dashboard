@@ -7,15 +7,15 @@ EXPECTED TAB STRUCTURE (v4.0)
 ─────────────────────────────
 1. DASHBOARD         — Summary: regime, permission, Core status, deployment floor, actions
 2. L0 - Macro Regime — Full Layer 0 readings including Velocity Flag (ROC 21 per sector)
-3. L1 - Permission   — Permission state, week's rules, Core allocation by state
-4. L1.5 - Sector Rot — Sector rotation ETF status, flow readings, Phase 1/2 tracking
+3. L2 - Permission   — Permission state, week's rules, Core allocation by state
+4. L3 - Sector Rot — Sector rotation ETF status, flow readings, Phase 1/2 tracking
 5. CORE ALLOCATION   — [v4] Core ETF positions, % deployed, vs floor target, entry/exit status
-6. L2 - Selection    — Stock screening: full signal, half signal, sector priority
-7. L3 - Entry        — Entry triggers: standard, pullback, AND Accelerating Protocol [v4]
-8. L4 - Sizing       — Position sizing for Tactical, Core, and Accelerating entries
-9. L5 - Exposure     — Portfolio heat, deployment floor check [v4], concentration limits
-10. L6 - Management  — Open position management: stops, targets, Core trail, Accelerating holds
-11. L7 - Risk Caps   — Drawdown analysis with recalibrated tiers [v4]
+6. L4 - Selection    — Stock screening: full signal, half signal, sector priority
+7. L5 - Entry        — Entry triggers: standard, pullback, AND Accelerating Protocol [v4]
+8. L6 - Sizing       — Position sizing for Tactical, Core, and Accelerating entries
+9. L7 - Exposure     — Portfolio heat, deployment floor check [v4], concentration limits
+10. L8 - Management  — Open position management: stops, targets, Core trail, Accelerating holds
+11. L9 - Risk Caps   — Drawdown analysis with recalibrated tiers [v4]
 
 CORE ALLOCATION TAB CONTENT [v4]
 ────────────────────────────────
@@ -29,7 +29,7 @@ VELOCITY FLAG SECTION (in L0 tab) [v4]
 ──────────────────────────────────────
 - ROC 21 for each sector ETF
 - Flag status: ACCELERATING (>15%) / NORMAL (5-15%) / SLOW (<5%)
-- Accelerating sectors trigger modified Layer 3 entry rules
+- Accelerating sectors trigger modified Layer 5 entry rules
 
 FORMATTING GUIDELINES
 ─────────────────────

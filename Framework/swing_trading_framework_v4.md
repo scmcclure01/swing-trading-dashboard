@@ -11,9 +11,9 @@ Hold Period: 1–12 Weeks  |  Platform: TradingView  |  Universe: All US Equitie
 | This document supersedes v3.0. All v3.0 content is preserved; v4.0 adds structural and tactical changes. |
 | • Portfolio Structure: NEW — Core-Satellite allocation (40% Core ETF / 60% Tactical swing) |
 | • Velocity Flag: NEW — Layer 0 addition for detecting white-hot sector moves |
-| • Minimum Deployment Floor: NEW — Layer 5 addition to prevent idle capital in GREEN state |
-| • Drawdown Tiers: MODIFIED — Layer 7 recalibrated to support higher capital deployment |
-| The framework now consists of 9 layers plus the monthly mispricing check, operating within a Core-Satellite structure. |
+| • Minimum Deployment Floor: NEW — Layer 7 addition to prevent idle capital in GREEN state |
+| • Drawdown Tiers: MODIFIED — Layer 9 recalibrated to support higher capital deployment |
+| The framework now consists of 10 layers (L0–L9), applied in sequence, operating within a Core-Satellite structure. |
 | Items marked [v4] throughout this document indicate Version 4.0 additions or modifications. |
 | Items marked [v3] indicate Version 3.0 additions still in effect. |
 | Items marked [v2] indicate Version 2.0 additions still in effect. |
@@ -22,7 +22,7 @@ Hold Period: 1–12 Weeks  |  Platform: TradingView  |  Universe: All US Equitie
 
 ## **Purpose**
 
-The Core-Satellite structure solves the capital deployment problem. In prior versions, the framework's strict entry criteria (Layer 3) created a narrow window for putting capital to work. During strong trending markets, stocks would run 20-40% above entry zones while the framework correctly said "don't chase" — leaving 80-85% of the account in cash during GREEN state.
+The Core-Satellite structure solves the capital deployment problem. In prior versions, the framework's strict entry criteria (Layer 5) created a narrow window for putting capital to work. During strong trending markets, stocks would run 20-40% above entry zones while the framework correctly said "don't chase" — leaving 80-85% of the account in cash during GREEN state.
 
 Core positions provide persistent regime-aligned exposure through sector ETFs. Tactical positions (the original swing framework) seek alpha through individual stock entries with precise timing.
 
@@ -31,7 +31,7 @@ Core positions provide persistent regime-aligned exposure through sector ETFs. T
 | **Sleeve** | **Target %** | **Dollar Value (~$71K)** | **Purpose** |
 | --- | --- | --- | --- |
 | Core | 40% | ~$28,000 | Regime-aligned sector ETFs — deployed whenever GREEN or YELLOW state supports it |
-| Tactical | 60% | ~$43,000 | Individual stock swing trades — Layers 2-6 entry criteria apply |
+| Tactical | 60% | ~$43,000 | Individual stock swing trades — Layers 4-6 entry criteria apply |
 
 ## **Core Allocation Rules**
 
@@ -40,8 +40,8 @@ Core positions provide persistent regime-aligned exposure through sector ETFs. T
 | Instruments | Sector ETFs only (XLK, SMH, XLE, XLI, XLB, XLF, XLY, etc.) |
 | Max simultaneous Core ETFs | 3 |
 | Max per Core ETF | 15% of total account (~$10,700) |
-| Entry criteria | Layer 0 confirms regime + Layer 1.5 confirms Phase 2 for the sector. No breakout or volume threshold required. Enter at market. |
-| Stop | 20d MA of the sector ETF (same as Layer 1.5) |
+| Entry criteria | Layer 0 confirms regime + Layer 3 confirms Phase 2 for the sector. No breakout or volume threshold required. Enter at market. |
+| Stop | 20d MA of the sector ETF (same as Layer 3) |
 | Hold period | No fixed max hold — hold as long as regime supports. Exit on regime change or 20d MA violation on volume. |
 | Partial profit taking | None — Core positions are not managed via T1/T2 targets. They trail the 20d MA. |
 | Portfolio heat | Core positions count toward total portfolio heat on equal footing with Tactical positions. |
@@ -49,8 +49,8 @@ Core positions provide persistent regime-aligned exposure through sector ETFs. T
 ## **Core Entry Process**
 
 1. Layer 0 identifies the current regime and leading sectors
-2. Layer 1 confirms GREEN or YELLOW permission state
-3. Layer 1.5 confirms the sector ETF is Phase 2 (Confirmed) — RS line at new highs, sustained inflows
+2. Layer 2 confirms GREEN or YELLOW permission state
+3. Layer 3 confirms the sector ETF is Phase 2 (Confirmed) — RS line at new highs, sustained inflows
 4. Enter Core ETF at market price. Stop = 20d MA.
 5. Size: up to 15% of account per ETF, scaled by permission state (GREEN = full, YELLOW = half)
 
@@ -63,36 +63,36 @@ Exit any Core ETF when ANY of the following occurs:
 4. Permission state goes RED — exit all Core to cash
 5. Flow reversal — 2 consecutive weeks of net outflows (ETF.com)
 
-## **Core vs. Layer 1.5 Distinction**
+## **Core vs. Layer 3 Distinction**
 
-Layer 1.5 and Core overlap in instrument type (sector ETFs) but differ in purpose:
-- **Layer 1.5** is an early-entry mechanism — it catches rotations in Phase 1 (Early) with flow-momentum-based sizing (quarter/half/full). It transitions to individual stocks via Phase 3.
+Layer 3 and Core overlap in instrument type (sector ETFs) but differ in purpose:
+- **Layer 3** is an early-entry mechanism — it catches rotations in Phase 1 (Early) with flow-momentum-based sizing (quarter/half/full). It transitions to individual stocks via Phase 3.
 - **Core** is a persistent exposure mechanism — it deploys capital into Phase 2 (Confirmed) sectors to maintain the minimum deployment floor. Core positions do NOT transition to individual stocks; they coexist.
 
-In practice: Layer 1.5 may enter a sector ETF at Phase 1. If the sector reaches Phase 2, that position either upgrades to Core sizing OR a separate Core position is established. Both can exist simultaneously if the sector is strong enough and portfolio limits allow.
+In practice: Layer 3 may enter a sector ETF at Phase 1. If the sector reaches Phase 2, that position either upgrades to Core sizing OR a separate Core position is established. Both can exist simultaneously if the sector is strong enough and portfolio limits allow.
 
 ## **Tactical Allocation Rules**
 
-The Tactical sleeve operates under the original framework rules (Layers 2-6) with no changes. The only modification is that Tactical sizing is computed against the Tactical allocation (~$43K), not the full account. However, for position count and portfolio heat limits, both Core and Tactical are measured against the full account.
+The Tactical sleeve operates under the original framework rules (Layers 4-6) with no changes. The only modification is that Tactical sizing is computed against the Tactical allocation (~$43K), not the full account. However, for position count and portfolio heat limits, both Core and Tactical are measured against the full account.
 
 # **Framework Overview**
 
 This framework is a systematic, rules-based swing trading methodology built on Prometheus Research (prometheus-research.com), incorporating their Basic Trend Program, G/I/L macro regime framework, expected-loss risk management, and sector rotation research — augmented with zero-cost public data signals from FRED, CFTC, FactSet, and the Atlanta Fed.
 
-The framework consists of 9 layers plus one monthly layer, applied in sequence. Every trade decision flows through each layer in order. No layer can be skipped. The framework operates within a Core-Satellite portfolio structure [v4].
+The framework consists of 10 layers (L0–L9), applied in sequence. Every trade decision flows through each layer in order. No layer can be skipped. The framework operates within a Core-Satellite portfolio structure [v4]. L1 runs monthly; all other layers run weekly or per-trade.
 
-| **The 9 Layers + Monthly Check** |
+| **The 10 Layers** |
 | --- |
 | Layer 0   — Macro Regime Filter (G/I/L + recession probability + liquidity + earnings revisions + Velocity Flag [v4]) |
-| Layer 0.5 — Monthly Macro Mispricing Check |
-| Layer 1   — Market Permission State (green / yellow / red) |
-| Layer 1.5 — Sector Rotation ETF [v3] |
-| Layer 2   — Stock Selection (sector bias, RS, two-speed trend, carry signal) |
-| Layer 3   — Entry Trigger (breakout or MA pullback with volume + Accelerating Protocol [v4]) |
-| Layer 4   — Position Sizing (expected-loss method, inverse-vol weighting) |
-| Layer 5   — Dynamic Portfolio Exposure (breadth-scaled positions + Minimum Deployment Floor [v4]) |
-| Layer 6   — Trade Management (stops, partials, trailing) |
-| Layer 7   — Hard Risk Caps (recalibrated drawdown thresholds [v4], emergency protocols) |
+| Layer 1 — Monthly Macro Mispricing Check |
+| Layer 2   — Market Permission State (green / yellow / red) |
+| Layer 3 — Sector Rotation ETF [v3] |
+| Layer 4   — Stock Selection (sector bias, RS, two-speed trend, carry signal) |
+| Layer 5   — Entry Trigger (breakout or MA pullback with volume + Accelerating Protocol [v4]) |
+| Layer 6   — Position Sizing (expected-loss method, inverse-vol weighting) |
+| Layer 7   — Dynamic Portfolio Exposure (breadth-scaled positions + Minimum Deployment Floor [v4]) |
+| Layer 8   — Trade Management (stops, partials, trailing) |
+| Layer 9   — Hard Risk Caps (recalibrated drawdown thresholds [v4], emergency protocols) |
 
 # **Layer 0 — Macro Regime Filter**
 
@@ -210,14 +210,14 @@ Check monthly after CPI and PCE releases. Use the Atlanta Fed's free Taylor Rule
 
 ## **Signal 9: Sector Flow Momentum [v3]**
 
-Check weekly alongside sector RS. This feeds directly into Layer 1.5 and Core allocation [v4] — if sustained inflows are detected, Layer 1.5 evaluates the ETF entry opportunity and Core evaluates Phase 2 deployment.
+Check weekly alongside sector RS. This feeds directly into Layer 3 and Core allocation [v4] — if sustained inflows are detected, Layer 3 evaluates the ETF entry opportunity and Core evaluates Phase 2 deployment.
 
 | **Source** | **What to Check** |
 | --- | --- |
 | ETF.com Fund Flows Tool (etf.com/etfanalytics/etf-fund-flows-tool) | 1-week and 4-week net inflows by sector ETF. Look for directional consistency, not size. |
 | SSGA Sector Tracker (ssga.com/us/en/intermediary/resources/sector-tracker) | 1M and 3M price performance rank. Confirms which sectors are leading in price. |
 
-What to look for: 1–2 weeks of directional inflow consistency into a sector ETF that is regime-aligned. Single-day spikes are noise. Sustained directional flow triggers Layer 1.5 evaluation.
+What to look for: 1–2 weeks of directional inflow consistency into a sector ETF that is regime-aligned. Single-day spikes are noise. Sustained directional flow triggers Layer 3 evaluation.
 
 ## **Signal 10: Velocity Flag — Sector Acceleration Detection [v4]**
 
@@ -232,20 +232,20 @@ The Velocity Flag detects when a sector is moving fast enough to warrant an alte
 | **Condition** | **Flag Status** |
 | --- | --- |
 | Sector ETF ROC 21 (21-day rate of change) > +15% | 🔥 ACCELERATING — alternate entry protocol active for this sector |
-| Sector ETF ROC 21 between +5% and +15% | NORMAL — standard Layer 3 entry rules apply |
+| Sector ETF ROC 21 between +5% and +15% | NORMAL — standard Layer 5 entry rules apply |
 | Sector ETF ROC 21 below +5% | SLOW — standard rules, lean toward pullback entries |
 
 Calculate ROC 21 for all primary sector ETFs (XLK, XLE, XLI, XLB, XLF, XLY, XLU, XLP, SMH) during the weekly Layer 0 review. Flag any sector above +15%.
 
-### **When Velocity Flag is Active — Modified Entry Rules (Layer 3 Override)**
+### **When Velocity Flag is Active — Modified Entry Rules (Layer 5 Override)**
 
-These rules apply ONLY to individual stock entries in the flagged sector. Core and Layer 1.5 ETF entries are unaffected (they already enter at market).
+These rules apply ONLY to individual stock entries in the flagged sector. Core and Layer 3 ETF entries are unaffected (they already enter at market).
 
 | **Parameter** | **Normal Rules** | **Accelerating Rules [v4]** |
 | --- | --- | --- |
 | Max distance above 20d MA for entry | ~6% (effective ceiling — "don't chase extended") | Up to 12-15% above 20d MA |
 | Volume threshold for breakout | 40%+ above average (1.4x) | 1.0x average (sustained elevated volume in hot sectors) |
-| Position size | Full (per Layer 4) | Half position only (risk dollars constant) |
+| Position size | Full (per Layer 6) | Half position only (risk dollars constant) |
 | Stop placement | Base low or 1-2% below MA | 10-day EMA (tighter, faster-responding) |
 | Max hold period | 12 weeks | 6 weeks |
 | Profit targets | T1 at +8-12%, T2 at +20-25% | T1 at +8-10%, T2 at +15-20% (tighter due to extended entry) |
@@ -254,7 +254,7 @@ These rules apply ONLY to individual stock entries in the flagged sector. Core a
 
 When a sector's ROC 21 drops below +15%, the Accelerating flag turns off for that sector:
 - No new Accelerating entries in that sector
-- Existing Accelerating positions continue under standard Layer 6 management
+- Existing Accelerating positions continue under standard Layer 8 management
 - Stop reverts to 20d MA after first partial taken
 
 ### **Guard Rails**
@@ -289,9 +289,9 @@ Run every Sunday or Monday morning.
 | 7. Fed Net Liquidity trend [v2] | TradingView indicator. Rising or falling over last 4 weeks? Declining >$200B = override active. |
 | 8. Recession composite [v2] | Check CFNAIMA3 and SAHMREALTIME on FRED. How many of 5 models are in recession territory? |
 | 9. FactSet earnings revisions [v2] | insight.factset.com — Earnings Insight PDF. Up or down trend in forward EPS estimates? |
-| 10. Set week's rules | Based on 1-9: set permission state, sector tilt, Core allocation, ETF opportunity (Layer 1.5), Accelerating sectors, entry style bias, stop tightness. |
+| 10. Set week's rules | Based on 1-9: set permission state, sector tilt, Core allocation, ETF opportunity (Layer 3), Accelerating sectors, entry style bias, stop tightness. |
 
-Monthly additions (after CPI/PCE): Taylor Rule gap check + Macro Mispricing Check (Layer 0.5).
+Monthly additions (after CPI/PCE): Taylor Rule gap check + Macro Mispricing Check (Layer 1).
 
 ## **TradingView Macro Watchlist**
 
@@ -317,7 +317,7 @@ Monthly additions (after CPI/PCE): Taylor Rule gap check + Macro Mispricing Chec
 | FRED:T10Y3M | Yield curve spread — inversion = warning |
 | CL1!-CL2! | Crude oil term structure — backwardation = risk premium |
 
-# **Layer 0.5 — Monthly Macro Mispricing Check**
+# **Layer 1 — Monthly Macro Mispricing Check**
 
 ## **Purpose**
 
@@ -360,20 +360,20 @@ Forward earnings yield minus 10-year nominal Treasury yield (FRED: DGS10).
 | Composite -1 to +1: Normal operations. |
 | Composite -2 to -3: Reduce all position sizes by 30-50%. Only top-tier setups. Tighten all trailing stops. |
 
-# **Layer 1 — Market Permission State**
+# **Layer 2 — Market Permission State**
 
 ## **Purpose**
 
-Layer 1 translates macro regime analysis from Layer 0 into a single actionable permission state: green, yellow, or red. This state governs the maximum number of positions, how aggressively you can size, and whether momentum or mean-reversion setups are preferred.
+Layer 2 translates macro regime analysis from Layer 0 into a single actionable permission state: green, yellow, or red. This state governs the maximum number of positions, how aggressively you can size, and whether momentum or mean-reversion setups are preferred.
 
 The permission state is a hard constraint. If red, you do not go looking for stock or ETF setups regardless of how attractive an individual chart looks. Core positions exit to cash in RED state [v4].
 
-After setting the permission state, proceed to Layer 1.5 to evaluate sector rotation ETF opportunity before individual stock screening. Also evaluate Core allocation status [v4].
+After setting the permission state, proceed to Layer 3 to evaluate sector rotation ETF opportunity before individual stock screening. Also evaluate Core allocation status [v4].
 
 | **GREEN — Full Engagement** |
 | --- |
 | Condition: SPY both signals positive + no liquidity override + recession composite below 2/5 |
-| Maximum positions: up to 20 (including Core ETFs and any Layer 1.5 ETF positions) |
+| Maximum positions: up to 20 (including Core ETFs and any Layer 3 ETF positions) |
 | Position sizing: 0.75-1.0% account risk per trade (Tactical) |
 | Core allocation: Full — deploy up to 40% in 2-3 regime-aligned sector ETFs [v4] |
 | Preferred setups: Momentum breakouts, trend continuation |
@@ -382,7 +382,7 @@ After setting the permission state, proceed to Layer 1.5 to evaluate sector rota
 | **YELLOW — Reduced Engagement** |
 | --- |
 | Condition: SPY mixed signals OR recession composite 2-3/5 OR earnings revisions declining |
-| Maximum positions: 8-12 (including Core ETFs and any Layer 1.5 ETF positions) |
+| Maximum positions: 8-12 (including Core ETFs and any Layer 3 ETF positions) |
 | Position sizing: 0.25-0.5% account risk per trade (Tactical) |
 | Core allocation: Half — deploy up to 20% in 1-2 leading sector ETFs [v4] |
 | Preferred setups: Both momentum and mean-reversion, be selective |
@@ -393,7 +393,7 @@ After setting the permission state, proceed to Layer 1.5 to evaluate sector rota
 | Condition: SPY both negative OR liquidity override OR recession composite 4-5/5 |
 | Maximum positions: 3-5 (strongest existing only) or 100% cash |
 | Core allocation: ZERO — exit all Core positions [v4] |
-| Position sizing: Minimum or no new positions — no new ETF entries via Layer 1.5 |
+| Position sizing: Minimum or no new positions — no new ETF entries via Layer 3 |
 | Action: Manage existing positions toward exits, do not add |
 
 ## **Transition Rules**
@@ -405,15 +405,15 @@ After setting the permission state, proceed to Layer 1.5 to evaluate sector rota
 
 The liquidity override can jump you from green directly to red in a single week. Core exits immediately on liquidity override [v4].
 
-# **Layer 1.5 — Sector Rotation ETF [v3]**
+# **Layer 3 — Sector Rotation ETF [v3]**
 
 ## **Purpose**
 
 Sector money rotation precedes individual stock setups by 2–8 weeks. Institutional capital moves into sector ETFs first — the easiest, fastest way to get broad exposure. Individual stocks form bases and trigger clean entries only after the rotation is underway.
 
-Layer 1.5 catches the rotation early via the sector ETF, puts capital to work, and transitions to individual names via Layer 2 as setups mature. This is momentum trading. The signal is the flow of money. The exit is when the money leaves.
+Layer 3 catches the rotation early via the sector ETF, puts capital to work, and transitions to individual names via Layer 4 as setups mature. This is momentum trading. The signal is the flow of money. The exit is when the money leaves.
 
-Note [v4]: Layer 1.5 and Core positions may overlap. Layer 1.5 enters at Phase 1 (Early) with flow-momentum sizing. When a sector reaches Phase 2 (Confirmed), the position either upgrades to Core sizing or a separate Core position is established. See Portfolio Structure section for the distinction.
+Note [v4]: Layer 3 and Core positions may overlap. Layer 3 enters at Phase 1 (Early) with flow-momentum sizing. When a sector reaches Phase 2 (Confirmed), the position either upgrades to Core sizing or a separate Core position is established. See Portfolio Structure section for the distinction.
 
 ## **Data Sources**
 
@@ -438,7 +438,7 @@ Conditions required:
 
 The signal is momentum, not a specific dollar threshold. One-day spikes are noise (hedges, rebalancing). Sustained directional flow over 1–2 weeks is the signal.
 
-**Action:** Enter sector ETF via Layer 1.5 (flow-momentum-based sizing). Position size scales with flow momentum strength — see sizing below.
+**Action:** Enter sector ETF via Layer 3 (flow-momentum-based sizing). Position size scales with flow momentum strength — see sizing below.
 
 ### **Phase 2 — Confirmation (Weeks 3–8)**
 
@@ -448,13 +448,13 @@ Confirmation signals:
 - Individual stocks in the sector: two-speed signals turning Full (ROC 21 and ROC 63 both positive)
 - Volume expanding on up weeks vs down weeks
 
-**Action:** This is the trigger for Core allocation [v4]. Deploy Core capital into this sector ETF at market (up to 15% of account). Simultaneously, begin entering individual names via Layer 2/3. As individual stocks are entered, Layer 1.5 position (if still held from Phase 1) reduces proportionally.
+**Action:** This is the trigger for Core allocation [v4]. Deploy Core capital into this sector ETF at market (up to 15% of account). Simultaneously, begin entering individual names via Layer 4/3. As individual stocks are entered, Layer 3 position (if still held from Phase 1) reduces proportionally.
 
 ### **Phase 3 — Transition to Individual Names**
 
-As individual stocks clear Layer 2 and trigger Layer 3 entries, the Layer 1.5 position becomes redundant. Each individual stock entered in the sector reduces the Layer 1.5 ETF by one slot-equivalent. Complete transition by Week 8–12 of the rotation. If individual setups never materialize despite ETF strength, keep the ETF and trail it.
+As individual stocks clear Layer 4 and trigger Layer 5 entries, the Layer 3 position becomes redundant. Each individual stock entered in the sector reduces the Layer 3 ETF by one slot-equivalent. Complete transition by Week 8–12 of the rotation. If individual setups never materialize despite ETF strength, keep the ETF and trail it.
 
-Note [v4]: Core positions do NOT transition out via Phase 3. Core is persistent regime-aligned exposure. Only the Layer 1.5 position transitions. Core and individual stock positions coexist.
+Note [v4]: Core positions do NOT transition out via Phase 3. Core is persistent regime-aligned exposure. Only the Layer 3 position transitions. Core and individual stock positions coexist.
 
 ## **Position Sizing — Flow Momentum Based**
 
@@ -470,7 +470,7 @@ Scale risk % to permission state (Yellow state: use half of the above figures).
 
 ## **Portfolio Heat and Slot Rules**
 
-- ETF positions (both Layer 1.5 and Core [v4]) count toward portfolio heat on equal footing with individual stock positions
+- ETF positions (both Layer 3 and Core [v4]) count toward portfolio heat on equal footing with individual stock positions
 - Each ETF position occupies one slot toward the maximum position count (20 in Green, 8-12 in Yellow)
 - Sector cap: ETF position(s) + individual stock positions in the same sector ≤ 20% of account at any time
 - ETF dollar risk counts toward total portfolio heat percentage ceiling
@@ -486,7 +486,7 @@ Exits track the flow of money, not price targets.
 
 **Secondary exits (tighten stop to breakeven, prepare to exit):**
 4. Regime shift — G/I/L regime changes and no longer favors the sector
-5. 12-week max hold — same rule as individual positions (applies to Layer 1.5 positions, NOT Core [v4])
+5. 12-week max hold — same rule as individual positions (applies to Layer 3 positions, NOT Core [v4])
 
 ## **Regime Mismatch Protocol**
 
@@ -499,7 +499,7 @@ When a sector receives strong sustained inflows but conflicts with the current G
 
 The regime is the filter that keeps entries in high-probability setups. Chasing every flow signal regardless of regime turns this into noise-following.
 
-## **Weekly Layer 1.5 Checklist**
+## **Weekly Layer 3 Checklist**
 
 | **Check** | **Source** | **Signal** |
 | --- | --- | --- |
@@ -512,11 +512,11 @@ The regime is the filter that keeps entries in high-probability setups. Chasing 
 | Core allocation status [v4] | Review | Which sectors are Phase 2? Deploy Core if not already. |
 | Regime mismatch anomalies | Cross-reference | Log and evaluate |
 
-# **Layer 2 — Stock Selection**
+# **Layer 4 — Stock Selection**
 
 ## **Purpose**
 
-Layer 2 identifies individual stock candidates from the sectors identified in Layer 0/1/1.5. If an ETF position was entered in Layer 1.5 or a Core position is active [v4], stocks from that sector become the priority for Layer 2 screening — as they set up and are entered, the Layer 1.5 position transitions out (Phase 3). Core positions remain.
+Layer 4 identifies individual stock candidates from the sectors identified in Layer 0/1/1.5. If an ETF position was entered in Layer 3 or a Core position is active [v4], stocks from that sector become the priority for Layer 4 screening — as they set up and are entered, the Layer 3 position transitions out (Phase 3). Core positions remain.
 
 Only runs when the permission state is green or yellow.
 
@@ -529,7 +529,7 @@ Only runs when the permission state is green or yellow.
 | Deflationary (growth down, inflation down) | Healthcare (XLV), Consumer Staples (XLP), Utilities (XLU) — very selective |
 | Stagflation (growth down, inflation up) | Energy (XLE), commodities — minimal long exposure overall |
 
-If a Layer 1.5 ETF or Core position is active, prioritize individual names within that sector for screening.
+If a Layer 3 ETF or Core position is active, prioritize individual names within that sector for screening.
 
 ## **Step 2: Relative Strength Screening**
 
@@ -585,19 +585,19 @@ For energy stocks and commodity-sensitive equities, run the additional three-lay
 
 ## **Building Your Watchlist**
 
-- Output of Layer 2 is a ranked watchlist — not a trade list
+- Output of Layer 4 is a ranked watchlist — not a trade list
 - Maintain 20-40 names at all times
 - Rank by RS line strength — strongest at the top
 - Tag each with: two-speed signal (full/half/flat), carry score, energy signal if applicable
-- Names in a sector with an active Layer 1.5 ETF or Core position are priority candidates for Phase 3 transition (Layer 1.5) or complement (Core) [v4]
+- Names in a sector with an active Layer 3 ETF or Core position are priority candidates for Phase 3 transition (Layer 3) or complement (Core) [v4]
 
-# **Layer 3 — Entry Trigger**
+# **Layer 5 — Entry Trigger**
 
 ## **Purpose**
 
-Layer 3 defines the specific price action event that initiates a trade. A stock can be on your watchlist for weeks before producing a valid entry. The watchlist alone is not a reason to enter — only the trigger is. The trigger also defines your initial stop loss.
+Layer 5 defines the specific price action event that initiates a trade. A stock can be on your watchlist for weeks before producing a valid entry. The watchlist alone is not a reason to enter — only the trigger is. The trigger also defines your initial stop loss.
 
-Note: Layer 1.5 ETF entries and Core entries [v4] use the sector ETF's 20d MA as the reference level, not this layer's individual stock triggers. This layer governs individual stock entries only.
+Note: Layer 3 ETF entries and Core entries [v4] use the sector ETF's 20d MA as the reference level, not this layer's individual stock triggers. This layer governs individual stock entries only.
 
 ## **Regime-Based Entry Selection**
 
@@ -631,10 +631,10 @@ Note: Layer 1.5 ETF entries and Core entries [v4] use the sector ETF's 20d MA as
 
 Active ONLY when the Velocity Flag (Layer 0, Signal 10) is triggered for the sector.
 
-- Stock is in the flagged sector, passed Layer 2 screening, and is above 20d MA
+- Stock is in the flagged sector, passed Layer 4 screening, and is above 20d MA
 - Entry allowed up to 12-15% above 20d MA (extended entries permitted)
 - Volume threshold: 1.0x average (reduced from 1.4x — hot sectors have sustained elevated volume)
-- Position size: HALF of normal Layer 4 output (compensates for extended entry risk)
+- Position size: HALF of normal Layer 6 output (compensates for extended entry risk)
 - Stop: 10-day EMA (tighter and faster than base low)
 - Max hold: 6 weeks (shortened from 12)
 - Profit targets: T1 at +8-10%, T2 at +15-20% (tighter due to extended entry)
@@ -642,21 +642,21 @@ Active ONLY when the Velocity Flag (Layer 0, Signal 10) is triggered for the sec
 
 ## **Entry Confirmation Checklist**
 
-- Permission state is green or yellow (Layer 1)
-- Stock passed two-speed trend signal (Layer 2) — full or half
+- Permission state is green or yellow (Layer 2)
+- Stock passed two-speed trend signal (Layer 4) — full or half
 - Earnings carry is positive, or carry is only slightly negative with exceptional RS
 - Valid entry trigger today (breakout, MA pullback, or Accelerating Protocol [v4])
 - Stop loss level clearly identified
-- Position size calculated (Layer 4) and within portfolio limits (Layer 5)
+- Position size calculated (Layer 6) and within portfolio limits (Layer 7)
 - No earnings announcement within 10 business days
-- If a Layer 1.5 ETF position is active in this sector: adding this stock begins Phase 3 transition — plan to reduce ETF proportionally
+- If a Layer 3 ETF position is active in this sector: adding this stock begins Phase 3 transition — plan to reduce ETF proportionally
 - If a Core position is active in this sector: note — Core persists; no transition needed [v4]
 
-# **Layer 4 — Position Sizing (Expected-Loss Method)**
+# **Layer 6 — Position Sizing (Expected-Loss Method)**
 
 ## **Purpose**
 
-Layer 4 determines how large each position should be. Applies to Tactical individual stock entries (Layer 3), Layer 1.5 ETF entries, and Core ETF entries [v4]. For ETF entries, the flow momentum strength (Layer 1.5) or Core rules determine the risk %, and the stop is the ETF's 20d MA. For Accelerating Protocol entries, output is halved [v4].
+Layer 6 determines how large each position should be. Applies to Tactical individual stock entries (Layer 5), Layer 3 ETF entries, and Core ETF entries [v4]. For ETF entries, the flow momentum strength (Layer 3) or Core rules determine the risk %, and the stop is the ETF's 20d MA. For Accelerating Protocol entries, output is halved [v4].
 
 ## **The Core Formula**
 
@@ -676,7 +676,7 @@ Hard cap: No single position exceeds 10% of total account value regardless of fo
 
 ## **Risk Per Trade Guidelines**
 
-| **Permission state** | **Tactical (individual stock)** | **ETF (Layer 1.5)** | **Core ETF [v4]** |
+| **Permission state** | **Tactical (individual stock)** | **ETF (Layer 3)** | **Core ETF [v4]** |
 | --- | --- | --- | --- |
 | Green | 0.75-1.0% | Quarter/Half/Full based on flow momentum | Up to 15% of account per ETF, stop at 20d MA |
 | Yellow | 0.25-0.5% | Half the Green rate for equivalent signal strength | Up to 7.5% of account per ETF |
@@ -697,21 +697,21 @@ When the Velocity Flag is active and an Accelerating entry is taken:
 | At or near all-time high | Full risk allocation |
 | 5-7% below peak | Reduce risk per trade by 25-50% [v4: adjusted from 5-10%] |
 | 7-10% below peak | Reduce to minimum — capital preservation mode [v4: adjusted from 10-15%] |
-| Beyond 10% drawdown | Emergency protocol — see Layer 7 [v4: adjusted] |
+| Beyond 10% drawdown | Emergency protocol — see Layer 9 [v4: adjusted] |
 
-# **Layer 5 — Dynamic Portfolio Exposure**
+# **Layer 7 — Dynamic Portfolio Exposure**
 
 ## **Purpose**
 
-Layer 5 governs total simultaneous positions, overall portfolio heat, and the minimum deployment floor [v4]. All positions — Core ETFs, Layer 1.5 ETFs, and Tactical individual stocks — count on equal footing toward all limits.
+Layer 7 governs total simultaneous positions, overall portfolio heat, and the minimum deployment floor [v4]. All positions — Core ETFs, Layer 3 ETFs, and Tactical individual stocks — count on equal footing toward all limits.
 
 ## **Signal Breadth Determines Total Exposure**
 
 | **Condition** | **Max simultaneous positions** |
 | --- | --- |
-| Green state + strong breadth (15+ stocks in full trend) | Up to 20 (includes Core and Layer 1.5 ETF positions) |
-| Green state + moderate breadth (8-15 stocks in full trend) | 12-15 (includes Core and Layer 1.5 ETF positions) |
-| Yellow state, or green with limited breadth (<8 stocks) | 8-12 (includes Core and Layer 1.5 ETF positions) |
+| Green state + strong breadth (15+ stocks in full trend) | Up to 20 (includes Core and Layer 3 ETF positions) |
+| Green state + moderate breadth (8-15 stocks in full trend) | 12-15 (includes Core and Layer 3 ETF positions) |
+| Yellow state, or green with limited breadth (<8 stocks) | 8-12 (includes Core and Layer 3 ETF positions) |
 | Red state | 3-5 maximum (strongest existing only) |
 | Liquidity override active | 0-3 positions, hedged if possible |
 
@@ -719,7 +719,7 @@ Layer 5 governs total simultaneous positions, overall portfolio heat, and the mi
 
 | **Portfolio Heat Calculation** |
 | --- |
-| Portfolio Heat = Sum of (Risk Per Trade %) across all open positions (Core ETFs + Layer 1.5 ETFs + individual stocks) |
+| Portfolio Heat = Sum of (Risk Per Trade %) across all open positions (Core ETFs + Layer 3 ETFs + individual stocks) |
 |  |
 | Maximum portfolio heat targets: |
 | Green state: up to 15% total portfolio heat |
@@ -741,14 +741,14 @@ Layer 5 governs total simultaneous positions, overall portfolio heat, and the mi
 ## **Sector Concentration Limits**
 
 - No more than 40% of total positions in any one sector
-- Sector cap for combined Core + Layer 1.5 + individual names: all positions in the same sector ≤ 25% of account [v4: increased from 20% to accommodate Core allocation]
+- Sector cap for combined Core + Layer 3 + individual names: all positions in the same sector ≤ 25% of account [v4: increased from 20% to accommodate Core allocation]
 - Always maintain at least 2 sectors represented in the portfolio when 3+ positions are open
 
-# **Layer 6 — Trade Management**
+# **Layer 8 — Trade Management**
 
 ## **Purpose**
 
-Layer 6 covers everything after a position is entered. Rules apply to Core ETF positions [v4], Layer 1.5 ETF positions, and Tactical individual stock positions, with differences noted.
+Layer 8 covers everything after a position is entered. Rules apply to Core ETF positions [v4], Layer 3 ETF positions, and Tactical individual stock positions, with differences noted.
 
 ## **Stop Loss Framework**
 
@@ -764,7 +764,7 @@ Layer 6 covers everything after a position is entered. Rules apply to Core ETF p
 - No breakeven rule — Core stop trails at the 20d MA throughout the hold
 - If ETF closes below its 20d MA on above-average volume: exit
 
-### **Layer 1.5 ETF positions**
+### **Layer 3 ETF positions**
 - Stop is always the 20d MA of the sector ETF
 - No breakeven rule — ETF stop trails at the 20d MA throughout the hold
 - If ETF closes below its 20d MA on above-average volume: exit
@@ -785,7 +785,7 @@ Layer 6 covers everything after a position is entered. Rules apply to Core ETF p
 | +15-20% from entry | Sell another 1/3. Trail remainder at 20-day MA. |
 | Final 1/3 | Hold with 20-day MA trailing stop. 6-week max hold. |
 
-Core and Layer 1.5 ETF positions do not use partial profit rules — they are managed via flow signals and MA trail.
+Core and Layer 3 ETF positions do not use partial profit rules — they are managed via flow signals and MA trail.
 
 ## **Exit Triggers**
 
@@ -807,7 +807,7 @@ Core and Layer 1.5 ETF positions do not use partial profit rules — they are ma
 - Flow reversal — 2 consecutive weeks of net outflows (ETF.com)
 - No fixed max hold — Core persists as long as regime supports
 
-### **Layer 1.5 ETF positions — exit any of:**
+### **Layer 3 ETF positions — exit any of:**
 - 2 consecutive weeks of net outflows on ETF.com (flow reversal)
 - Close below 20d MA on above-average volume
 - RS line vs SPY declines for 2+ consecutive weeks
@@ -821,11 +821,11 @@ Core and Layer 1.5 ETF positions do not use partial profit rules — they are ma
 - Core positions: no max hold — they persist with the regime [v4]
 - Exception: strong trend with clear price progress — hold with trailing stop
 
-# **Layer 7 — Hard Risk Caps and Emergency Protocols [v4: Recalibrated]**
+# **Layer 9 — Hard Risk Caps and Emergency Protocols [v4: Recalibrated]**
 
 ## **Purpose**
 
-Layer 7 is the ultimate defense against catastrophic loss. Applies to the combined portfolio including all Core ETF, Layer 1.5 ETF, and individual stock positions.
+Layer 9 is the ultimate defense against catastrophic loss. Applies to the combined portfolio including all Core ETF, Layer 3 ETF, and individual stock positions.
 
 ## **Drawdown Thresholds and Actions [v4: Recalibrated]**
 
@@ -853,7 +853,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 - Begin with 25% of normal maximum positions
 - Use minimum position sizes — 0.25% risk per trade maximum
 - Core: re-enter at 10% allocation (1 ETF) only after green state confirmed [v4]
-- No Layer 1.5 ETF entries until full green state confirmed
+- No Layer 3 ETF entries until full green state confirmed
 - No Accelerating Protocol entries during recovery [v4]
 - Spend 2-4 weeks in cautious re-engagement mode
 - Expand to full engagement only after portfolio recovered 50% of prior drawdown AND macro regime clearly positive
@@ -865,20 +865,20 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | --- |
 | 1. Run Layer 0: Macro regime? (SPY trend, sector RS, sector flows, TLT, HYG/IEF) |
 | 2. Run Layer 0 additions: Fed Net Liquidity trend? Recession composite score? FactSet revision direction? Velocity Flag status? [v4] |
-| 3. Set Layer 1: Permission state (green / yellow / red) |
+| 3. Set Layer 2: Permission state (green / yellow / red) |
 | 4. Check Core allocation [v4]: Are Core positions deployed to floor? Any sectors newly Phase 2? Any Core exits needed? |
-| 5. Run Layer 1.5: Any sector with 1-2 weeks of directional inflows + regime alignment + ETF above 20d MA? |
+| 5. Run Layer 3: Any sector with 1-2 weeks of directional inflows + regime alignment + ETF above 20d MA? |
 |    — If yes: determine ETF entry size based on flow momentum strength |
 |    — If existing ETF position: check flow reversal signals, 20d MA status |
-| 6. Run Layer 2: Update individual stock watchlist with qualified candidates |
-|    — Prioritize stocks in sectors with active Core or Layer 1.5 ETF positions |
-| 7. Note current drawdown from peak — confirm sizing tier (Layer 4 / Layer 7) |
-| 8. Count open positions (Core + Layer 1.5 + Tactical) and portfolio heat — confirm within Layer 5 limits |
+| 6. Run Layer 4: Update individual stock watchlist with qualified candidates |
+|    — Prioritize stocks in sectors with active Core or Layer 3 ETF positions |
+| 7. Note current drawdown from peak — confirm sizing tier (Layer 6 / Layer 9) |
+| 8. Count open positions (Core + Layer 3 + Tactical) and portfolio heat — confirm within Layer 7 limits |
 | 9. Check deployment floor [v4]: Is total deployed capital above the minimum for current permission state? |
 
 | **Monthly Process (after CPI/PCE)** |
 | --- |
-| 1. Run Layer 0.5: Macro Mispricing Check |
+| 1. Run Layer 1: Macro Mispricing Check |
 | 2. Check Taylor Rule deviation (Atlanta Fed calculator) |
 | 3. Adjust overall position sizing if composite is -2 or worse |
 
@@ -886,12 +886,12 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | --- |
 | For Core ETF entries [v4]: |
 | 1. Is permission state green or yellow? If red: STOP — exit Core |
-| 2. Is the sector Phase 2 Confirmed (Layer 1.5)? |
+| 2. Is the sector Phase 2 Confirmed (Layer 3)? |
 | 3. Is the sector regime-aligned? |
 | 4. Does adding this Core position stay within limits? (3 Core max, 15% per ETF, 25% sector cap) |
 | 5. If all yes: enter at market, stop at 20d MA |
 |  |
-| For Layer 1.5 ETF entries: |
+| For Layer 3 ETF entries: |
 | 1. Is permission state green or yellow? If red: STOP |
 | 2. Is the sector regime-aligned? |
 | 3. Is the sector ETF above its 20d MA? |
@@ -899,9 +899,9 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | 5. Does adding this ETF position stay within portfolio heat and position count limits? |
 | 6. If all yes: enter with calculated size, stop at 20d MA |
 |  |
-| For individual stock entries — Standard (Layer 3): |
+| For individual stock entries — Standard (Layer 5): |
 | 1. Is permission state green or yellow? |
-| 2. Is the stock on the qualified watchlist? (Layer 2 criteria met?) |
+| 2. Is the stock on the qualified watchlist? (Layer 4 criteria met?) |
 | 3. Is the two-speed trend signal full or half? |
 | 4. Is the earnings carry positive? |
 | 5. For energy names: what is the three-layer composite score? |
@@ -909,7 +909,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | 7. What is the initial stop level? |
 | 8. Calculate position size: Account x Risk% / (Entry - Stop) |
 | 9. Does adding this position stay within portfolio heat and position count limits? |
-| 10. Is there an active Layer 1.5 ETF in this sector? If yes: plan ETF reduction (Phase 3 transition) |
+| 10. Is there an active Layer 3 ETF in this sector? If yes: plan ETF reduction (Phase 3 transition) |
 | 11. Is there an active Core position in this sector? If yes: no transition needed — Core persists [v4] |
 | 12. If all yes: enter with calculated size and stop |
 | 13. Record: entry price, stop price, 1/3 target, max hold date (entry + 12 weeks) |
@@ -917,7 +917,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | For individual stock entries — Accelerating Protocol [v4]: |
 | 1. Is the Velocity Flag active for this stock's sector? (ROC 21 > +15%) If no: use Standard entry |
 | 2. Is permission state green or yellow? |
-| 3. Does the stock pass Layer 2 screening? |
+| 3. Does the stock pass Layer 4 screening? |
 | 4. Is the stock within 12-15% of its 20d MA? If more extended: pass |
 | 5. Are there fewer than 3 active Accelerating positions? If 3 already: pass |
 | 6. Is there an earnings blackout? If yes: pass |
@@ -935,7 +935,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | 4. Check permission state: RED? → Exit all Core |
 | 5. Check ETF.com: flow reversal (2 consecutive weeks outflows)? → Exit |
 |  |
-| Layer 1.5 ETF positions: |
+| Layer 3 ETF positions: |
 | 1. Check ETF.com: any reversal in inflows (2 consecutive weeks outflows)? → Exit |
 | 2. Check sector ETF 20d MA: still above it? → If not, on volume: exit |
 | 3. Check RS line: declining 2+ weeks vs SPY? → Exit |
@@ -978,10 +978,10 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | Regime identification | Risk-on / Reflation / Deflation / Stagflation |
 | Liquidity override active? | Yes / No |
 | **Core allocation status [v4]** | Core positions: ____ │ Core % deployed: ____% │ Below floor? ____ |
-| **Layer 1.5 status** | Active ETF positions: ____ │ New opportunities: ____ │ Anomalies: ____ |
+| **Layer 3 status** | Active ETF positions: ____ │ New opportunities: ____ │ Anomalies: ____ |
 | Energy signal composite | +__ / 3  (for energy positions) |
 | Current drawdown from peak | ____% |
-| Open positions (Core + L1.5 + Tactical) | ____ of max ____ |
+| Open positions (Core + L3 + Tactical) | ____ of max ____ |
 | Portfolio heat | ____% |
 | **Total deployed capital [v4]** | ____% (vs floor: ____%) |
 | Priority sectors this week | ____ |
@@ -1034,7 +1034,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | **Sleeve** | **Target** | **Instruments** | **Entry** | **Stop** |
 | --- | --- | --- | --- | --- |
 | Core (40%) | 2-3 sector ETFs | Phase 2 Confirmed ETFs | At market | 20d MA |
-| Tactical (60%) | Individual stocks | Layer 2/3 qualified names | Breakout, pullback, or Accelerating | Per trigger type |
+| Tactical (60%) | Individual stocks | Layer 4/3 qualified names | Breakout, pullback, or Accelerating | Per trigger type |
 
 ## **Permission State Rules**
 
@@ -1049,7 +1049,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | **Sector ETF ROC 21** | **Flag** | **Entry Rules** |
 | --- | --- | --- |
 | > +15% | 🔥 ACCELERATING | Half size, 10d EMA stop, 6-week hold, up to 15% above 20d MA |
-| +5% to +15% | NORMAL | Standard Layer 3 rules |
+| +5% to +15% | NORMAL | Standard Layer 5 rules |
 | Below +5% | SLOW | Standard rules, prefer pullbacks |
 
 ## **Deployment Floor [v4]**
@@ -1060,7 +1060,7 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | Yellow | 20-35% | Core at half |
 | Red | No floor | Cash preservation |
 
-## **Layer 1.5 ETF Sizing**
+## **Layer 3 ETF Sizing**
 
 | **Flow Signal** | **Size** | **Risk % (Green)** |
 | --- | --- | --- |
@@ -1108,14 +1108,14 @@ Shares = (Account x Risk%) / (Entry - Stop). Max single Tactical position = 10% 
 | 10-15% | 3-5 positions max (including Core). Exit Tactical. |
 | >15% | 100% cash including Core. Wait for confirmed green state. |
 
-## **Layer 1.5 Exit Checklist**
+## **Layer 3 Exit Checklist**
 
 | **Signal** | **Action** |
 | --- | --- |
 | 2 consecutive weeks of net outflows (ETF.com) | Exit ETF position |
 | ETF closes below 20d MA on volume | Exit ETF position |
 | Sector RS vs SPY declining 2+ weeks | Exit ETF position |
-| Individual stocks entering (Phase 3) | Reduce Layer 1.5 ETF proportionally (Core persists [v4]) |
+| Individual stocks entering (Phase 3) | Reduce Layer 3 ETF proportionally (Core persists [v4]) |
 
 ## **Core ETF Exit Checklist [v4]**
 

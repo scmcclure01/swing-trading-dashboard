@@ -148,7 +148,7 @@ SETUP_STYLE = {
     "Red":    "No new entries — protect capital",
 }
 
-# Layer 1.5 flow strength options and sizing map (framework v3, Table: Position Sizing)
+# Layer 3 flow strength options and sizing map (framework v3, Table: Position Sizing)
 FLOW_OPTS = ["Not set", "Weak", "Moderate", "Strong", "Outflows"]
 
 FLOW_SIZE_MAP = {
@@ -158,7 +158,7 @@ FLOW_SIZE_MAP = {
     "Outflows": ("Exit",     "—",     "Flow reversal — exit review immediately"),
 }
 
-# Layer 1.5 phase labels mapped from RRG quadrant
+# Layer 3 phase labels mapped from RRG quadrant
 PHASE_MAP = {
     "Improving": "Phase 1 — Early",
     "Leading":   "Phase 2 — Confirmed",
@@ -532,10 +532,10 @@ def run_screener_v3(
     rec_flags: int,
 ) -> pd.DataFrame:
     """
-    Autonomous screener v3 — scans L0 Leading/Mixed sectors through L2 filters,
-    then applies L3 entry trigger assessment (trigger type, entry/stop, verdict).
+    Autonomous screener v3 — scans L0 Leading/Mixed sectors through L4 filters,
+    then applies L5 entry trigger assessment (trigger type, entry/stop, verdict).
     Cached for 24 hours. Button-triggered.
-    Returns a DataFrame of all passing candidates with L3 verdicts, ranked by RS.
+    Returns a DataFrame of all passing candidates with L5 verdicts, ranked by RS.
     """
     accel_secs = set(accel_sectors_key.split(",")) if accel_sectors_key else set()
     rec_override = rec_flags >= 4
@@ -673,11 +673,11 @@ def run_screener_v3(
             else:
                 entry_zone = "Too extended"
 
-            # Passes = full L2 criteria (same as old calc_layer2 PASS logic)
+            # Passes = full L4 criteria (same as old calc_layer4 PASS logic)
             passes = (two_speed == "FULL" and rs_new_hi and rs_rising
                       and avg_dollar_vol >= 10_000_000)
 
-            # ── L3 Entry Trigger Assessment ──────────────────────────────────
+            # ── L5 Entry Trigger Assessment ──────────────────────────────────
             sec = ticker_sector.get(ticker, "Unknown")
             ema10 = float(close.ewm(span=10, adjust=False).mean().iloc[-1])
             pct_vs_50 = (price / ma50 - 1) if ma50 > 0 else 0
@@ -1027,10 +1027,10 @@ def score_recession_composite(fred: dict, lei_manual: str) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LAYER 1 — MARKET PERMISSION STATE
+# LAYER 2 — MARKET PERMISSION STATE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto") -> tuple:
+def calc_layer2(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto") -> tuple:
     """
     Determine permission state (Green / Yellow / Red) per framework v3:
       Green:  SPY both positive + rec composite < 2/5 + EPS not declining + no liquidity override
@@ -1062,11 +1062,11 @@ def calc_layer1(l0: dict, rec_flags: int, eps_signal: str, override: str = "Auto
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LAYER 1.5 — SECTOR ROTATION (RRG)
+# LAYER 3 — SECTOR ROTATION (RRG)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def calc_layer15(close: pd.DataFrame) -> list:
+def calc_layer3(close: pd.DataFrame) -> list:
     """
     Compute the Relative Rotation Graph (RRG) for all sector ETFs vs SPY.
     Uses weekly resampled data; trailing 8 weeks shown per sector.
@@ -1160,10 +1160,10 @@ def calc_layer15(close: pd.DataFrame) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LAYER 2 — STOCK SCREENER
+# LAYER 4 — STOCKSEL
 # ─────────────────────────────────────────────────────────────────────────────
 
-def calc_layer2(
+def calc_layer4(
     close: pd.DataFrame,
     volume: pd.DataFrame,
     tickers: list,
@@ -1173,7 +1173,7 @@ def calc_layer2(
     rs_lookback: int = LB_3M,
 ) -> pd.DataFrame:
     """
-    Screen individual stocks against Layer 2 criteria:
+    Screen individual stocks against Layer 4 criteria:
       - Price above 20d and 50d MA
       - Adequate average dollar volume
       - RS line at/near new highs vs SPY
@@ -1249,7 +1249,7 @@ def calc_layer2(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LAYER 3 — ENTRY TRIGGER
+# LAYER 5 — ENTRYTRIG
 # ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -1290,7 +1290,7 @@ def fetch_earnings_dates(tickers_key: str) -> dict:
     return results
 
 
-def calc_layer3(
+def calc_layer5(
     passes_df: pd.DataFrame,
     half_df: pd.DataFrame,
     close: pd.DataFrame,
@@ -1303,8 +1303,8 @@ def calc_layer3(
     rec_flags: int,
 ) -> tuple:
     """
-    Evaluate Layer 3 entry trigger for each Layer 2 candidate.
-    Returns (full_l3_df, half_l3_df).
+    Evaluate Layer 5 entry trigger for each Layer 4 candidate.
+    Returns (full_l5_df, half_l5_df).
 
     Per stock computes: vol ratio, MA distances, 10d EMA, 6-week base range,
     RS slope, earnings proximity, trigger type routing, entry/stop suggestion, verdict.
@@ -1483,9 +1483,9 @@ def calc_layer3(
 
         return pd.DataFrame(rows) if rows else pd.DataFrame()
 
-    full_l3 = _assess(passes_df, "Full")
-    half_l3 = _assess(half_df.head(15), "Half")
-    return full_l3, half_l3
+    full_l5 = _assess(passes_df, "Full")
+    half_l5 = _assess(half_df.head(15), "Half")
+    return full_l5, half_l5
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1585,18 +1585,18 @@ def build_chart(ticker: str):
     return fig
 
 
-def build_rrg_chart(l15_data: list) -> go.Figure:
+def build_rrg_chart(l3_data: list) -> go.Figure:
     """
     Build the Relative Rotation Graph scatter chart.
     Each sector gets a unique color (SECTOR_COLORS) and a smooth spline trail
     showing the last 8 weekly positions.
     Returns None if data is empty.
     """
-    if not l15_data:
+    if not l3_data:
         return None
 
-    all_x = [v for d in l15_data for v in d["trail_x"]]
-    all_y = [v for d in l15_data for v in d["trail_y"]]
+    all_x = [v for d in l3_data for v in d["trail_x"]]
+    all_y = [v for d in l3_data for v in d["trail_y"]]
     pad   = 0.8
     xlo   = min(min(all_x) - pad, 98.5)
     xhi   = max(max(all_x) + pad, 101.5)
@@ -1629,7 +1629,7 @@ def build_rrg_chart(l15_data: list) -> go.Figure:
     fig.update_layout(shapes=shapes)
 
     all_sector_keys = list(SECTOR_COLORS.keys())
-    for d in l15_data:
+    for d in l3_data:
         idx        = all_sector_keys.index(d["sector"]) if d["sector"] in all_sector_keys else 0
         color      = list(SECTOR_COLORS.values())[idx % len(SECTOR_COLORS)]
         dash_style = SECTOR_DASH[idx // len(SECTOR_COLORS)]
@@ -1826,10 +1826,10 @@ def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
 # TAB RENDER FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
+def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
                          rec_flags: int, rec_total: int, perm: str,
-                         limits: dict, l15_data: list) -> None:
-    """Render the combined Layer 0 & 1 — Macro Regime + Permission State tab."""
+                         limits: dict, l3_data: list) -> None:
+    """Render the combined Layer 0 & 2 — Macro Regime + Permission State tab."""
 
     roc1_pos      = l0["spy_ret_1m"] > 0
     roc6_pos      = l0["spy_ret_6m"] > 0
@@ -1902,15 +1902,15 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
     bond_html = cb_table(pd.DataFrame(bond_rows), bordered=False)
 
     # ── Build Sector Flow preview table ──────────────────────────────────────
-    if l15_data:
-        improving = [d for d in l15_data if d["quadrant"] == "Improving"]
-        leading   = [d for d in l15_data if d["quadrant"] == "Leading"]
+    if l3_data:
+        improving = [d for d in l3_data if d["quadrant"] == "Improving"]
+        leading   = [d for d in l3_data if d["quadrant"] == "Leading"]
         flow_rows = [
             {"Phase": "🔵 Phase 1 — Early",     "ETFs": ", ".join(d["etf"] for d in improving) or "None"},
             {"Phase": "🟢 Phase 2 — Confirmed", "ETFs": ", ".join(d["etf"] for d in leading)   or "None"},
         ]
         flow_html = cb_table(pd.DataFrame(flow_rows), bordered=False)
-        flow_html += '<p style="font-size:11px; color:#5A7BAA; margin-top:6px;">Full detail in the Layer 1.5 tab.</p>'
+        flow_html += '<p style="font-size:11px; color:#5A7BAA; margin-top:6px;">Full detail in the Layer 3 tab.</p>'
     else:
         flow_html = "<p style='color:#5A7BAA; font-size:13px;'>RRG data unavailable.</p>"
 
@@ -1963,10 +1963,10 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
         + _card("Sector Relative Strength vs SPY", sector_rs_html)
         + _card("Velocity Flag — ROC 21", velocity_html, pill="v4")
         + _card("Bond &amp; Liquidity", bond_html)
-        + _card("Sector Flow Momentum", flow_html, pill="L1.5 Preview")
+        + _card("Sector Flow Momentum", flow_html, pill="L3 Preview")
         + '</div>'
 
-        # ── Right: Layer 1 ─────────────────────────────────────────────────
+        # ── Right: Layer 2 ─────────────────────────────────────────────────
         '<div>'
         + _card("SPY Two-Speed Trend", spy_html)
         + _card("Recession Composite", rec_html, pill=rec_pill)
@@ -1978,9 +1978,9 @@ def _render_layer0_1_tab(l0: dict, fred_data: dict, rec_indicators: list,
     st.markdown(full_html, unsafe_allow_html=True)
 
 
-def _render_layer15_tab(l15_data: list) -> None:
+def _render_layer3_tab(l3_data: list) -> None:
     """
-    Render the Layer 1.5 — Sector Rotation tab.
+    Render the Layer 3 — Sector Rotation tab.
     Includes the RRG chart, quadrant summary, ETF entry candidates with
     phase labels, flow-strength sizing override, and exit review.
     """
@@ -1992,7 +1992,7 @@ def _render_layer15_tab(l15_data: list) -> None:
         options=ALL_SECTORS,
         default=ALL_SECTORS,
     )
-    chart_data = [d for d in l15_data if d["sector"] in chart_sectors] if chart_sectors else l15_data
+    chart_data = [d for d in l3_data if d["sector"] in chart_sectors] if chart_sectors else l3_data
 
     with st.spinner("Building RRG chart..."):
         rrg_fig = build_rrg_chart(chart_data)
@@ -2004,10 +2004,10 @@ def _render_layer15_tab(l15_data: list) -> None:
     st.divider()
 
     # Quadrant count summary
-    n_improving = sum(1 for d in l15_data if d["quadrant"] == "Improving")
-    n_leading   = sum(1 for d in l15_data if d["quadrant"] == "Leading")
-    n_weakening = sum(1 for d in l15_data if d["quadrant"] == "Weakening")
-    n_lagging   = sum(1 for d in l15_data if d["quadrant"] == "Lagging")
+    n_improving = sum(1 for d in l3_data if d["quadrant"] == "Improving")
+    n_leading   = sum(1 for d in l3_data if d["quadrant"] == "Leading")
+    n_weakening = sum(1 for d in l3_data if d["quadrant"] == "Weakening")
+    n_lagging   = sum(1 for d in l3_data if d["quadrant"] == "Lagging")
 
     mc1, mc2, mc3, mc4 = st.columns(4)
     mc1.metric("🔵 Improving", n_improving)
@@ -2070,7 +2070,7 @@ def _render_layer15_tab(l15_data: list) -> None:
     col_l, col_r = st.columns([1, 1], gap="medium")
 
     with col_l:
-        candidates = [d for d in l15_data if d["quadrant"] in ("Improving", "Leading")]
+        candidates = [d for d in l3_data if d["quadrant"] in ("Improving", "Leading")]
         with st.expander("ETF Entry Candidates", expanded=True):
             if candidates:
                 rows = []
@@ -2102,7 +2102,7 @@ def _render_layer15_tab(l15_data: list) -> None:
                 st.info("No Improving or Leading sectors currently.")
 
     with col_r:
-        weakening = [d for d in l15_data if d["quadrant"] == "Weakening"]
+        weakening = [d for d in l3_data if d["quadrant"] == "Weakening"]
         with st.expander("Weakening — Review Stops", expanded=True):
             if weakening:
                 rows = []
@@ -2129,7 +2129,7 @@ def _render_layer15_tab(l15_data: list) -> None:
     with st.expander("All Sectors", expanded=True):
         q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
         all_rows = []
-        for d in l15_data:
+        for d in l3_data:
             flow_key      = f"flow_{d['etf'].lower()}"
             flow_strength = st.session_state.get(flow_key, "Not set")
             if flow_strength in FLOW_SIZE_MAP:
@@ -2151,8 +2151,8 @@ def _render_layer15_tab(l15_data: list) -> None:
         st.markdown(cb_table(pd.DataFrame(all_rows)), unsafe_allow_html=True)
 
 
-def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
-    """Render the Layer 2 — Screener tab (v3, button-triggered with 24h cache)."""
+def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
+    """Render the Layer 4 — Screener tab (v3, button-triggered with 24h cache)."""
 
     if perm == "Red":
         st.markdown(
@@ -2242,7 +2242,7 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
     half_df   = results_df[(results_df["2-Speed"] == "HALF") & (~results_df["PASS"])].copy()
     no_trade  = len(results_df) - len(passes_df) - len(half_df)
 
-    # Store for L3 consumption
+    # Store for L5 consumption
     st.session_state["screener_passes"] = passes_df
     st.session_state["screener_half"]   = half_df
 
@@ -2254,12 +2254,12 @@ def _render_layer2_tab(perm: str, regime: str, l0: dict) -> None:
         f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
-        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L2 filters</div>'
+        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L4 filters</div>'
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
         + _tile("Entry Ready", str(full_ready), "Full signal + trigger confirmed", "#27500A")
         + _tile("Watch", str(full_watch), "Full signal, trigger pending", "#E07800")
         + _tile("Half Signal", str(half_ready_watch), "Mixed two-speed, actionable", "#288CFA")
-        + _tile("Scanned", str(len(results_df)), "Total passing L2 filters")
+        + _tile("Scanned", str(len(results_df)), "Total passing L4 filters")
         + '</div></div>'
     )
     st.markdown(stats_html, unsafe_allow_html=True)
@@ -2425,7 +2425,7 @@ def _render_position_sizer_tab(
     """
     st.markdown(
         _card(
-            "Layer 4 — Position Sizer",
+            "Layer 6 — Position Sizer",
             '<p style="font-size:12px; color:#5A7BAA; margin:0;">'
             'Select a candidate from the screener or enter custom values. '
             'Risk % auto-adjusts to permission state and drawdown tier.</p>',
@@ -2462,7 +2462,7 @@ def _render_position_sizer_tab(
                 st.session_state["sizer_trigger"] = c["trigger"]
             trigger = c.get("trigger", "Breakout")
 
-            # Fetch live data and compute entry/stop per framework L3 rules
+            # Fetch live data and compute entry/stop per framework L5 rules
             try:
                 tkr = yf.Ticker(c["ticker"])
                 hist = tkr.history(period="6mo")
@@ -2587,7 +2587,7 @@ def _render_position_sizer_tab(
         risk_pct_map = {"Green": 0.0075, "Yellow": 0.005, "Red": 0.0}
         base_risk_pct = risk_pct_map.get(perm, 0.0075)
 
-        # Drawdown adjustment (Layer 7)
+        # Drawdown adjustment (Layer 9)
         if "7–10%" in drawdown_state or "Tier 2" in drawdown_state:
             drawdown_mult = 0.50
             dd_note = "Tier 2 drawdown — risk reduced 50%"
@@ -2695,14 +2695,14 @@ def _render_position_sizer_tab(
             )
 
 
-def _render_layer3_tab(
-    full_l3: pd.DataFrame,
-    half_l3: pd.DataFrame,
+def _render_layer5_tab(
+    full_l5: pd.DataFrame,
+    half_l5: pd.DataFrame,
     perm: str,
     l0: dict,
     rec_flags: int,
 ) -> None:
-    """Render the Layer 3 — Entry Trigger tab."""
+    """Render the Layer 5 — Entry Trigger tab."""
     regime     = l0.get("regime", "Mixed")
     accel_secs = l0.get("accelerating", [])
     has_accel  = bool(accel_secs)
@@ -2761,7 +2761,7 @@ def _render_layer3_tab(
 
     if perm == "Red":
         st.markdown(
-            _gate_bar_html("Red", "RED STATE — No Layer 3 evaluation. Protect capital."),
+            _gate_bar_html("Red", "RED STATE — No Layer 5 evaluation. Protect capital."),
             unsafe_allow_html=True,
         )
         return
@@ -2773,8 +2773,8 @@ def _render_layer3_tab(
         )
 
     # ── Render tier helper ─────────────────────────────────────────────────────
-    def _render_tier(l3_df: pd.DataFrame, title: str, tier_key: str) -> None:
-        if l3_df.empty:
+    def _render_tier(l5_df: pd.DataFrame, title: str, tier_key: str) -> None:
+        if l5_df.empty:
             st.markdown(
                 _gate_bar_html("Yellow", f"{title} — no candidates to evaluate."),
                 unsafe_allow_html=True,
@@ -2782,35 +2782,35 @@ def _render_layer3_tab(
             return
 
         sort_map = {"🟢 ENTRY READY": 0, "🟡 WATCH": 1, "⬜ NOT READY": 2, "❌ SKIP": 3, "❌ RED STATE": 4}
-        l3s = l3_df.copy()
-        l3s["_s"] = l3s["Verdict"].map(lambda v: sort_map.get(v, 5))
-        l3s = l3s.sort_values(["_s", "Sector"]).drop(columns=["_s"])
+        l5s = l5_df.copy()
+        l5s["_s"] = l5s["Verdict"].map(lambda v: sort_map.get(v, 5))
+        l5s = l5s.sort_values(["_s", "Sector"]).drop(columns=["_s"])
 
         disp = pd.DataFrame({
-            "Ticker":    l3s["Ticker"],
-            "Sector":    l3s["Sector"],
-            "Price":     l3s["Price"].apply(lambda x: f"${x:.2f}"),
-            "Trigger":   l3s["Trigger"],
-            "Vol Ratio": l3s["Vol Ratio"].apply(lambda x: f"{x:.1f}x"),
-            "vs 20MA":   l3s["vs 20MA"].apply(pct),
-            "vs 50MA":   l3s["vs 50MA"].apply(pct),
-            "RS ↑":      l3s["RS ↑"].apply(icon),
-            "Entry":     l3s["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Stop":      l3s["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Verdict":   l3s["Verdict"],
-            "Notes":     l3s["Notes"],
+            "Ticker":    l5s["Ticker"],
+            "Sector":    l5s["Sector"],
+            "Price":     l5s["Price"].apply(lambda x: f"${x:.2f}"),
+            "Trigger":   l5s["Trigger"],
+            "Vol Ratio": l5s["Vol Ratio"].apply(lambda x: f"{x:.1f}x"),
+            "vs 20MA":   l5s["vs 20MA"].apply(pct),
+            "vs 50MA":   l5s["vs 50MA"].apply(pct),
+            "RS ↑":      l5s["RS ↑"].apply(icon),
+            "Entry":     l5s["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Stop":      l5s["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
+            "Verdict":   l5s["Verdict"],
+            "Notes":     l5s["Notes"],
         })
 
-        ready_n  = int((l3s["Verdict"] == "🟢 ENTRY READY").sum())
-        watch_n  = int((l3s["Verdict"] == "🟡 WATCH").sum())
+        ready_n  = int((l5s["Verdict"] == "🟢 ENTRY READY").sum())
+        watch_n  = int((l5s["Verdict"] == "🟡 WATCH").sum())
         pill_str = f"✅ {ready_n} ready · 🟡 {watch_n} watch"
 
         st.markdown(
-            _card(f"{title} — {len(l3s)} candidates", cb_table(disp, bordered=False), pill=pill_str),
+            _card(f"{title} — {len(l5s)} candidates", cb_table(disp, bordered=False), pill=pill_str),
             unsafe_allow_html=True,
         )
 
-        ready_tickers = l3s[l3s["Verdict"] == "🟢 ENTRY READY"]["Ticker"].tolist()
+        ready_tickers = l5s[l5s["Verdict"] == "🟢 ENTRY READY"]["Ticker"].tolist()
         if ready_tickers:
             st.text_area(
                 f"Entry-ready {title.lower()} tickers",
@@ -2820,18 +2820,18 @@ def _render_layer3_tab(
                 help="Copy for TradingView review",
             )
 
-    _render_tier(full_l3, "Full Signal", "full")
-    _render_tier(half_l3, "Half Signal", "half")
+    _render_tier(full_l5, "Full Signal", "full")
+    _render_tier(half_l5, "Half Signal", "half")
     st.caption(
         "Entry and stop prices are algorithmic estimates based on price data. "
         "Always confirm base structure, candle quality, and exact pivot in TradingView before entering."
     )
 
-    # ── L4 Position Sizer ─────────────────────────────────────────────────────
-    _render_position_sizer(full_l3, half_l3, perm, l0)
+    # ── L6 Position Sizer ─────────────────────────────────────────────────────
+    _render_position_sizer(full_l5, half_l5, perm, l0)
 
 
-def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
+def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
     """Render the Core Allocation tab (v4)."""
 
     account   = st.session_state.account_value
@@ -2861,7 +2861,7 @@ def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
     status_html = cb_table(pd.DataFrame(status_rows), bordered=False)
 
     # Phase 2 candidates from RRG
-    phase2 = [d for d in l15_data if d["quadrant"] == "Leading"]
+    phase2 = [d for d in l3_data if d["quadrant"] == "Leading"]
     if phase2:
         p2_rows = []
         for d in phase2:
@@ -2893,7 +2893,7 @@ def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
             vel    = sr_data.get("velocity", "N/A")
             trend  = sr_data.get("trend", "N/A")
             # Check RRG quadrant
-            rrg_match = next((d for d in l15_data if d["etf"] == etf), None)
+            rrg_match = next((d for d in l3_data if d["etf"] == etf), None)
             phase = rrg_match["phase"] if rrg_match else "N/A"
             above_20 = rrg_match["above_20"] if rrg_match else None
             ma20 = rrg_match["ma20"] if rrg_match else "N/A"
@@ -2915,7 +2915,7 @@ def _render_core_tab(l0: dict, l15_data: list, perm: str) -> None:
     # Exit signals
     exit_signals = []
     for etf in core_tickers:
-        rrg_match = next((d for d in l15_data if d["etf"] == etf), None)
+        rrg_match = next((d for d in l3_data if d["etf"] == etf), None)
         if rrg_match and not rrg_match["above_20"]:
             exit_signals.append(f"⚠️ {etf} — below 20d MA → exit review")
         if rrg_match and rrg_match["quadrant"] in ("Weakening", "Lagging"):
@@ -3053,10 +3053,10 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
         total_upnl += upnl_d
         total_risk += risk_d
 
-        # L6: Determine if Accelerating based on notes
+        # L8: Determine if Accelerating based on notes
         is_accel = "Accelerating" in (p.get("notes") or "")
 
-        # L6: Profit targets
+        # L8: Profit targets
         if is_accel:
             t1_px = round(entry_px * 1.09, 2)   # +8-10%
             t2_px = round(entry_px * 1.175, 2)  # +15-20%
@@ -3086,7 +3086,7 @@ def _build_open_table(positions: list, prices: dict, account_size: float):
             max_hold_date = None
             hold_status = "No limit" if layer == "Core" else "—"
 
-        # L6: Trade management status
+        # L8: Trade management status
         if cur_px >= (t2_px or 999999):
             mgmt_status = "🟢 Past T2 — trail 20MA"
         elif cur_px >= (t1_px or 999999):
@@ -3316,7 +3316,7 @@ def _render_portfolio_tab() -> None:
     )
     st.markdown(summary_html, unsafe_allow_html=True)
 
-    # ── L5 / L7 Compliance checks ───────────────────────────────────────────
+    # ── L7 / L9 Compliance checks ───────────────────────────────────────────
     perm_state = st.session_state.get("_current_perm", "Green")  # set by main()
     perm_limits = PERM_LIMITS.get(perm_state, PERM_LIMITS["Green"])
     max_pos = perm_limits["max_pos"]
@@ -3408,7 +3408,7 @@ def _render_portfolio_tab() -> None:
         ) + '</div>'
 
     st.markdown(
-        _card("L5 / L7 — Portfolio Compliance", compliance_html + warn_html,
+        _card("L7 / L9 — Portfolio Compliance", compliance_html + warn_html,
               pill=f"{'✅ All clear' if not warnings else '⚠️ ' + str(len(warnings)) + ' issue(s)'}"),
         unsafe_allow_html=True,
     )
@@ -3419,7 +3419,7 @@ def _render_portfolio_tab() -> None:
 
     if not open_df.empty:
         st.markdown(
-            _card("Open Positions — L6 Trade Management", cb_table(open_df, bordered=False), pill=open_pill),
+            _card("Open Positions — L8 Trade Management", cb_table(open_df, bordered=False), pill=open_pill),
             unsafe_allow_html=True,
         )
     else:
@@ -3614,7 +3614,7 @@ def main():
         "core_positions":    "",     # Comma-separated ETF tickers, e.g. "XLK,XLI"
         "account_value":     71000,
     }
-    # Layer 1.5 flow strength per sector ETF (set in the L1.5 tab expander)
+    # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
     for etf in SECTOR_ETFS.values():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
@@ -3743,7 +3743,7 @@ def main():
         fred_data = fetch_fred_data()
 
     with st.spinner("Computing sector rotation (RRG)..."):
-        l15_data = calc_layer15(macro_close)
+        l3_data = calc_layer3(macro_close)
 
     # ── REGIME AND PERMISSION STATE ───────────────────────────────────────────
     regime = regime_ov if regime_ov != "Auto" else l0["regime"]
@@ -3752,7 +3752,7 @@ def main():
     rec_flags      = sum(1 for i in rec_indicators if not i["ok"])
     rec_total      = len(rec_indicators)
 
-    perm, limits = calc_layer1(l0, rec_flags, st.session_state.eps_signal, perm_ov)
+    perm, limits = calc_layer2(l0, rec_flags, st.session_state.eps_signal, perm_ov)
     st.session_state["_current_perm"] = perm
 
     # ── PAGE HEADER ───────────────────────────────────────────────────────────
@@ -3867,16 +3867,16 @@ def main():
     ])
 
     with tab1:
-        _render_layer0_1_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l15_data)
+        _render_layer0_2_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l3_data)
 
     with tab2:
-        _render_layer15_tab(l15_data)
+        _render_layer3_tab(l3_data)
 
     with tab3:
-        _render_core_tab(l0, l15_data, perm)
+        _render_core_tab(l0, l3_data, perm)
 
     with tab4:
-        _render_layer2_tab(perm, regime, l0)
+        _render_layer4_tab(perm, regime, l0)
 
     with tab5:
         # Position Sizer — standalone tab, reads selected ticker from screener

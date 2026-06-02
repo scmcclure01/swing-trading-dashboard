@@ -1,24 +1,24 @@
-# Layer 1.5 — Sector Rotation ETF
+# Layer 3 — Sector Rotation ETF
 *Proposal v2 — April 30, 2026*
 
 ---
 
 ## Position in the framework
 
-Layer 1.5 sits between Permission State (Layer 1) and Stock Selection (Layer 2). The logic: sector ETF positions are entered before individual stocks set up cleanly, so the decision to enter the ETF must precede the individual stock screening pass. If Layer 1 is green or yellow, Layer 1.5 evaluates whether a sector rotation is underway and whether to put early capital to work via the sector ETF.
+Layer 3 sits between Permission State (Layer 2) and Stock Selection (Layer 4). The logic: sector ETF positions are entered before individual stocks set up cleanly, so the decision to enter the ETF must precede the individual stock screening pass. If Layer 2 is green or yellow, Layer 3 evaluates whether a sector rotation is underway and whether to put early capital to work via the sector ETF.
 
 Sequence:
 - Layer 0 — Macro regime
-- Layer 1 — Permission state
-- **Layer 1.5 — Sector rotation ETF entry**
-- Layer 2 — Individual stock selection
-- Layer 3 — Entry triggers
+- Layer 2 — Permission state
+- **Layer 3 — Sector rotation ETF entry**
+- Layer 4 — Individual stock selection
+- Layer 5 — Entry triggers
 
 ---
 
 ## The thesis
 
-Money rotation into a sector precedes individual stock setups by 2–8 weeks. Institutional capital moves into sector ETFs first — the easiest, fastest way to get broad exposure. Individual stocks form bases and trigger clean entries only after the rotation is underway. Layer 1.5 catches the rotation early, puts capital to work, and transitions to individual names as they set up through Layer 2.
+Money rotation into a sector precedes individual stock setups by 2–8 weeks. Institutional capital moves into sector ETFs first — the easiest, fastest way to get broad exposure. Individual stocks form bases and trigger clean entries only after the rotation is underway. Layer 3 catches the rotation early, puts capital to work, and transitions to individual names as they set up through Layer 4.
 
 This is momentum trading. The signal is the flow of money. The exit is when the money leaves.
 
@@ -61,11 +61,11 @@ Confirmation signals:
 - Individual stocks in sector: two-speed signals turning Full (ROC 21 and ROC 63 both positive)
 - Volume expanding on up weeks vs down weeks
 
-**Action:** Scale up ETF position if not already at full size, OR begin entering individual names via Layer 2/3 and reduce ETF proportionally.
+**Action:** Scale up ETF position if not already at full size, OR begin entering individual names via Layer 4/3 and reduce ETF proportionally.
 
 ### Phase 3 — Transition to individual names
 
-As individual stocks clear Layer 2 and trigger Layer 3 entries, the ETF position becomes redundant. Transition rules:
+As individual stocks clear Layer 4 and trigger Layer 5 entries, the ETF position becomes redundant. Transition rules:
 - Each individual stock entered in the sector reduces the ETF by one slot-equivalent
 - Complete transition by Week 8–12
 - If individual setups never materialize despite ETF strength, keep the ETF and trail it — the money is there, just not yet concentrated in individual names
@@ -144,17 +144,17 @@ Add to the Layer 0 data pull:
 
 ## Current application — semis
 
-As of late April/early May 2026, the semi rotation has already occurred. SMH moved ~40% in 3 weeks following the tariff selloff in early April. Layer 1.5 would have triggered in Week 1 (April 7–10) as flows turned positive and SMH reclaimed its 20d MA.
+As of late April/early May 2026, the semi rotation has already occurred. SMH moved ~40% in 3 weeks following the tariff selloff in early April. Layer 3 would have triggered in Week 1 (April 7–10) as flows turned positive and SMH reclaimed its 20d MA.
 
-Current state: SMH is extended (28% above 20d MA), ROC 126 still negative, MACD rolling. The ETF entry window has passed. Individual name entries (NVDA, AVGO, AMAT, ADI) via Layers 2–3 are the right vehicle from here, pending May earnings clearance.
+Current state: SMH is extended (28% above 20d MA), ROC 126 still negative, MACD rolling. The ETF entry window has passed. Individual name entries (NVDA, AVGO, AMAT, ADI) via Layers 4–3 are the right vehicle from here, pending May earnings clearance.
 
-The lesson that shaped this layer: the flow signal fires early. Waiting for the ETF to be fully confirmed and extended means missing it. Layer 1.5 is designed to catch the signal at Week 1–2, not Week 6.
+The lesson that shaped this layer: the flow signal fires early. Waiting for the ETF to be fully confirmed and extended means missing it. Layer 3 is designed to catch the signal at Week 1–2, not Week 6.
 
 ---
 
 ## Pending: full framework rebuild
 
-All framework documents (swing_trading_framework_v2.md, positions_tracker.md, weekly_review_prompt.md, weekly_playbook template, screening_log.md) are to be updated to incorporate Layer 1.5 as a permanent part of the 8-layer system (which becomes a 9-layer system). This work is deferred — do not begin until directed.
+All framework documents (swing_trading_framework_v2.md, positions_tracker.md, weekly_review_prompt.md, weekly_playbook template, screening_log.md) are to be updated to incorporate Layer 3 as a permanent part of the 8-layer system (which becomes a 9-layer system). This work is deferred — do not begin until directed.
 
 ---
 

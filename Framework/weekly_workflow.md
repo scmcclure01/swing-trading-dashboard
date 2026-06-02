@@ -22,7 +22,7 @@
   - XLK / XLY / XLF leading → Risk-on (growth rising, inflation falling)
   - XLU / XLP / XLV leading → Defensive / Deflation (growth falling)
   - Everything falling together → Stagflation / liquidity crisis
-- **Sector flows** — ETF.com 1-week and 4-week net inflows by sector (feeds Layer 1.5)
+- **Sector flows** — ETF.com 1-week and 4-week net inflows by sector (feeds Layer 3)
 - **TLT direction**: TLT falling + SPY rising = Reflation confirmed
 - **Recession probability composite** (FRED: CFNAIMA3, SAHMREALTIME)
 - **FactSet earnings revision direction** (weekly free report)
@@ -34,7 +34,7 @@
 
 ---
 
-## Layer 1 — Market Permission State
+## Layer 2 — Market Permission State
 *Goal: Determine how aggressively to trade*
 
 - **Green** (SPY 1M and 6M both positive): up to 20 positions, 0.75–1.0% risk/trade, momentum bias
@@ -43,10 +43,10 @@
 
 ---
 
-## Layer 1.5 — Sector Rotation ETF
+## Layer 3 — Sector Rotation ETF
 *Goal: Identify sector rotations early and enter via ETF before individual stocks set up*
 
-**Run after Layer 1, before running the screener.**
+**Run after Layer 2, before running the screener.**
 
 Check ETF.com and SSGA Sector Tracker for each sector:
 
@@ -72,7 +72,7 @@ Stop is always the 20d MA of the sector ETF. If the ETF closes below it on volum
 - Any 2 consecutive weeks of outflows? → Exit
 - 20d MA still holding? → If not, on volume: exit
 - RS line declining 2+ weeks? → Exit
-- Individual names from this sector entering via Layer 3? → Reduce ETF proportionally (Phase 3)
+- Individual names from this sector entering via Layer 5? → Reduce ETF proportionally (Phase 3)
 
 **Regime mismatch:** If a sector has strong inflows but conflicts with the G/I/L regime, flag it as an anomaly. Evaluate whether the regime classification is correct before acting. Stick to the regime unless there is overwhelming one-off evidence.
 
@@ -80,7 +80,7 @@ ETF positions count toward total position count and portfolio heat on equal foot
 
 ---
 
-## Layer 2 — Run the Screener
+## Layer 4 — Run the Screener
 *Goal: Generate individual stock candidates filtered to leading sectors*
 
 - Double-click **Run Screener.command** in your Screener folder
@@ -90,16 +90,16 @@ ETF positions count toward total position count and portfolio heat on equal foot
 - Dashboard opens automatically in your browser
 
 **Review the dashboard:**
-- **Full Signal candidates** — stocks passing all Layer 2 filters (prioritize these)
+- **Full Signal candidates** — stocks passing all Layer 4 filters (prioritize these)
 - **Half Signal watch list** — mixed two-speed trend (monitor, not yet actionable)
 - Check RSI on full signal candidates — avoid entries where RSI > 75 (extended)
 - Check MACD direction — look for MACD crossing above signal line (histogram turning green). Absolute level (above/below zero) is not the signal.
 
-**If an active Layer 1.5 ETF position exists in a sector:** Flag individual names from that sector as Phase 3 transition priorities. As they set up and enter, reduce the ETF proportionally.
+**If an active Layer 3 ETF position exists in a sector:** Flag individual names from that sector as Phase 3 transition priorities. As they set up and enter, reduce the ETF proportionally.
 
 ---
 
-## Layer 3 — Entry Trigger
+## Layer 5 — Entry Trigger
 *Goal: Find the specific entry point for each individual stock candidate*
 
 - Open each full signal candidate in **TradingView**
@@ -108,24 +108,24 @@ ETF positions count toward total position count and portfolio heat on equal foot
 - No earnings within 10 business days
 - Entry price defines your initial stop — do not enter without a clear stop level
 
-Note: ETF entries (Layer 1.5) do not use this trigger. ETF entries are determined by flow momentum strength and 20d MA position.
+Note: ETF entries (Layer 3) do not use this trigger. ETF entries are determined by flow momentum strength and 20d MA position.
 
 ---
 
-## Layer 4 — Position Sizing
+## Layer 6 — Position Sizing
 *Goal: Size each position using the expected-loss method*
 
 - **Formula**: Shares = (Account × Risk%) ÷ (Entry − Stop)
-- Risk% is set by permission state (Layer 1) and, for ETFs, by flow momentum strength (Layer 1.5)
+- Risk% is set by permission state (Layer 2) and, for ETFs, by flow momentum strength (Layer 3)
 - Max single position: 10% of account
-- In drawdown: reduce risk% proportionally per Layer 7 tiers
+- In drawdown: reduce risk% proportionally per Layer 9 tiers
 
 ---
 
-## Layer 5 — Portfolio Exposure Check
+## Layer 7 — Portfolio Exposure Check
 *Goal: Confirm total portfolio heat is within limits before entering*
 
-- Count all open positions (individual stocks AND ETF positions from Layer 1.5)
+- Count all open positions (individual stocks AND ETF positions from Layer 3)
 - Check total portfolio heat (sum of all open risk — stocks + ETFs)
   - Green: max 15% total heat
   - Yellow: max 8% total heat
@@ -135,7 +135,7 @@ Note: ETF entries (Layer 1.5) do not use this trigger. ETF entries are determine
 
 ---
 
-## Layer 6 — Trade Management (ongoing)
+## Layer 8 — Trade Management (ongoing)
 *Goal: Manage open positions systematically*
 
 **Individual stocks:**
@@ -148,14 +148,14 @@ Note: ETF entries (Layer 1.5) do not use this trigger. ETF entries are determine
   - Permission state goes Red
   - 12-week max hold reached with insufficient progress
 
-**ETF positions (Layer 1.5):**
+**ETF positions (Layer 3):**
 - Trail stop at 20d MA — no partial profit rules
 - **Exit if:** 2 consecutive weeks outflows / close below 20d MA on volume / RS line declining 2+ weeks
 - **Reduce proportionally** as individual stocks from the same sector are entered
 
 ---
 
-## Layer 7 — Hard Risk Caps (check weekly)
+## Layer 9 — Hard Risk Caps (check weekly)
 *Goal: Enforce portfolio-level drawdown limits*
 
 - **5–10% portfolio drawdown**: cut risk/trade by 50%, no new positions (stocks or ETFs)
@@ -168,15 +168,15 @@ Note: ETF entries (Layer 1.5) do not use this trigger. ETF entries are determine
 ## End of Week Checklist
 
 - [ ] Layer 0 macro regime confirmed — SPY trend, sector RS, sector flows, TLT, liquidity
-- [ ] Permission state set (Layer 1)
-- [ ] Layer 1.5 ETF scan complete — any new rotation opportunities? Any existing positions to exit?
-- [ ] Screener run with correct sectors (Layer 2)
-- [ ] All full signal candidates reviewed in TradingView (Layer 3)
-- [ ] Open individual stock positions checked against Layer 6 rules
+- [ ] Permission state set (Layer 2)
+- [ ] Layer 3 ETF scan complete — any new rotation opportunities? Any existing positions to exit?
+- [ ] Screener run with correct sectors (Layer 4)
+- [ ] All full signal candidates reviewed in TradingView (Layer 5)
+- [ ] Open individual stock positions checked against Layer 8 rules
 - [ ] Open ETF positions checked for flow reversal / 20d MA breach / Phase 3 transition
-- [ ] Portfolio heat within Layer 5 limits (stocks + ETFs combined)
-- [ ] No hard risk cap breaches (Layer 7)
-- [ ] Tracker file updated with new Layer 0 and Layer 1.5 snapshots
+- [ ] Portfolio heat within Layer 7 limits (stocks + ETFs combined)
+- [ ] No hard risk cap breaches (Layer 9)
+- [ ] Tracker file updated with new Layer 0 and Layer 3 snapshots
 - [ ] Trade journal updated with any closed trades
 - [ ] Screening log entry added
 
