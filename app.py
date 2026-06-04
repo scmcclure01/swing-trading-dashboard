@@ -625,9 +625,17 @@ def run_screener_v3(
             else:
                 entry_zone = "Too extended"
 
-            # Passes = full L4 criteria (same as old calc_layer4 PASS logic)
-            passes = (two_speed == "FULL" and rs_new_hi and rs_rising
-                      and avg_dollar_vol >= 10_000_000)
+            # Passes = full L4 criteria + entry zone filter
+            # "Too extended" never passes. "Extended (accel only)" requires sector accelerating.
+            fundamentals_ok = (two_speed == "FULL" and rs_new_hi and rs_rising
+                               and avg_dollar_vol >= 10_000_000)
+            if entry_zone == "Too extended":
+                zone_ok = False
+            elif entry_zone == "Extended (accel only)":
+                zone_ok = sec in accel_secs
+            else:
+                zone_ok = True
+            passes = fundamentals_ok and zone_ok
 
             # ── L5 Entry Trigger Assessment ──────────────────────────────────
             sec = ticker_sector.get(ticker, "Unknown")
@@ -750,6 +758,9 @@ def run_screener_v3(
                 except Exception:
                     notes.append(f"Earnings: {next_ed}")
 
+            # Monitoring = strong fundamentals but too extended to trade
+            monitoring = fundamentals_ok and not zone_ok
+
             results.append({
                 "Ticker": ticker,
                 "Sector": sec,
@@ -758,6 +769,7 @@ def run_screener_v3(
                 "Avg $Vol(M)": round(avg_dollar_vol / 1e6, 1),
                 "2-Speed": two_speed,
                 "PASS": passes,
+                "MONITORING": monitoring,
                 "RS_vs_SPY_21d": round(rs_chg, 2),
                 "Dist_MA20_pct": round(dist_ma20, 1),
                 "Entry_Zone": entry_zone,
@@ -2365,6 +2377,31 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             "watchlist",
             f"Watchlist — Half Signal — {len(watchlist_df)} candidates (half-size eligible)",
             pill="⚠️ Half",
+        )
+
+    # ── Table 3: Monitoring (strong fundamentals but too extended to trade) ──
+    monitoring_df = results_df[results_df.get("MONITORING", pd.Series(dtype=bool)) == True].copy() if "MONITORING" in results_df.columns else pd.DataFrame()
+
+    if not monitoring_df.empty:
+        monitoring_df = monitoring_df.sort_values("RS_vs_SPY_21d", ascending=False).head(25)
+        mon_cols = {
+            "Ticker":     monitoring_df["Ticker"].values,
+            "Sector":     monitoring_df["Sector"].values,
+            "Price":      monitoring_df["Price"].apply(lambda x: f"${x:.2f}").values,
+            "vs 20MA":    monitoring_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+            "Entry Zone": monitoring_df["Entry_Zone"].values,
+            "RS vs SPY":  monitoring_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+            "Vol 5d":     monitoring_df["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
+            "MACD":       monitoring_df["MACD_Crossover"].apply(lambda x: "✓" if x else "").values,
+            "Notes":      monitoring_df["Notes"].values,
+        }
+        st.markdown(
+            _card(
+                f"Monitoring Only — {len(monitoring_df)} extended stocks (do not enter)",
+                cb_table(pd.DataFrame(mon_cols), bordered=False),
+                pill="⚠️ Too extended",
+            ),
+            unsafe_allow_html=True,
         )
 
 
