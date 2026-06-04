@@ -267,136 +267,88 @@ def fetch_fed_net_liquidity() -> dict:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_etf_implied_flows() -> dict:
+def fetch_etf_fund_flows() -> dict:
     """
-    Compute implied fund flows for each sector ETF using yfinance.
+    Fetch actual daily fund flow data from etfdb.com for each sector ETF.
 
-    Method: Δ shares outstanding × price ≈ implied AUM flow.
-      - Pulls 'sharesOutstanding' from yf.Ticker.info (updates T+1/T+2)
-      - Pulls 30 days of daily price history to compute trailing price
-      - Week-over-week Δ shares: compare today's shares vs 5 trading days ago
-      - 4-week Δ shares: compare today vs 20 trading days ago
+    Source: etfdb.com embeds a daily flow time series in each ETF page as a
+    data-series attribute (timestamp_ms, flow_in_billions). Updated daily.
+    No API key required.
 
-    Flow classification per ETF:
-      Strong   : 1w Δ AUM > +$150M  AND  4w Δ AUM > +$300M
-      Moderate : 1w Δ AUM > +$50M   OR   4w Δ AUM > +$100M (and not Strong)
-      Outflows : 1w Δ AUM < -$50M   OR   4w Δ AUM < -$100M
+    Flow classification per ETF (framework Layer 3):
+      Strong   : 1w net > +$150M  AND  4w net > +$300M
+      Moderate : 1w net > +$50M   OR   4w net > +$100M (and not Strong)
+      Outflows : 1w net < -$50M   OR   4w net < -$100M
       Weak     : everything else (small positive or flat)
 
     Returns dict keyed by ETF ticker → {
-        'flow_strength': str,    # "Strong" / "Moderate" / "Weak" / "Outflows" / "N/A"
-        'shares_now':    int,
-        'aum_1w_delta':  float,  # $M
-        'aum_4w_delta':  float,  # $M
-        'price':         float,
-        'error':         str,    # only if fetch failed
+        'flow_strength':    str,    # "Strong" / "Moderate" / "Weak" / "Outflows" / "N/A"
+        'aum_1w_delta':     float,  # $M — 5 trading day net
+        'aum_4w_delta':     float,  # $M — 20 trading day net
+        'direction_5d':     str,    # e.g. "4/5 positive"
+        'direction_10d':    str,    # e.g. "7/10 positive"
+        'as_of':            str,    # date of most recent data point
+        'error':            str,    # only if fetch failed
     }
     """
+    import urllib.request
+    import re
+
+    def _scrape_flows(ticker):
+        url = f"https://etfdb.com/etf/{ticker}/"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        })
+        resp = urllib.request.urlopen(req, timeout=15)
+        html = resp.read().decode()
+        match = re.search(r"data-series='(\[\[[\d\.,\-\s\[\]e]+\]\])'", html)
+        if not match:
+            return None
+        import json as _json
+        raw = _json.loads(match.group(1))
+        return [(ts, flow_b) for ts, flow_b in raw]
+
     results = {}
     etfs = list(SECTOR_ETFS.values())
 
-    # Fetch 30 days of price data for all ETFs in one call
-    try:
-        px_df = yf.download(etfs, period="30d", auto_adjust=True, progress=False)["Close"]
-        if isinstance(px_df, pd.Series):
-            # Only one ETF returned as Series
-            px_df = px_df.to_frame(name=etfs[0])
-    except Exception:
-        px_df = pd.DataFrame()
-
     for etf in etfs:
         try:
-            info = yf.Ticker(etf).info
-            shares_now = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
-            if not shares_now:
-                results[etf] = {"flow_strength": "N/A", "error": "No shares data"}
+            data = _scrape_flows(etf)
+            if not data or len(data) < 20:
+                results[etf] = {"flow_strength": "N/A", "error": "Insufficient flow data"}
                 continue
 
-            # Current price
-            if etf in px_df.columns and len(px_df[etf].dropna()) > 0:
-                price = float(px_df[etf].dropna().iloc[-1])
-            else:
-                price = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
+            as_of = datetime.utcfromtimestamp(data[-1][0] / 1000).strftime('%Y-%m-%d')
 
-            if price == 0:
-                results[etf] = {"flow_strength": "N/A", "error": "No price data"}
-                continue
+            # 5-day (1 week) and 20-day (4 week) net flows — data is in $B
+            flows_5d  = [v for _, v in data[-5:]]
+            flows_10d = [v for _, v in data[-10:]]
+            flows_20d = [v for _, v in data[-20:]]
 
-            # Δ shares via price history length proxies (yfinance info is a single snapshot)
-            # Use 52-week high/low share counts if available, otherwise use single-point logic
-            # Best available: compare sharesOutstanding to impliedSharesOutstanding
-            # For a robust Δ: fetch two Ticker objects isn't possible; use price vol as proxy
-            # Practical approach: use fast_info for a second data point where available
-            try:
-                fast = yf.Ticker(etf).fast_info
-                # fast_info has shares, which may differ slightly from .info — use as prior
-                shares_alt = getattr(fast, "shares", None)
-            except Exception:
-                shares_alt = None
+            net_1w = sum(flows_5d) * 1000   # convert $B → $M
+            net_4w = sum(flows_20d) * 1000
 
-            # Compute Δ AUM using price-series implied AUM (shares × price each day)
-            # Since we can't get daily historical shares, we estimate:
-            # Use the ETF's daily price change as a proxy for AUM change direction
-            if etf in px_df.columns:
-                px = px_df[etf].dropna()
-                if len(px) >= 6:
-                    price_1w_ago = float(px.iloc[-6]) if len(px) >= 6 else price
-                    price_4w_ago = float(px.iloc[-21]) if len(px) >= 21 else float(px.iloc[0])
+            # Directional consistency
+            pos_5d  = sum(1 for v in flows_5d if v > 0)
+            pos_10d = sum(1 for v in flows_10d if v > 0)
 
-                    # Implied AUM today vs N days ago (shares held constant as best estimate)
-                    aum_now  = shares_now * price / 1e6        # $M
-                    aum_1w   = shares_now * price_1w_ago / 1e6
-                    aum_4w   = shares_now * price_4w_ago / 1e6
-
-                    # Price-adjusted: isolate flow signal by normalizing out price return
-                    # True flow Δ = AUM Δ - (price return × prior AUM)
-                    # Without historical shares we use the price-return-neutral estimate:
-                    # If shares_alt available, use it for 1-point Δ shares estimate
-                    if shares_alt and shares_alt != shares_now:
-                        # shares_alt is typically slightly older; use as prior
-                        delta_shares = shares_now - shares_alt
-                        aum_1w_delta = delta_shares * price / 1e6
-                        aum_4w_delta = aum_1w_delta  # single delta; apply to both
-                    else:
-                        # Fallback: net AUM change includes price return — use as directional signal only
-                        spy_1w_ret = 0.0
-                        spy_4w_ret = 0.0
-                        if "SPY" in px_df.columns:
-                            spy_px = px_df["SPY"].dropna()
-                            if len(spy_px) >= 6:
-                                spy_1w_ret = float(spy_px.iloc[-1] / spy_px.iloc[-6] - 1)
-                            if len(spy_px) >= 21:
-                                spy_4w_ret = float(spy_px.iloc[-1] / spy_px.iloc[-21] - 1)
-
-                        etf_1w_ret = float(px.iloc[-1] / price_1w_ago - 1) if price_1w_ago else 0
-                        etf_4w_ret = float(px.iloc[-1] / price_4w_ago - 1) if price_4w_ago else 0
-
-                        # Excess return vs SPY × AUM = flow proxy ($M)
-                        aum_1w_delta = (etf_1w_ret - spy_1w_ret) * aum_now
-                        aum_4w_delta = (etf_4w_ret - spy_4w_ret) * aum_now
-                else:
-                    aum_1w_delta = 0.0
-                    aum_4w_delta = 0.0
-            else:
-                aum_1w_delta = 0.0
-                aum_4w_delta = 0.0
-
-            # Classify
-            if aum_1w_delta > 150 and aum_4w_delta > 300:
+            # Classify per framework thresholds
+            if net_1w > 150 and net_4w > 300:
                 flow_strength = "Strong"
-            elif aum_1w_delta > 50 or aum_4w_delta > 100:
+            elif net_1w > 50 or net_4w > 100:
                 flow_strength = "Moderate"
-            elif aum_1w_delta < -50 or aum_4w_delta < -100:
+            elif net_1w < -50 or net_4w < -100:
                 flow_strength = "Outflows"
             else:
                 flow_strength = "Weak"
 
             results[etf] = {
-                "flow_strength": flow_strength,
-                "shares_now":    int(shares_now),
-                "aum_1w_delta":  round(aum_1w_delta, 1),
-                "aum_4w_delta":  round(aum_4w_delta, 1),
-                "price":         round(price, 2),
+                "flow_strength":  flow_strength,
+                "aum_1w_delta":   round(net_1w, 1),
+                "aum_4w_delta":   round(net_4w, 1),
+                "direction_5d":   f"{pos_5d}/5 positive",
+                "direction_10d":  f"{pos_10d}/10 positive",
+                "as_of":          as_of,
             }
 
         except Exception as e:
@@ -2016,21 +1968,21 @@ def _render_layer3_tab(l3_data: list) -> None:
     mc4.metric("🔴 Lagging",   n_lagging)
 
     # Flow strength inputs — auto-populated from implied flows, manually overridable
-    with st.expander("📊 Weekly Flow Strength — auto-computed, override if needed"):
+    with st.expander("📊 Weekly Flow Strength — live from etfdb.com, override if needed"):
         fc1, fc2 = st.columns([3, 1])
         with fc1:
             st.caption(
-                "Auto-computed from implied AUM flows (yfinance). "
+                "Actual daily fund flows scraped from etfdb.com. "
                 "Override any sector manually. "
-                "Source: ETF excess return vs SPY × AUM as flow proxy."
+                "5-day and 4-week net flows in $M."
             )
         with fc2:
             if st.button("🔄 Refresh Flows", key="refresh_flows"):
-                fetch_etf_implied_flows.clear()
+                fetch_etf_fund_flows.clear()
                 st.rerun()
 
         # Load auto-computed flows and seed session state (only if not already set this session)
-        auto_flows = fetch_etf_implied_flows()
+        auto_flows = fetch_etf_fund_flows()
         for sector, etf in SECTOR_ETFS.items():
             key = f"flow_{etf.lower()}"
             auto_val = auto_flows.get(etf, {}).get("flow_strength", "Not set")
@@ -2047,13 +1999,16 @@ def _render_layer3_tab(l3_data: list) -> None:
             delta_4w  = auto_data.get("aum_4w_delta")
             err       = auto_data.get("error")
 
-            # Build sublabel showing auto signal and Δ AUM
+            # Build sublabel showing actual flow data
+            dir_5d  = auto_data.get("direction_5d", "")
+            dir_10d = auto_data.get("direction_10d", "")
+            flow_date = auto_data.get("as_of", "")
             if err:
-                sublabel = f"Auto: ⚠️ {err[:30]}"
+                sublabel = f"⚠️ {err[:40]}"
             elif delta_1w is not None:
-                sublabel = f"Auto: {auto_val} | 1w ${delta_1w:+.0f}M / 4w ${delta_4w:+.0f}M"
+                sublabel = f"{auto_val} | 1w ${delta_1w:+,.0f}M · 4w ${delta_4w:+,.0f}M | {dir_5d}"
             else:
-                sublabel = f"Auto: {auto_val}"
+                sublabel = f"{auto_val}"
 
             with flow_cols[i % 3]:
                 st.session_state[key] = st.selectbox(
