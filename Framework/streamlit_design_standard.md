@@ -240,13 +240,23 @@ gridcolor     = "rgba(16,55,102,0.10)"
 
 ## What NOT to use
 
-The following Streamlit native components are replaced by custom HTML in this app:
+The following Streamlit native components are replaced by custom HTML in main content areas:
 
 | Retired | Replaced by |
 |---|---|
 | `st.metric` | `_tile()` inside a white card |
 | `st.success / st.warning / st.error` | `_gate_bar_html()` |
-| `st.expander` | `_card()` |
+| `st.expander` (display sections) | `_card()` |
 | `st.dataframe` (in L0/L2/L3/L4) | `cb_table()` inside `_card()` |
 | `st.subheader` (section headers) | Card heading inside `_card()` |
 | `st.divider` | Not used — card spacing handles separation |
+
+**Exceptions — native components are kept in these contexts:**
+
+| Context | Why |
+|---|---|
+| Sidebar (`st.divider`, `st.subheader`) | Sidebar has its own CSS styling; custom cards don't apply |
+| Interactive forms (`st.expander` for Add/Close Position) | Collapse/expand is functional, not decorative |
+| Chart drill-down (`st.expander` per ticker in Charts tab) | Each ticker expands independently — `_card()` can't replicate |
+| Flow strength inputs (`st.expander` in L3 tab) | Contains interactive selectboxes that need collapse |
+| Critical errors (`st.error` for L0 data failure) | App-breaking errors use native styling |

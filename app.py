@@ -1965,9 +1965,7 @@ def _render_layer3_tab(l3_data: list) -> None:
     if rrg_fig:
         st.plotly_chart(rrg_fig, use_container_width=True)
     else:
-        st.warning("Insufficient data to build RRG chart.")
-
-    st.divider()
+        st.markdown(_gate_bar_html("Yellow", "Insufficient data to build RRG chart."), unsafe_allow_html=True)
 
     # Quadrant count summary
     n_improving = sum(1 for d in l3_data if d["quadrant"] == "Improving")
@@ -1975,11 +1973,15 @@ def _render_layer3_tab(l3_data: list) -> None:
     n_weakening = sum(1 for d in l3_data if d["quadrant"] == "Weakening")
     n_lagging   = sum(1 for d in l3_data if d["quadrant"] == "Lagging")
 
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    mc1.metric("🔵 Improving", n_improving)
-    mc2.metric("🟢 Leading",   n_leading)
-    mc3.metric("🟡 Weakening", n_weakening)
-    mc4.metric("🔴 Lagging",   n_lagging)
+    quad_html = (
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:10px;">'
+        + _tile("Improving", str(n_improving), "Phase 1 — Early", "#288CFA")
+        + _tile("Leading", str(n_leading), "Phase 2 — Confirmed", "#27500A")
+        + _tile("Weakening", str(n_weakening), "Exiting", "#E07800")
+        + _tile("Lagging", str(n_lagging), "No Trade", "#CC1111")
+        + '</div>'
+    )
+    st.markdown(quad_html, unsafe_allow_html=True)
 
     # Flow strength inputs — auto-populated from implied flows, manually overridable
     with st.expander("📊 Weekly Flow Strength — live from etfdb.com, override if needed"):
@@ -2034,68 +2036,68 @@ def _render_layer3_tab(l3_data: list) -> None:
                 )
                 st.caption(sublabel)
 
-    st.divider()
+    # ── ETF Entry Candidates / Weakening — two-column layout ────────────────
+    candidates = [d for d in l3_data if d["quadrant"] in ("Improving", "Leading")]
+    weakening = [d for d in l3_data if d["quadrant"] == "Weakening"]
 
-    col_l, col_r = st.columns([1, 1], gap="medium")
-
-    with col_l:
-        candidates = [d for d in l3_data if d["quadrant"] in ("Improving", "Leading")]
-        with st.expander("ETF Entry Candidates", expanded=True):
-            if candidates:
-                rows = []
-                for d in candidates:
-                    flow_key      = f"flow_{d['etf'].lower()}"
-                    flow_strength = st.session_state.get(flow_key, "Not set")
-                    # Override sizing with user's flow reading if set
-                    if flow_strength in FLOW_SIZE_MAP:
-                        sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
-                    else:
-                        sizing, risk_pct = d["sizing"], d["risk_pct"]
-
-                    q_icon = "🔵" if d["quadrant"] == "Improving" else "🟢"
-                    rows.append({
-                        "ETF":         d["etf"],
-                        "Sector":      d["sector"],
-                        "Phase":       f"{q_icon} {d['phase']}",
-                        "RS Ratio":    d["rs_ratio"],
-                        "RS Mom":      d["rs_momentum"],
-                        "vs 20MA":     "✅" if d["above_20"] else "❌",
-                        "Price":       f"${d['price']:.2f}",
-                        "Stop (20MA)": f"${d['ma20']:.2f}",
-                        "Flow Signal": flow_strength,
-                        "Sizing":      sizing,
-                        "Risk %":      risk_pct,
-                    })
-                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
+    if candidates:
+        cand_rows = []
+        for d in candidates:
+            flow_key      = f"flow_{d['etf'].lower()}"
+            flow_strength = st.session_state.get(flow_key, "Not set")
+            if flow_strength in FLOW_SIZE_MAP:
+                sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
             else:
-                st.info("No Improving or Leading sectors currently.")
+                sizing, risk_pct = d["sizing"], d["risk_pct"]
+            q_icon = "🔵" if d["quadrant"] == "Improving" else "🟢"
+            cand_rows.append({
+                "ETF":         d["etf"],
+                "Sector":      d["sector"],
+                "Phase":       f"{q_icon} {d['phase']}",
+                "RS Ratio":    d["rs_ratio"],
+                "RS Mom":      d["rs_momentum"],
+                "vs 20MA":     "✅" if d["above_20"] else "❌",
+                "Price":       f"${d['price']:.2f}",
+                "Stop (20MA)": f"${d['ma20']:.2f}",
+                "Flow Signal": flow_strength,
+                "Sizing":      sizing,
+                "Risk %":      risk_pct,
+            })
+        cand_html = cb_table(pd.DataFrame(cand_rows), bordered=False)
+    else:
+        cand_html = '<p style="font-size:13px; color:#5A7BAA;">No Improving or Leading sectors currently.</p>'
 
-    with col_r:
-        weakening = [d for d in l3_data if d["quadrant"] == "Weakening"]
-        with st.expander("Weakening — Review Stops", expanded=True):
-            if weakening:
-                rows = []
-                for d in weakening:
-                    flow_key      = f"flow_{d['etf'].lower()}"
-                    flow_strength = st.session_state.get(flow_key, "Not set")
-                    rows.append({
-                        "ETF":         d["etf"],
-                        "Sector":      d["sector"],
-                        "RS Ratio":    d["rs_ratio"],
-                        "RS Mom":      d["rs_momentum"],
-                        "vs 20MA":     "✅" if d["above_20"] else "❌",
-                        "Price":       f"${d['price']:.2f}",
-                        "Stop (20MA)": f"${d['ma20']:.2f}",
-                        "Flow Signal": flow_strength,
-                        "Action":      "Exit review — outflows" if flow_strength == "Outflows" else d["action"],
-                    })
-                st.markdown(cb_table(pd.DataFrame(rows)), unsafe_allow_html=True)
-            else:
-                st.success("No sectors in Weakening quadrant.")
+    if weakening:
+        weak_rows = []
+        for d in weakening:
+            flow_key      = f"flow_{d['etf'].lower()}"
+            flow_strength = st.session_state.get(flow_key, "Not set")
+            weak_rows.append({
+                "ETF":         d["etf"],
+                "Sector":      d["sector"],
+                "RS Ratio":    d["rs_ratio"],
+                "RS Mom":      d["rs_momentum"],
+                "vs 20MA":     "✅" if d["above_20"] else "❌",
+                "Price":       f"${d['price']:.2f}",
+                "Stop (20MA)": f"${d['ma20']:.2f}",
+                "Flow Signal": flow_strength,
+                "Action":      "Exit review — outflows" if flow_strength == "Outflows" else d["action"],
+            })
+        weak_html = cb_table(pd.DataFrame(weak_rows), bordered=False)
+    else:
+        weak_html = '<p style="font-size:13px; color:#27500A;">No sectors in Weakening quadrant.</p>'
+
+    two_col_html = (
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+        + _card("ETF Entry Candidates", cand_html, pill=f"{len(candidates)} sectors")
+        + _card("Weakening — Review Stops", weak_html, pill=f"{len(weakening)} sectors")
+        + '</div>'
+    )
+    st.markdown(two_col_html, unsafe_allow_html=True)
 
     # Full sector table
-    st.write("")
-    with st.expander("All Sectors", expanded=True):
+    st.markdown('<div style="margin-top:4px;"></div>', unsafe_allow_html=True)
+    with st.expander("All Sectors", expanded=False):
         q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
         all_rows = []
         for d in l3_data:
