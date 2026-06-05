@@ -3665,17 +3665,13 @@ def main():
         "drawdown_state": "At or near peak — full risk",
         "lei_signal":    "Not set",
         "taylor_rule":   "Not set",
-        # Core Allocation (v4)
-        "core_pct_deployed": 0.0,
-        "core_positions":    "",     # Comma-separated ETF tickers, e.g. "XLK,XLI"
     }
     # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
     for etf in SECTOR_ETFS.values():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
     # Keys that persist across refreshes via URL query params
-    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule",
-                     "core_pct_deployed", "core_positions"]
+    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule"]
 
     # Load persisted values from URL on first visit
     qp = st.query_params
@@ -3760,17 +3756,15 @@ def main():
 
         st.divider()
         st.subheader("Core Allocation (v4)")
-        st.caption("Account value computed from portfolio.json + live prices.")
-        st.session_state.core_positions = st.text_input(
-            "Core ETF Positions (comma-separated)", value=st.session_state.core_positions,
-            placeholder="e.g. XLK, XLI",
-            help="Enter ETF tickers of current Core positions.",
-            on_change=_save_manual_signals,
-        )
-        st.session_state.core_pct_deployed = st.slider(
-            "Core % Deployed", 0.0, 60.0, st.session_state.core_pct_deployed, step=1.0,
-            help="Percentage of account in Core ETFs.",
-            on_change=_save_manual_signals,
+        _core_pos_str = st.session_state.get("core_positions", "")
+        _core_pct_val = st.session_state.get("core_pct_deployed", 0.0)
+        st.markdown(
+            f'<div style="background:#EEF3FA; border-radius:9px; padding:10px 12px; margin-bottom:8px;">'
+            f'<div style="font-size:11px; color:#5A7BAA;">Core Deployed (live)</div>'
+            f'<div style="font-size:17px; font-weight:500; color:#103766;">{_core_pct_val:.1f}%</div>'
+            f'<div style="font-size:11px; color:#5A7BAA;">{_core_pos_str if _core_pos_str else "No Core positions"}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
 
         st.divider()
@@ -3789,6 +3783,15 @@ def main():
     _port_prices = fetch_portfolio_prices(",".join(_port_tickers)) if _port_tickers else {}
     _acct_val, _, _, _ = _compute_account_value(_port_data, _port_prices)
     st.session_state["account_value"] = round(_acct_val)
+
+    # Compute Core % deployed from open positions
+    _core_mv = sum(
+        p["shares"] * _port_prices.get(p["ticker"], p.get("current_price") or p["entry_price"])
+        for p in _port_open if p.get("layer") == "Core"
+    )
+    st.session_state["core_pct_deployed"] = round(_core_mv / _acct_val * 100, 1) if _acct_val > 0 else 0.0
+    _core_tickers = [p["ticker"] for p in _port_open if p.get("layer") == "Core"]
+    st.session_state["core_positions"] = ", ".join(_core_tickers)
 
     with st.spinner("Loading market data..."):
         macro_close = fetch_macro_data()
