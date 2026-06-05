@@ -61,6 +61,7 @@ SECTOR_ETFS = {
     "Materials":              "XLB",
     "Industrials":            "XLI",
     "Technology":             "XLK",
+    "Semiconductors":         "SMH",
     "Financials":             "XLF",
     "Consumer Discretionary": "XLY",
     "Consumer Staples":       "XLP",
@@ -117,7 +118,7 @@ ALL_SECTORS = list(SECTOR_ETFS.keys())
 
 # Regime classification sets.
 # Industrials appears in both Risk-on and Reflation per framework v3.
-RISK_ON_SECTORS   = {"Technology", "Financials", "Consumer Discretionary", "Industrials"}
+RISK_ON_SECTORS   = {"Technology", "Semiconductors", "Financials", "Consumer Discretionary", "Industrials"}
 REFLATION_SECTORS = {"Energy", "Materials", "Industrials"}
 DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
 
@@ -127,6 +128,7 @@ SECTOR_COLORS = {
     "Materials":              "#10B981",   # emerald
     "Industrials":            "#3B82F6",   # blue
     "Technology":             "#A78BFA",   # violet
+    "Semiconductors":         "#8B5CF6",   # purple
     "Financials":             "#EC4899",   # pink
     "Consumer Discretionary": "#F97316",   # orange
     "Consumer Staples":       "#06B6D4",   # cyan
@@ -2831,8 +2833,6 @@ def _render_layer5_tab(
         "Always confirm base structure, candle quality, and exact pivot in TradingView before entering."
     )
 
-    # ── L6 Position Sizer ─────────────────────────────────────────────────────
-    _render_position_sizer(full_l5, half_l5, perm, l0)
 
 
 def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
