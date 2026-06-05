@@ -180,6 +180,40 @@ Then update the playbook xlsx with new snapshot data and action items.
 
 ---
 
+## Step 9 — Update Screening Log
+
+Append a new dated entry to `screening_log.md` in the workspace folder. Use this format:
+
+```
+## YYYY-MM-DD Screening Pass (Automated Weekly Review)
+
+**Regime:** [regime from Step 3]
+**Permission state:** [state from Step 3]
+**Sector bias:** Primary: [leading sectors] | Secondary: [mixed sectors] | Avoid: [lagging]
+**Risk/trade:** [from permission state]
+**Max positions:** [from permission state]
+
+### Layer 3 — Sector ETF Flow Scan
+
+| Sector | ETF | 1W Flow | 4W Flow | Signal | Phase | Action |
+|--------|-----|---------|---------|--------|-------|--------|
+[one row per sector with flow data from Step 4]
+
+### Layer 4 — Individual Stock Screen
+
+| Ticker | Sector | Two-Speed | Entry Zone | Verdict | Notes |
+|--------|--------|-----------|------------|---------|-------|
+[top candidates from Step 7 — ENTRY READY and WATCH only, max 15 rows]
+
+### Open Position Actions
+
+[one line per open position from Step 6: hold / partial / exit / adjust stop]
+```
+
+This creates the audit trail. Every weekly review must produce a screening log entry — no exceptions.
+
+---
+
 ## Monthly Add-on (after CPI/PCE)
 
 When running the monthly check, also pull:
