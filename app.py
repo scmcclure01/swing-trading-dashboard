@@ -2668,12 +2668,41 @@ def _render_position_sizer_tab(
             {"Level": "Max hold",         "Price": max_hold,                    "Action": "Exit if insufficient progress"},
         ]
 
+        # Sector concentration check (25% cap per framework L7)
+        sector_conc_warn = ""
+        sel_key = st.session_state.get("sizer_select", "Custom entry")
+        cands_ref = st.session_state.get("_sizer_candidates", {})
+        candidate_sector = cands_ref.get(sel_key, {}).get("sector", "")
+        if candidate_sector:
+            port_data = _portfolio_load()
+            existing_in_sector = 0.0
+            for p in port_data.get("open_positions", []):
+                p_sec = ""
+                for s, tickers in SECTOR_TICKERS.items():
+                    if p["ticker"] in tickers:
+                        p_sec = s
+                        break
+                # Also check SECTOR_ETFS for Core ETF positions
+                if not p_sec:
+                    for s, etf in SECTOR_ETFS.items():
+                        if p["ticker"] == etf:
+                            p_sec = s
+                            break
+                if p_sec == candidate_sector:
+                    existing_in_sector += p["entry_price"] * p["shares"]
+            new_total = existing_in_sector + pos_value
+            sector_pct = new_total / acct_override * 100 if acct_override > 0 else 0
+            if sector_pct > 25:
+                sector_conc_warn = f"⚠️ Sector concentration: {candidate_sector} would be {sector_pct:.0f}% of account (${new_total:,.0f}) — exceeds 25% cap"
+
         # Warnings
         warnings = []
         if is_accel:
             warnings.append("🔥 Accelerating Protocol — half-sized, 10d EMA stop, 6-week hold")
         if capped:
             warnings.append(f"⚠️ Position capped at 10% of account (${max_pos_value:,})")
+        if sector_conc_warn:
+            warnings.append(sector_conc_warn)
         if dd_note:
             warnings.append(f"⚠️ {dd_note}")
         if perm == "Red":
