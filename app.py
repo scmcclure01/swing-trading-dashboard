@@ -928,17 +928,25 @@ def calc_layer0(close: pd.DataFrame) -> dict:
     r["velocity_flags"]  = {sec: v["velocity"] for sec, v in sector_rs.items()}
     r["accelerating"]    = [sec for sec, v in sector_rs.items() if v["velocity"] == "ACCELERATING"]
 
-    # Regime classification — priority order matters: Stagflation → Risk-on → Reflation → Deflation → Mixed
-    leading = set(r["leading_sectors"])
-    ro = len(leading & RISK_ON_SECTORS)
-    re = len(leading & REFLATION_SECTORS)
-    de = len(leading & DEFENSIVE_SECTORS)
+    # Regime classification — use aggregate RS weight per category.
+    # Sum the 3-month RS of all sectors in each group. Highest wins.
+    # Stagflation = Reflation sectors leading AND Defensive sectors leading simultaneously.
+    def _group_rs(group):
+        return sum(sector_rs[s]["rs_3m"] for s in group if s in sector_rs)
 
-    if   re >= 2 and de >= 1: r["regime"] = "Stagflation"
-    elif ro >= 2:              r["regime"] = "Risk-on"
-    elif re >= 2:              r["regime"] = "Reflation"
-    elif de >= 2:              r["regime"] = "Deflation"
-    else:                      r["regime"] = "Mixed"
+    ro_rs = _group_rs(RISK_ON_SECTORS)
+    re_rs = _group_rs(REFLATION_SECTORS)
+    de_rs = _group_rs(DEFENSIVE_SECTORS)
+
+    # Stagflation: reflation AND defensive both positive (growth down, inflation up)
+    if re_rs > 0 and de_rs > 0 and ro_rs < re_rs and ro_rs < de_rs:
+        r["regime"] = "Stagflation"
+    elif ro_rs >= re_rs and ro_rs >= de_rs:
+        r["regime"] = "Risk-on"
+    elif re_rs >= ro_rs and re_rs >= de_rs:
+        r["regime"] = "Reflation"
+    else:
+        r["regime"] = "Deflation"
 
     return r
 
@@ -1283,7 +1291,7 @@ def calc_layer5(
       Mixed / Yellow      → Pullback preferred
     """
     today        = datetime.today().date()
-    regime       = l0.get("regime", "Mixed")
+    regime       = l0.get("regime", "Risk-on")
     accel_secs   = set(l0.get("accelerating", []))
     rec_override = rec_flags >= 4
 
@@ -2711,7 +2719,7 @@ def _render_layer5_tab(
     rec_flags: int,
 ) -> None:
     """Render the Layer 5 — Entry Trigger tab."""
-    regime     = l0.get("regime", "Mixed")
+    regime     = l0.get("regime", "Risk-on")
     accel_secs = l0.get("accelerating", [])
     has_accel  = bool(accel_secs)
 
@@ -3767,7 +3775,7 @@ def main():
 
         st.divider()
         st.subheader("Overrides")
-        regime_ov = st.selectbox("Regime",           ["Auto", "Risk-on", "Reflation", "Deflation", "Stagflation", "Mixed"])
+        regime_ov = st.selectbox("Regime",           ["Auto", "Risk-on", "Reflation", "Deflation", "Stagflation"])
         perm_ov   = st.selectbox("Permission State", ["Auto", "Green", "Yellow", "Red"])
 
         st.divider()
