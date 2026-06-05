@@ -426,6 +426,21 @@ Note [v4]: Layer 3 and Core positions may overlap. Layer 3 enters at Phase 1 (Ea
 
 Note: The SSGA Sector Tracker shows price performance, not flows. ETF.com is the primary flow signal.
 
+## **RRG Quadrant → Phase Mapping**
+
+The Streamlit dashboard uses a Relative Rotation Graph (RRG) to classify each sector's position in the rotation cycle. The RRG computes two metrics from weekly RS data vs SPY:
+- **RS-Ratio** = (weekly RS / SMA10 of weekly RS) × 100 — measures relative strength level, centered at 100
+- **RS-Momentum** = (RS-Ratio / SMA4 of RS-Ratio) × 100 — measures acceleration, centered at 100
+
+| **RRG Quadrant** | **RS-Ratio** | **RS-Momentum** | **Framework Phase** | **Action** |
+| --- | --- | --- | --- | --- |
+| Improving | < 100 | > 100 | Phase 1 — Early | Enter ETF via flow-momentum sizing (quarter/half/full) |
+| Leading | > 100 | > 100 | Phase 2 — Confirmed | Core allocation eligible. Full ETF sizing. Begin individual stock screening. |
+| Weakening | > 100 | < 100 | Exiting | Tighten stops. Prepare to exit. No new entries. |
+| Lagging | < 100 | < 100 | No Trade | Avoid. Do not enter. |
+
+The RRG quadrant determines the phase label. The ETF.com flow strength (Weak/Moderate/Strong) determines the sizing within that phase. Both signals must align — a sector in the Improving quadrant with no supporting flow signal stays at "watch" status.
+
 ## **The Signal Framework**
 
 ### **Phase 1 — Early Indication (Week 1–2)**
@@ -617,7 +632,7 @@ Note: Layer 3 ETF entries and Core entries [v4] use the sector ETF's 20d MA as t
 - RS line simultaneously making a new high
 - Entry: buy on breakout day as price clears the pivot
 - Do not chase: if stock is already 5%+ above pivot, pass (unless Velocity Flag is active for this sector [v4])
-- Initial stop: just below the bottom of the base
+- Initial stop: 1% below the bottom of the base
 
 ## **Entry Trigger Type 2: Pullback to Moving Average**
 
@@ -753,7 +768,7 @@ Layer 8 covers everything after a position is entered. Rules apply to Core ETF p
 ## **Stop Loss Framework**
 
 ### **Tactical individual stock positions**
-- Breakout entries: stop just below the bottom of the base
+- Breakout entries: stop 1% below the bottom of the base
 - MA pullback entries: stop 1-2% below the moving average that triggered the entry
 - Accelerating Protocol entries: stop at 10-day EMA [v4]
 - At +5%: move stop to breakeven

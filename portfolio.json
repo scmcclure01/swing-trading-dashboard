@@ -11,11 +11,14 @@
       "order_type": "Limit",
       "limit_price": 188.00,
       "shares": 40,
+      "stop_price_plan": "20d MA at fill (Core rule)",
+      "risk_dollars_est": "~shares × (fill - 20d MA)",
+      "max_hold": "No limit (Core — persists with regime)",
       "time_in_force": "GTC",
       "order_date": "2026-06-01",
       "order_expiration": "2026-11-20",
       "order_number": "17C303DL",
-      "notes": "Core sector ETF — Technology. Brokerage Link ***0700."
+      "notes": "Core sector ETF — Technology. Brokerage Link ***0700. On fill: set stop at 20d MA, move to open_positions, deduct from cash_balance."
     }
   ],
   "open_positions": [
@@ -37,7 +40,7 @@
       "shares": 41,
       "stop_price": 225.00,
       "current_price": 243.29,
-      "notes": "Accelerating Protocol. GTC stop $225 set in broker (order 1790W5BX). Risk: $615 (0.62%). SMH ROC 21 +22%. Max hold 2026-07-08."
+      "notes": "Accelerating Protocol. GTC stop $225 set in broker (order 1790W5BX). Risk: $615 (0.86% of $71.5K). SMH ROC 21 +22%. Max hold 2026-07-08. AUDIT: Oversized — 13.7% of account vs 10% cap. Was sized against $100K. Framework says 17 shares. Live position, do not adjust."
     },
     {
       "ticker": "LRCX",
