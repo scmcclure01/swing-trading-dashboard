@@ -2319,35 +2319,51 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     )
     st.markdown(stats_html, unsafe_allow_html=True)
 
-    # ── Helper: render a styled table with ticker selection ────────────────
+    # ── Helper: render a selectable table with checkboxes ────────────────────
     def _selectable_table(df_raw, display_cols, section_key, heading, pill=""):
         """
-        Render a table using cb_table (Classic Blue HTML) with a multiselect
-        for sending tickers to the Position Sizer.
+        Render a table with checkbox selection (st.data_editor). Selected tickers
+        are stored in session state and pushed to the Position Sizer tab.
         df_raw must have Ticker, Entry, Stop, Trigger columns for sizing.
         display_cols is a dict of {display_name: series}.
         """
         disp = pd.DataFrame(display_cols)
-        table_html = cb_table(disp, bordered=False)
+        disp.insert(0, "Size", False)
+        disp = disp.reset_index(drop=True)
 
         st.markdown(
-            _card(heading, table_html, pill=pill),
+            f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
+            f' padding:15px 17px; margin-bottom:4px;">'
+            f'<div style="display:flex; align-items:center; justify-content:space-between;'
+            f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
+            f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+            f' letter-spacing:0.04em;">{heading}</span>'
+            + (f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
+               f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
+               if pill else "")
+            + f'</div></div>',
             unsafe_allow_html=True,
         )
 
-        # Ticker selection for Position Sizer
-        ticker_list = list(disp["Ticker"]) if "Ticker" in disp.columns else []
-        if ticker_list:
-            selected = st.multiselect(
-                "Send to Position Sizer",
-                ticker_list,
-                key=f"sel2_{section_key}",
-                label_visibility="collapsed",
-                placeholder="Select tickers to size →",
-            )
-            if selected:
+        edited = st.data_editor(
+            disp,
+            column_config={
+                "Size": st.column_config.CheckboxColumn("Size", default=False, width="small"),
+            },
+            column_order=list(disp.columns),
+            disabled=[c for c in disp.columns if c != "Size"],
+            hide_index=True,
+            use_container_width=True,
+            key=f"sel3_{section_key}",
+        )
+
+        # Collect selected tickers and push to session state
+        if edited is not None and "Size" in edited.columns:
+            selected_rows = edited[edited["Size"] == True]
+            if not selected_rows.empty:
+                selected_tickers = selected_rows["Ticker"].tolist()
                 existing = st.session_state.get("sizer_queue", [])
-                for t in selected:
+                for t in selected_tickers:
                     match = df_raw[df_raw["Ticker"] == t]
                     if not match.empty:
                         row = match.iloc[0]
@@ -2365,6 +2381,8 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
                         if not any(e["ticker"] == t for e in existing):
                             existing.append(entry)
                 st.session_state["sizer_queue"] = existing
+
+        st.markdown('<div style="margin-bottom:10px"></div>', unsafe_allow_html=True)
 
     # Initialize sizer queue
     if "sizer_queue" not in st.session_state:
