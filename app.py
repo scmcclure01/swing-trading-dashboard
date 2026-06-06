@@ -39,6 +39,26 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Global CSS: style st.data_editor to match Classic Blue theme ─────────────
+st.markdown("""
+<style>
+/* Data editor header row — blue background */
+[data-testid="stDataEditor"] th,
+[data-testid="stDataEditor"] [role="columnheader"] {
+    background-color: #EEF3FA !important;
+    color: #5A7BAA !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+}
+/* Data editor data rows — white background */
+[data-testid="stDataEditor"] td,
+[data-testid="stDataEditor"] [role="gridcell"] {
+    background-color: #FFFFFF !important;
+    color: #103766 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
@@ -1770,7 +1790,7 @@ def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = T
 
     TH      = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
                " text-align: left; white-space: nowrap;")
-    TD_BASE = "padding: 8px 12px; font-size: 13px; border-top: 0.5px solid rgba(16,55,102,0.09);"
+    TD_BASE = "padding: 8px 12px; font-size: 14px; border-top: 0.5px solid rgba(16,55,102,0.09);"
 
     cols   = list(df.columns)
     header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
