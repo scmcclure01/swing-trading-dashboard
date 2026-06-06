@@ -269,16 +269,29 @@ def fetch_fed_net_liquidity() -> dict:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def fetch_tbill_rate() -> float | None:
+def fetch_tbill_rate() -> float:
     """
-    Fetch 3-Month T-Bill rate (DTB3) from FRED public CSV (no API key required).
-    Returns annualized rate as a percentage (e.g. 4.25 means 4.25%), or None on error.
-    Used for earnings carry calculation: Forward EY − T-Bill Rate.
+    Fetch 3-Month T-Bill rate (DTB3) for earnings carry calculation.
+    Tries: 1) fredapi (API key), 2) FRED public CSV, 3) yfinance ^IRX.
+    Returns annualized rate as a percentage (e.g. 4.25 means 4.25%).
+    Falls back to 4.25% if all sources fail.
     """
+    # Method 1: fredapi (same as recession composite)
+    if FRED_AVAILABLE:
+        try:
+            api_key = st.secrets.get("FRED_API_KEY", "")
+            if api_key:
+                fred = Fred(api_key=api_key)
+                s = fred.get_series("DTB3", observation_start="2024-01-01").dropna()
+                if len(s) > 0:
+                    return float(s.iloc[-1])
+        except Exception:
+            pass
+
+    # Method 2: FRED public CSV
     import urllib.request
     import csv
     from io import StringIO
-
     try:
         url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
         with urllib.request.urlopen(url, timeout=10) as r:
@@ -289,7 +302,17 @@ def fetch_tbill_rate() -> float | None:
                 return float(row[1])
     except Exception:
         pass
-    return None
+
+    # Method 3: yfinance ^IRX (13-week T-bill index, quoted in basis points / 10)
+    try:
+        irx = yf.Ticker("^IRX").history(period="5d")
+        if not irx.empty:
+            return float(irx["Close"].iloc[-1])
+    except Exception:
+        pass
+
+    # Fallback
+    return 4.25
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -2226,7 +2249,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     # Run or load cached
     if run_clicked:
         st.cache_data.clear()  # nuke all data caches
-        _tbill = fetch_tbill_rate() or 0.0
+        _tbill = fetch_tbill_rate()
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
             accel_key = ",".join(l0.get("accelerating", []))
             rec_indicators = score_recession_composite(
@@ -2246,7 +2269,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             rec_indicators = score_recession_composite(
                 fetch_fred_data(), st.session_state.get("lei_signal", "Not set"))
             rec_flags_local = sum(1 for i in rec_indicators if not i["ok"])
-            _tbill2 = fetch_tbill_rate() or 0.0
+            _tbill2 = fetch_tbill_rate()
             results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local, _tbill2)
             if results_df is not None and not results_df.empty:
                 st.session_state["screener_results"] = results_df
