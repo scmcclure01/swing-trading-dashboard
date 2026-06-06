@@ -805,7 +805,8 @@ Core and Layer 3 ETF positions do not use partial profit rules — they are mana
 ## **Exit Triggers**
 
 ### **Tactical individual stocks — exit any of:**
-- Close below 50-day MA on above-average volume
+- **Pre-T2:** Close below 50-day MA on above-average volume (hard exit)
+- **Post-T2:** Close below 20-day MA trailing stop (tighter stop replaces 50d MA rule once trailing begins)
 - Permission state downgrades to red
 - Macro regime shifts against the sector
 - Significant negative fundamental event
@@ -958,13 +959,14 @@ Note: Hedge instruments are equities-only compatible. No options available in Br
 | 5. 12-week max hold reached? → Exit if not already transitioned |
 |  |
 | Tactical individual stocks — Standard: |
-| 1. Has the +8-12% first target been reached? → Sell 1/3, move stop to breakeven |
-| 2. Has the +20-25% second target been reached? → Sell another 1/3, trail at 20d MA |
-| 3. Has the stock violated the trailing stop? → Exit |
-| 4. Has the permission state changed? → Tighten stops, no new adds |
-| 5. Is the RS line still positive? → If declining: reassess thesis |
-| 6. Has recession composite moved to 4+/5? → Move all stops to breakeven |
-| 7. Has the 12-week max hold been reached with insufficient progress? → Exit |
+| 1. Pre-T2: has the stock closed below the 50d MA on above-average volume? → Exit |
+| 2. Has the +8-12% first target been reached? → Sell 1/3, move stop to breakeven |
+| 3. Has the +20-25% second target been reached? → Sell another 1/3, trail at 20d MA (replaces 50d MA exit) |
+| 4. Post-T2: has the stock violated the 20d MA trailing stop? → Exit |
+| 5. Has the permission state changed? → Tighten stops, no new adds |
+| 6. Is the RS line still positive? → If declining: reassess thesis |
+| 7. Has recession composite moved to 4+/5? → Move all stops to breakeven |
+| 8. Has the 12-week max hold been reached with insufficient progress? → Exit |
 |  |
 | Tactical individual stocks — Accelerating Protocol [v4]: |
 | 1. Has the +8-10% first target been reached? → Sell 1/3, move stop to breakeven |

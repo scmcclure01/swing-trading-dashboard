@@ -268,6 +268,30 @@ def fetch_fed_net_liquidity() -> dict:
         return {"error": str(e)}
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_tbill_rate() -> float | None:
+    """
+    Fetch 3-Month T-Bill rate (DTB3) from FRED public CSV (no API key required).
+    Returns annualized rate as a percentage (e.g. 4.25 means 4.25%), or None on error.
+    Used for earnings carry calculation: Forward EY − T-Bill Rate.
+    """
+    import urllib.request
+    import csv
+    from io import StringIO
+
+    try:
+        url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            data = r.read().decode()
+        rows = list(csv.reader(StringIO(data)))[1:]
+        for row in reversed(rows):
+            if len(row) > 1 and row[1] not in (".", "", "NA"):
+                return float(row[1])
+    except Exception:
+        pass
+    return None
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_etf_fund_flows() -> dict:
     """
@@ -495,6 +519,9 @@ def run_screener_v3(
     rec_override = rec_flags >= 4
     today = datetime.today().date()
 
+    # Fetch 3-Month T-Bill rate for earnings carry calculation (L4 Step 4)
+    tbill_rate = fetch_tbill_rate()  # e.g. 4.25 (percent), or None
+
     # Use actual L0 sector readings — only scan what's Leading or Mixed
     l0_sectors = leading_sectors + mixed_sectors
     screen_sectors = []
@@ -653,9 +680,10 @@ def run_screener_v3(
             last_vol = float(volume.iloc[-1]) if len(volume) > 0 else 0
             last_vol_ratio = round(last_vol / avg_vol, 2) if avg_vol > 0 else 0
 
-            # Earnings check
+            # Earnings check + forward P/E (reuse single Ticker object)
+            yf_ticker = yf.Ticker(ticker)
             try:
-                cal = yf.Ticker(ticker).calendar
+                cal = yf_ticker.calendar
                 next_ed = None
                 if isinstance(cal, dict):
                     ed = cal.get("Earnings Date")
@@ -682,6 +710,23 @@ def run_screener_v3(
 
             days_to_ed = (next_ed - today).days if next_ed else None
             earnings_flag = (days_to_ed is not None and days_to_ed <= 14)
+
+            # Earnings Carry (L4 Step 4): Forward EY − T-Bill Rate
+            carry_spread = None
+            carry_label = "N/A"
+            try:
+                fwd_pe = yf_ticker.info.get("forwardPE")
+                if fwd_pe and fwd_pe > 0 and tbill_rate is not None:
+                    fwd_ey = (1.0 / fwd_pe) * 100  # forward earnings yield %
+                    carry_spread = round(fwd_ey - tbill_rate, 2)
+                    if carry_spread > 3:
+                        carry_label = "Strong"
+                    elif carry_spread >= 0:
+                        carry_label = "Positive"
+                    else:
+                        carry_label = "Negative"
+            except Exception:
+                pass
 
             # Trigger type routing
             if perm == "Red":
@@ -760,6 +805,10 @@ def run_screener_v3(
                 except Exception:
                     notes.append(f"Earnings: {next_ed}")
 
+            # Earnings carry note (negative = size reduction flag)
+            if carry_label == "Negative" and carry_spread is not None:
+                notes.append(f"Carry {carry_spread:+.1f}% — reduce 25%")
+
             # Monitoring = strong fundamentals but too extended to trade
             monitoring = fundamentals_ok and not zone_ok
 
@@ -777,6 +826,8 @@ def run_screener_v3(
                 "Entry_Zone": entry_zone,
                 "MACD_Crossover": macd_cross,
                 "Vol_Ratio_5d": vol_ratio,
+                "Carry_Spread": carry_spread,
+                "Carry_Label": carry_label,
                 "Trigger": trigger_type,
                 "Entry": entry_px_suggest,
                 "Stop": stop_px_suggest,
@@ -2175,6 +2226,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     # Run or load cached
     if run_clicked:
         run_screener_v3.clear()
+        fetch_tbill_rate.clear()
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
             accel_key = ",".join(l0.get("accelerating", []))
             rec_indicators = score_recession_composite(
@@ -2275,10 +2327,11 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             column_config={
                 "Size": st.column_config.CheckboxColumn("Size", default=False, width="small"),
             },
+            column_order=list(disp.columns),
             disabled=[c for c in disp.columns if c != "Size"],
             hide_index=True,
             use_container_width=True,
-            key=f"sel_{section_key}",
+            key=f"sel2_{section_key}",
         )
 
         # Collect selected tickers and push to session state
@@ -2300,6 +2353,8 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
                             "price": float(row["Price"]),
                             "sector": row.get("Sector", ""),
                             "verdict": row.get("Verdict", ""),
+                            "carry_spread": float(row["Carry_Spread"]) if "Carry_Spread" in row.index and pd.notna(row.get("Carry_Spread")) else None,
+                            "carry_label": row.get("Carry_Label", "N/A") if "Carry_Label" in row.index else "N/A",
                         }
                         # Avoid duplicates
                         if not any(e["ticker"] == t for e in existing):
@@ -2333,6 +2388,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             "Entry":      df["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
             "Stop":       df["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
             "Verdict":    df["Verdict"].values,
+            "Carry":      (df["Carry_Spread"].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "—") if "Carry_Spread" in df.columns else pd.Series(["—"] * len(df))).values,
             "RS vs SPY":  df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
             "vs 20MA":    df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
             "Vol 5d":     df["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
@@ -2618,6 +2674,20 @@ def _render_position_sizer_tab(
             dd_note = ""
 
         adj_risk_pct = base_risk_pct * drawdown_mult
+
+        # Earnings carry adjustment (L4 Step 4): negative carry → reduce 25%
+        carry_mult = 1.0
+        carry_note = ""
+        sel_key_carry = st.session_state.get("sizer_select", "Custom entry")
+        cands_carry = st.session_state.get("_sizer_candidates", {})
+        if sel_key_carry in cands_carry:
+            c_carry = cands_carry[sel_key_carry]
+            if c_carry.get("carry_label") == "Negative":
+                carry_mult = 0.75
+                carry_spread_val = c_carry.get("carry_spread", 0)
+                carry_note = f"Negative carry ({carry_spread_val:+.1f}%) — size reduced 25%"
+
+        adj_risk_pct = adj_risk_pct * carry_mult
         is_accel = trigger_type == "Accelerating"
 
         risk_dollars = round(acct_override * adj_risk_pct)
@@ -2658,7 +2728,7 @@ def _render_position_sizer_tab(
             {"Metric": "Position Value",   "Value": f"${pos_value:,}  ({pos_value/acct_override*100:.1f}% of account)"},
             {"Metric": "Risk Dollars",     "Value": f"${actual_risk:,}  ({actual_risk_pct:.2f}% of account)"},
             {"Metric": "Risk / Share",     "Value": f"${risk_per_share:.2f}"},
-            {"Metric": "Risk %",           "Value": f"{adj_risk_pct*100:.3f}%  ({perm} state{', drawdown adjusted' if drawdown_mult < 1 else ''})"},
+            {"Metric": "Risk %",           "Value": f"{adj_risk_pct*100:.3f}%  ({perm} state{', drawdown adjusted' if drawdown_mult < 1 else ''}{', carry adjusted' if carry_mult < 1 else ''})"},
         ]
 
         target_rows = [
@@ -2703,6 +2773,8 @@ def _render_position_sizer_tab(
             warnings.append(f"⚠️ Position capped at 10% of account (${max_pos_value:,})")
         if sector_conc_warn:
             warnings.append(sector_conc_warn)
+        if carry_note:
+            warnings.append(f"📉 {carry_note}")
         if dd_note:
             warnings.append(f"⚠️ {dd_note}")
         if perm == "Red":
