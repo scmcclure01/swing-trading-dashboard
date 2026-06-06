@@ -2225,8 +2225,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
 
     # Run or load cached
     if run_clicked:
-        run_screener_v3.clear()
-        fetch_tbill_rate.clear()
+        st.cache_data.clear()  # nuke all data caches
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
             accel_key = ",".join(l0.get("accelerating", []))
             rec_indicators = score_recession_composite(
@@ -2286,7 +2285,8 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
         f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L4 filters'
-        f' &nbsp;·&nbsp; T-Bill: {results_df["Carry_Spread"].notna().sum() if "Carry_Spread" in results_df.columns else 0}/{len(results_df)} carry signals</div>'
+        f' &nbsp;·&nbsp; T-Bill: {fetch_tbill_rate()}%'
+        f' &nbsp;·&nbsp; Carry: {results_df["Carry_Spread"].notna().sum() if "Carry_Spread" in results_df.columns else 0}/{len(results_df)} populated</div>'
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
         + _tile("Entry Ready", str(full_ready), "Full signal + trigger confirmed", "#27500A")
         + _tile("Watch", str(full_watch), "Full signal, trigger pending", "#E07800")
