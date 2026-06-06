@@ -44,9 +44,19 @@ st.set_page_config(
 # reach it — the grid is themed through its CSS custom properties (--gdg-*).
 st.markdown("""
 <style>
-/* Glide-data-grid theme vars — blue header, white data rows */
+/* Glide-data-grid theme vars — blue header, white data rows.
+   The grid reads --gdg-* from its own scroll container (.gdg-* / .dvn-scroller),
+   the .glideDataEditor element, and the stDataFrameResizable wrapper — set on all
+   of them so the canvas-drawn header picks up the blue regardless of version. */
 [data-testid="stDataEditor"],
-[data-testid="stDataFrame"] {
+[data-testid="stDataFrame"],
+[data-testid="stDataFrameResizable"],
+[data-testid="stDataEditor"] .glideDataEditor,
+[data-testid="stDataEditor"] .dvn-scroller,
+[data-testid="stDataEditorResizable"],
+.glideDataEditor,
+.gdg-wmyidgi {
+    --gdg-accent-color: #288CFA !important;
     --gdg-bg-header: #EEF3FA !important;
     --gdg-bg-header-has-focus: #EEF3FA !important;
     --gdg-bg-header-hovered: #EEF3FA !important;
@@ -55,7 +65,8 @@ st.markdown("""
     --gdg-bg-cell: #FFFFFF !important;
     --gdg-bg-cell-medium: #FFFFFF !important;
     --gdg-text-dark: #103766 !important;
-    --gdg-header-font-style: 500 11px sans-serif !important;
+    --gdg-font-family: sans-serif !important;
+    --gdg-header-font-style: 500 11px !important;
     --gdg-bg-icon-header: #5A7BAA !important;
     --gdg-fg-icon-header: #EEF3FA !important;
 }
