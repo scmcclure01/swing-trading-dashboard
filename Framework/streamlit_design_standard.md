@@ -52,6 +52,8 @@ Applied to both themes. Used in table cells, tile signal lines, and gate bars.
 |---|---|---|
 | Positive / bullish | `#27500A` | Green — Leading, Positive, Clear, Open |
 | Positive (lighter) | `#1D7A2A` | Gate bar dot (green state) |
+
+> **Note (intentional):** The green gate-bar dot uses a lighter green (`#1D7A2A`) than green signal text (`#27500A`). This is deliberate — the dot sits on the light green gate-bar background (`#D6F0D6`) where the darker text green reads muddy, so a slightly brighter green keeps the dot legible. Do not "fix" this to match.
 | Neutral / mixed | `#E07800` | Orange — Mixed, Half signal, Weakening |
 | Negative / bearish | `#CC1111` | Red — Lagging, Negative, Override Active |
 | Improving / accent | `#288CFA` | Blue — Improving quadrant, GIL accent |

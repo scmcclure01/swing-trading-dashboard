@@ -32,6 +32,8 @@ Running list of deferred items and automation improvements. Updated as new items
 
 - [ ] **Add FactSet earnings revision card** — Once Gmail connector is live, auto-populate the FactSet signal (revision direction, guidance ratio) on the dashboard each Friday.
 
+- [ ] **(Low priority) Screener tab — blue header on top two tables** — The Actionable Setups and Watchlist tables use `st.data_editor` (glide-data-grid canvas) for the Size checkboxes. CSS `th`/`td` selectors and `--gdg-*` theme variables both failed to color the header blue to match the bottom Monitoring table. Keep checkboxes as-is. Revisit later — likely requires converting to `cb_table` HTML with a separate selection control, or a Streamlit version where the canvas honors injected theme vars.
+
 ---
 
 ## Portfolio Management
@@ -40,4 +42,4 @@ Running list of deferred items and automation improvements. Updated as new items
 
 ---
 
-*Last updated: 2026-05-24*
+*Last updated: 2026-06-06*

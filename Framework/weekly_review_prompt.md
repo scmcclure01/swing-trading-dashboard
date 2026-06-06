@@ -173,12 +173,12 @@ Note: if sector reaches Phase 2, evaluate for Core allocation upgrade.
 - SSGA Sector Tracker — 1M and 3M sector price performance
 - Sector ETF RS vs SPY (approximate, from recent price data)
 - Sector ETF ROC 21 for Velocity Flag calculation [v4] (via yfinance in bash)
+- Fed Net Liquidity 4-week change — automated via FRED CSV (WALCL - WTREGEN - RRPONTSYD) in `calc_layer0()`
+- HYG/IEF ratio 4-week direction — automated via yfinance in `fetch_macro_data()`
+- Chauvet-Piger recession probability — automated via FRED API (RECPROUSM156N) in `fetch_fred_data()`
 
 ## Data requiring manual check (Claude cannot access)
 
-- Fed Net Liquidity (TradingView jlb05013 indicator)
-- HYG/IEF ratio 4-week direction (TradingView)
-- Chauvet-Piger recession probability (FRED: RECPROUSM156N — sometimes accessible)
 - Conference Board LEI trend (conference-board.org — paywalled)
 - Sector ETF 20d MA exact level for Layer 3 and Core entry (TradingView — can approximate via yfinance)
 

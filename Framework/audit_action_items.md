@@ -11,8 +11,8 @@
 | Critical | 4 | 3 | 1 |
 | High | 9 | 8 | 1 |
 | Medium | 10 | 10 | 0 |
-| Low | 7 | 0 | 7 |
-| **Total** | **30** | **21** | **9** |
+| Low | 7 | 7 | 0 |
+| **Total** | **30** | **28** | **2** |
 
 ---
 
@@ -32,13 +32,7 @@
 
 ### Low
 
-- [ ] **L1: Archive or delete screener.py (v1)** — Already moved to Archive in H6. Confirm no references remain.
-- [ ] **L2: Delete app_archive_20260508.py** — Old app.py backup in project root. Git handles versioning.
-- [ ] **L3: Delete duplicate layer0_dashboard_backup.html files** — Exists in root and Dashboards/Archive/. Superseded by Streamlit.
-- [ ] **L4: Update .gitignore for lock files and __pycache__** — Add `*.~lock*` and `__pycache__/`.
-- [ ] **L5: Document intentional gate bar dot color difference** — Green text #27500A vs dot #1D7A2A. Intentional — add note to design standard.
-- [ ] **L6: Update weekly_review_prompt.md manual check section** — Fed Net Liquidity and HYG/IEF listed as manual but now automated. Move to auto-fetched section.
-- [ ] **L7: Generate current-week playbook, schedule recurring review** — Most recent playbook is May 25. Weekly cadence has slipped.
+*(all low items resolved)*
 
 ---
 
@@ -70,3 +64,12 @@
 - [x] **M8: Pending order fields** — Added stop_price_plan, risk_dollars_est, max_hold to XLK pending order.
 - [x] **M9: Implement Earnings Carry signal** — Forward EY (1/forwardPE from yfinance) minus DTB3 (FRED CSV). Screener displays carry spread and label (Strong >+3%, Positive 0–3%, Negative <0%). Negative carry auto-flags in notes and reduces position size 25% in the sizer.
 - [x] **M10: Reconcile 50d MA exit vs 20d MA trailing stop** — No conflict: pre-T2 hard exit = 50d MA on volume, post-T2 trailing = 20d MA (tighter, replaces 50d rule). Updated exit triggers and quick reference checklist in framework doc.
+
+### Low — resolved 2026-06-06
+- [x] **L1: Archive or delete screener.py (v1)** — Confirmed no live references. Only matches in app.py are the `run_screener_v3` function name, not the archived file. Already in Screener/Archive/.
+- [x] **L2: Delete app_archive_20260508.py** — Deleted from project root. Git retains history.
+- [x] **L3: Delete duplicate layer0_dashboard_backup.html files** — Deleted both copies (root and Dashboards/Archive/). Superseded by Streamlit.
+- [x] **L4: Update .gitignore for lock files and __pycache__** — Already covered: `.gitignore` contains `__pycache__/` and `.~lock.*`. No change needed.
+- [x] **L5: Document intentional gate bar dot color difference** — Added explanatory note to streamlit_design_standard.md (dot `#1D7A2A` is intentionally lighter than text `#27500A` for legibility on the `#D6F0D6` gate-bar background).
+- [x] **L6: Update weekly_review_prompt.md manual check section** — Moved Fed Net Liquidity, HYG/IEF, and Chauvet-Piger from "manual check" to "auto-fetch" with their automation sources noted.
+- [x] **L7: Generate current-week playbook, schedule recurring review** — Closed with no action per user. Will be caught on next weekly cadence.
