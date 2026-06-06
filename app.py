@@ -2309,9 +2309,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
         f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
         f' padding:15px 17px; margin-bottom:10px;">'
         f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
-        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L4 filters'
-        f' &nbsp;·&nbsp; T-Bill: {fetch_tbill_rate()}%'
-        f' &nbsp;·&nbsp; Carry: {results_df["Carry_Spread"].notna().sum() if "Carry_Spread" in results_df.columns else 0}/{len(results_df)} populated</div>'
+        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L4 filters</div>'
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
         + _tile("Entry Ready", str(full_ready), "Full signal + trigger confirmed", "#27500A")
         + _tile("Watch", str(full_watch), "Full signal, trigger pending", "#E07800")
