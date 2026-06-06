@@ -508,6 +508,7 @@ def run_screener_v3(
     perm: str,
     accel_sectors_key: str,
     rec_flags: int,
+    tbill_rate_pct: float = 0.0,
 ) -> pd.DataFrame:
     """
     Autonomous screener v3 — scans L0 Leading/Mixed sectors through L4 filters,
@@ -519,8 +520,7 @@ def run_screener_v3(
     rec_override = rec_flags >= 4
     today = datetime.today().date()
 
-    # Fetch 3-Month T-Bill rate for earnings carry calculation (L4 Step 4)
-    tbill_rate = fetch_tbill_rate()  # e.g. 4.25 (percent), or None
+    tbill_rate = tbill_rate_pct if tbill_rate_pct > 0 else None
 
     # Use actual L0 sector readings — only scan what's Leading or Mixed
     l0_sectors = leading_sectors + mixed_sectors
@@ -2226,12 +2226,13 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     # Run or load cached
     if run_clicked:
         st.cache_data.clear()  # nuke all data caches
+        _tbill = fetch_tbill_rate() or 0.0
         with st.spinner(f"Scanning {universe_size} stocks across {len(screen_sectors)} sectors..."):
             accel_key = ",".join(l0.get("accelerating", []))
             rec_indicators = score_recession_composite(
                 fetch_fred_data(), st.session_state.get("lei_signal", "Not set"))
             rec_flags_local = sum(1 for i in rec_indicators if not i["ok"])
-            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
+            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local, _tbill)
         st.session_state["screener_results"] = results_df
         st.session_state["screener_regime"] = regime
         st.session_state["screener_last_run"] = datetime.now(ZoneInfo("UTC"))
@@ -2245,7 +2246,8 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             rec_indicators = score_recession_composite(
                 fetch_fred_data(), st.session_state.get("lei_signal", "Not set"))
             rec_flags_local = sum(1 for i in rec_indicators if not i["ok"])
-            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local)
+            _tbill2 = fetch_tbill_rate() or 0.0
+            results_df = run_screener_v3(regime, leading, mixed, perm, accel_key, rec_flags_local, _tbill2)
             if results_df is not None and not results_df.empty:
                 st.session_state["screener_results"] = results_df
                 st.session_state["screener_regime"] = regime
