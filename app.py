@@ -40,9 +40,26 @@ st.set_page_config(
 )
 
 # ── Global CSS: style st.data_editor to match Classic Blue theme ─────────────
+# st.data_editor renders as a glide-data-grid <canvas>, so th/td selectors don't
+# reach it — the grid is themed through its CSS custom properties (--gdg-*).
 st.markdown("""
 <style>
-/* Data editor header row — blue background */
+/* Glide-data-grid theme vars — blue header, white data rows */
+[data-testid="stDataEditor"],
+[data-testid="stDataFrame"] {
+    --gdg-bg-header: #EEF3FA !important;
+    --gdg-bg-header-has-focus: #EEF3FA !important;
+    --gdg-bg-header-hovered: #EEF3FA !important;
+    --gdg-text-header: #5A7BAA !important;
+    --gdg-text-header-selected: #5A7BAA !important;
+    --gdg-bg-cell: #FFFFFF !important;
+    --gdg-bg-cell-medium: #FFFFFF !important;
+    --gdg-text-dark: #103766 !important;
+    --gdg-header-font-style: 500 11px sans-serif !important;
+    --gdg-bg-icon-header: #5A7BAA !important;
+    --gdg-fg-icon-header: #EEF3FA !important;
+}
+/* Fallback for any non-canvas (HTML) rendering of the grid */
 [data-testid="stDataEditor"] th,
 [data-testid="stDataEditor"] [role="columnheader"] {
     background-color: #EEF3FA !important;
@@ -50,7 +67,6 @@ st.markdown("""
     font-size: 11px !important;
     font-weight: 500 !important;
 }
-/* Data editor data rows — white background */
 [data-testid="stDataEditor"] td,
 [data-testid="stDataEditor"] [role="gridcell"] {
     background-color: #FFFFFF !important;
