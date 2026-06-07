@@ -803,11 +803,10 @@ def build_rrg_chart(l3_data: list) -> go.Figure:
         )
 
     fig.update_layout(
-        height=600,
+        height=560,
         paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
         font=dict(color="#103766", size=11),
-        # Extra bottom room so the x-axis title and the legend don't collide.
-        margin=dict(l=55, r=20, t=30, b=110),
+        margin=dict(l=55, r=20, t=30, b=55),
         xaxis=dict(
             title=dict(text="RS-Ratio  →  (stronger relative performance)", standoff=14),
             gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[xlo, xhi],
@@ -816,12 +815,9 @@ def build_rrg_chart(l3_data: list) -> go.Figure:
             title="RS-Momentum  ↑  (accelerating)",
             gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[ylo, yhi],
         ),
-        showlegend=True,
-        # Legend sits well below the axis title (more negative y) and is centred.
-        legend=dict(
-            orientation="h", xanchor="center", x=0.5, y=-0.22,
-            bgcolor="rgba(0,0,0,0)", font=dict(size=10),
-        ),
+        # Legend is replaced by the consolidated checkbox row below the chart
+        # in the Sector Rotation tab — so Plotly's own legend is turned off.
+        showlegend=False,
     )
     return fig
 
@@ -1290,15 +1286,11 @@ def _render_layer3_tab(l3_data: list) -> None:
                 '— sector ETFs vs SPY, trailing 8 weeks · clockwise = normal cycle progression</span></div>',
                 unsafe_allow_html=True)
 
-    # Sector selector — a row of checkboxes (cleaner than the dropdown).
-    st.markdown('<div style="font-size:11px; color:#5A7BAA; margin-bottom:2px;">Show sectors</div>',
-                unsafe_allow_html=True)
-    _sel_cols = st.columns(5)
-    chart_sectors = []
-    for i, sec in enumerate(ALL_SECTORS):
-        with _sel_cols[i % 5]:
-            if st.checkbox(sec, value=True, key=f"rrg_show_{sec}"):
-                chart_sectors.append(sec)
+    # Sector selection lives in session_state (default all on). Read it BEFORE
+    # building the chart so the chart honours the current checkbox state; the
+    # consolidated legend/selector row renders just below the chart.
+    chart_sectors = [s for s in ALL_SECTORS
+                     if st.session_state.get(f"rrg_show_{s}", True)]
     chart_data = [d for d in l3_data if d["sector"] in chart_sectors] if chart_sectors else l3_data
 
     with st.spinner("Building RRG chart..."):
@@ -1307,6 +1299,27 @@ def _render_layer3_tab(l3_data: list) -> None:
         st.plotly_chart(rrg_fig, use_container_width=True)
     else:
         st.markdown(_gate_bar_html("Yellow", "Insufficient data to build RRG chart."), unsafe_allow_html=True)
+
+    # ── Consolidated legend + selector ────────────────────────────────────────
+    # One control that doubles as the legend: each checkbox is accent-coloured to
+    # its sector's line colour and labelled "Sector (XYZ)". Checking toggles the
+    # line on the chart. Plotly's own legend is turned off (build_rrg_chart).
+    # Colour each checkbox by wrapping it in a uniquely-classed container, and
+    # shrink its label to roughly the old legend text size.
+    css_rules = "\n".join(
+        f'.rrgc-{i} [data-testid="stCheckbox"] input {{ accent-color:{SECTOR_COLORS[sec]}; }}'
+        f'.rrgc-{i} [data-testid="stCheckbox"] label p {{ font-size:10px; color:#103766; }}'
+        for i, sec in enumerate(ALL_SECTORS)
+    )
+    st.markdown(f"<style>{css_rules}</style>", unsafe_allow_html=True)
+
+    _leg_cols = st.columns(5)
+    for i, sec in enumerate(ALL_SECTORS):
+        etf = SECTOR_ETFS[sec]
+        with _leg_cols[i % 5]:
+            st.markdown(f'<div class="rrgc-{i}">', unsafe_allow_html=True)
+            st.checkbox(f"{sec} ({etf})", value=True, key=f"rrg_show_{sec}")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # Flow strength — auto-scraped from etfdb.com, feeds the Sizing/Risk columns
     # below directly (no manual override panel; the data drives sizing on its own).
