@@ -844,26 +844,6 @@ def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = T
                           preset=CB_PRESET_MACRO, font_size=14)
 
 
-def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Format a screener DataFrame for display:
-      - Percentage columns formatted with sign and 1 decimal
-      - Boolean columns converted to ✅ / ❌
-      - MACD converted to ▲ / ▼
-      - Dollar volume formatted as $XM
-    Drops internal columns PASS and MACD Hist (not intended for display).
-    """
-    d = df.copy()
-    for col in ["1M Ret", "3M Ret"]:
-        if col in d.columns: d[col] = d[col].apply(pct)
-    if "% > 20MA" in d.columns: d["% > 20MA"] = d["% > 20MA"].apply(pct)
-    for col in ["vs 20MA", "vs 50MA", "RS Hi", "RS ↑"]:
-        if col in d.columns: d[col] = d[col].apply(icon)
-    if "MACD"         in d.columns: d["MACD"]         = d["MACD"].apply(macd)
-    if "Avg $Vol(M)"  in d.columns: d["Avg $Vol(M)"]  = d["Avg $Vol(M)"].apply(lambda x: f"${x:.1f}M")
-    return d.drop(columns=["PASS", "MACD Hist"], errors="ignore")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB RENDER FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -884,11 +864,6 @@ def _staleness(date_str: str, stale_days: int = 45) -> tuple:
     if age <= stale_days:
         return "#E07800", f"{age}d ago"
     return "#CC1111", f"{age}d ago — STALE"
-
-
-def _render_layer1_card() -> str:
-    """Backward-compatible wrapper: full Layer-1 card (heading + body)."""
-    return _card("Layer 1 — Monthly Mispricing", _layer1_body_html(), pill="monthly")
 
 
 def _layer1_body_html() -> str:
@@ -2081,138 +2056,6 @@ def _render_position_sizer_tab(
                 unsafe_allow_html=True,
             )
 
-
-def _render_layer5_tab(
-    full_l5: pd.DataFrame,
-    half_l5: pd.DataFrame,
-    perm: str,
-    l0: dict,
-    rec_flags: int,
-) -> None:
-    """Render the Layer 5 — Entry Trigger tab."""
-    regime     = l0.get("regime", "Risk-on")
-    accel_secs = l0.get("accelerating", [])
-    has_accel  = bool(accel_secs)
-
-    # ── Entry mode header ──────────────────────────────────────────────────────
-    if perm == "Red":
-        mode_label = "❌ No New Entries"
-        mode_color = "#CC1111"
-        mode_desc  = "RED state — capital protection only."
-    elif has_accel:
-        mode_label = "🔥 Accelerating Protocol Active"
-        mode_color = "#CC1111"
-        mode_desc  = f"Velocity Flag: {', '.join(accel_secs)}. Modified rules apply to flagged sectors."
-    elif perm == "Green" and regime == "Risk-on":
-        mode_label = "🚀 Breakout Mode"
-        mode_color = "#27500A"
-        mode_desc  = "Risk-on / GREEN — buy breakouts on 40%+ above-average volume. RS new high confirms."
-    else:
-        mode_label = "📉 Pullback Mode"
-        mode_color = "#E07800"
-        mode_desc  = "YELLOW / Mixed — 20d or 50d MA pullbacks on declining volume."
-
-    if perm == "Red":
-        rule_rows = [{"Rule": "RED STATE", "Criteria": "No new entries. Review existing positions only."}]
-    elif has_accel:
-        rule_rows = [
-            {"Rule": "Normal sectors",   "Criteria": "Breakout: vol ≥1.4x · within 5% of base top · RS line ↑"},
-            {"Rule": "🔥 Accel sectors", "Criteria": "0–15% above 20d MA · vol ≥1.0x · half size · 10d EMA stop · 6-week hold"},
-        ]
-    elif perm == "Green" and regime == "Risk-on":
-        rule_rows = [
-            {"Rule": "Breakout entry",  "Criteria": "Closes above base top · vol ≥1.4x above avg · RS line new high"},
-            {"Rule": "Stop",            "Criteria": "Just below 6-week base low"},
-            {"Rule": "Don't chase",     "Criteria": "Skip if >5% above pivot (unless Accel Protocol active)"},
-        ]
-    else:
-        rule_rows = [
-            {"Rule": "Pullback to 20d MA", "Criteria": "Within 3% of 20d MA · vol <1.0x avg · bullish reversal candle"},
-            {"Rule": "Pullback to 50d MA", "Criteria": "Same criteria at 50d MA level"},
-            {"Rule": "Stop",               "Criteria": "1–2% below the MA that triggered entry"},
-        ]
-
-    mode_html = (
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:14px 17px; margin-bottom:10px;">'
-        f'<div style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
-        f' letter-spacing:0.04em; margin-bottom:8px;">Entry Mode — This Week</div>'
-        f'<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">'
-        f'<span style="font-size:16px; font-weight:500; color:{mode_color};">{mode_label}</span>'
-        f'<span style="font-size:12px; color:#5A7BAA;">{mode_desc}</span>'
-        f'</div>'
-        f'</div>'
-    )
-    rules_html = cb_table(pd.DataFrame(rule_rows), bordered=False)
-    st.markdown(mode_html + _card("Entry Trigger Rules", rules_html), unsafe_allow_html=True)
-
-    if perm == "Red":
-        st.markdown(
-            _gate_bar_html("Red", "RED STATE — No Layer 5 evaluation. Protect capital."),
-            unsafe_allow_html=True,
-        )
-        return
-
-    if rec_flags >= 4:
-        st.markdown(
-            _gate_bar_html("Red", f"Recession composite {rec_flags}/5 — breakout entries invalid. Pullback entries only."),
-            unsafe_allow_html=True,
-        )
-
-    # ── Render tier helper ─────────────────────────────────────────────────────
-    def _render_tier(l5_df: pd.DataFrame, title: str, tier_key: str) -> None:
-        if l5_df.empty:
-            st.markdown(
-                _gate_bar_html("Yellow", f"{title} — no candidates to evaluate."),
-                unsafe_allow_html=True,
-            )
-            return
-
-        sort_map = {"🟢 ENTRY READY": 0, "🟡 WATCH": 1, "⬜ NOT READY": 2, "❌ SKIP": 3, "❌ RED STATE": 4}
-        l5s = l5_df.copy()
-        l5s["_s"] = l5s["Verdict"].map(lambda v: sort_map.get(v, 5))
-        l5s = l5s.sort_values(["_s", "Sector"]).drop(columns=["_s"])
-
-        disp = pd.DataFrame({
-            "Ticker":    l5s["Ticker"],
-            "Sector":    l5s["Sector"],
-            "Price":     l5s["Price"].apply(lambda x: f"${x:.2f}"),
-            "Trigger":   l5s["Trigger"],
-            "Vol Ratio": l5s["Vol Ratio"].apply(lambda x: f"{x:.1f}x"),
-            "vs 20MA":   l5s["vs 20MA"].apply(pct),
-            "vs 50MA":   l5s["vs 50MA"].apply(pct),
-            "RS ↑":      l5s["RS ↑"].apply(icon),
-            "Entry":     l5s["Entry"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Stop":      l5s["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—"),
-            "Verdict":   l5s["Verdict"],
-            "Notes":     l5s["Notes"],
-        })
-
-        ready_n  = int((l5s["Verdict"] == "🟢 ENTRY READY").sum())
-        watch_n  = int((l5s["Verdict"] == "🟡 WATCH").sum())
-        pill_str = f"✅ {ready_n} ready · 🟡 {watch_n} watch"
-
-        st.markdown(
-            _card(f"{title} — {len(l5s)} candidates", cb_table(disp, bordered=False), pill=pill_str),
-            unsafe_allow_html=True,
-        )
-
-        ready_tickers = l5s[l5s["Verdict"] == "🟢 ENTRY READY"]["Ticker"].tolist()
-        if ready_tickers:
-            st.text_area(
-                f"Entry-ready {title.lower()} tickers",
-                value="  ".join(ready_tickers),
-                height=50,
-                label_visibility="collapsed",
-                help="Copy for TradingView review",
-            )
-
-    _render_tier(full_l5, "Full Signal", "full")
-    _render_tier(half_l5, "Half Signal", "half")
-    st.caption(
-        "Entry and stop prices are algorithmic estimates based on price data. "
-        "Always confirm base structure, candle quality, and exact pivot in TradingView before entering."
-    )
 
 
 
