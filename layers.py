@@ -232,6 +232,89 @@ def score_recession_composite(fred: dict, lei_manual: str) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LAYER 1 — MONTHLY MACRO MISPRICING CHECK
+# ─────────────────────────────────────────────────────────────────────────────
+
+def score_layer1_mispricing(fwd_earnings_yield: float | None,
+                            tips_10y: float | None,
+                            nominal_10y: float | None,
+                            gdpnow_signal: str = "Not set") -> dict:
+    """
+    Score the monthly macro-mispricing composite (framework Layer 1).
+
+    Three checks, each scored Bullish (+1) / Neutral (0) / Bearish (-1):
+      Check 1 — Earnings yield vs real rates: fwd EY minus 10y TIPS (DFII10)
+                  > 4%  cheap (+1)  |  2-4% fair (0)  |  < 2% expensive (-1)
+      Check 2 — GDPNow vs analyst EPS gap: manual (no clean FRED series).
+                  Pass "Bullish"/"Bearish"/"Neutral"/"Not set".
+      Check 3 — Equity risk premium: fwd EY minus 10y nominal (DGS10)
+                  > 5% cheap (+1)  |  3-5% normal (0)  |  < 3% stretched (-1)
+
+    Composite → sizing action (framework):
+      +2..+3 → Full risk
+      -1..+1 → Normal operations
+      -2..-3 → Reduce all position sizes 30-50%, top-tier setups only
+
+    Returns a dict with the three checks (name/value/score/label), the composite
+    score, the sizing verdict, and a 'computable' flag (False if rate data missing).
+    """
+    checks = []
+    computable = fwd_earnings_yield is not None and tips_10y is not None and nominal_10y is not None
+
+    # ── Check 1: Earnings yield vs real rates (TIPS) ──────────────────────────
+    if fwd_earnings_yield is not None and tips_10y is not None:
+        spread1 = round(fwd_earnings_yield - tips_10y, 2)
+        if spread1 > 4:
+            s1, lbl1 = 1, "Cheap vs real rates"
+        elif spread1 >= 2:
+            s1, lbl1 = 0, "Fairly valued"
+        else:
+            s1, lbl1 = -1, "Expensive vs real rates"
+        val1 = f"{spread1:+.2f}%"
+    else:
+        s1, lbl1, val1 = 0, "N/A", "N/A"
+    checks.append({"name": "Earnings Yield − TIPS (real)", "value": val1,
+                   "score": s1, "label": lbl1, "threshold": "> 4% cheap / < 2% rich"})
+
+    # ── Check 2: GDPNow vs analyst EPS gap (manual) ───────────────────────────
+    gdp_map = {"Bullish": 1, "Bearish": -1, "Neutral": 0, "Not set": 0}
+    s2 = gdp_map.get(gdpnow_signal, 0)
+    checks.append({"name": "GDPNow vs Analyst EPS", "value": gdpnow_signal,
+                   "score": s2, "label": gdpnow_signal, "threshold": "manual (Atlanta Fed)"})
+
+    # ── Check 3: Equity risk premium (vs nominal 10y) ─────────────────────────
+    if fwd_earnings_yield is not None and nominal_10y is not None:
+        erp = round(fwd_earnings_yield - nominal_10y, 2)
+        if erp > 5:
+            s3, lbl3 = 1, "Cheap"
+        elif erp >= 3:
+            s3, lbl3 = 0, "Normal"
+        else:
+            s3, lbl3 = -1, "Stretched"
+        val3 = f"{erp:+.2f}%"
+    else:
+        s3, lbl3, val3 = 0, "N/A", "N/A"
+    checks.append({"name": "Equity Risk Premium", "value": val3,
+                   "score": s3, "label": lbl3, "threshold": "> 5% cheap / < 3% stretched"})
+
+    composite = s1 + s2 + s3
+    if composite >= 2:
+        verdict, sizing = "Full risk", "No sizing adjustment — macro supports full risk."
+    elif composite >= -1:
+        verdict, sizing = "Normal operations", "Normal sizing."
+    else:
+        verdict, sizing = "Reduce sizing", "Reduce all position sizes 30-50%. Top-tier setups only. Tighten trailing stops."
+
+    return {
+        "checks":     checks,
+        "composite":  composite,
+        "verdict":    verdict,
+        "sizing":     sizing,
+        "computable": computable,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 2 — MARKET PERMISSION STATE
 # ─────────────────────────────────────────────────────────────────────────────
 

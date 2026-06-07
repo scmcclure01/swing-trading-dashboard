@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit  # noqa: F401  (import guard — see note below)
-from layers import calc_layer2, score_recession_composite
+from layers import calc_layer2, score_recession_composite, score_layer1_mispricing
 
 
 # ── calc_layer2 — permission state ───────────────────────────────────────────
@@ -70,6 +70,40 @@ def test_stressed_composite_flags_curve_sahm_lei():
     bad = dict(_FRED_CLEAN, t10y3m=-0.3, sahm=0.8)
     inds = score_recession_composite(bad, "6mo declining ⚠️")
     assert sum(1 for i in inds if not i["ok"]) == 3
+
+
+# ── score_layer1_mispricing ──────────────────────────────────────────────────
+def test_l1_cheap_market_full_risk():
+    # High earnings yield vs both rates → both checks bullish, GDP bullish → +3
+    r = score_layer1_mispricing(fwd_earnings_yield=8.0, tips_10y=2.0,
+                                nominal_10y=2.5, gdpnow_signal="Bullish")
+    assert r["composite"] == 3
+    assert r["verdict"] == "Full risk"
+    assert r["computable"] is True
+
+
+def test_l1_expensive_market_reduces_sizing():
+    # Low earnings yield: EY-TIPS = 1.0 (<2 → -1), ERP = 0.5 (<3 → -1), GDP bearish (-1) → -3
+    r = score_layer1_mispricing(fwd_earnings_yield=4.0, tips_10y=3.0,
+                                nominal_10y=3.5, gdpnow_signal="Bearish")
+    assert r["composite"] == -3
+    assert r["verdict"] == "Reduce sizing"
+
+
+def test_l1_normal_range():
+    # EY-TIPS = 3.0 (neutral 0), ERP = 2.5 -> wait: 6-3.5=2.5 (<3 -> -1); use values for normal
+    # fwd 6.5, tips 3.0 -> EY-TIPS=3.5 (neutral); nominal 3.0 -> ERP=3.5 (normal 0); GDP not set 0
+    r = score_layer1_mispricing(fwd_earnings_yield=6.5, tips_10y=3.0,
+                                nominal_10y=3.0, gdpnow_signal="Not set")
+    assert r["composite"] == 0
+    assert r["verdict"] == "Normal operations"
+
+
+def test_l1_missing_rates_not_computable():
+    r = score_layer1_mispricing(fwd_earnings_yield=None, tips_10y=2.0,
+                                nominal_10y=2.5, gdpnow_signal="Not set")
+    assert r["computable"] is False
+    assert len(r["checks"]) == 3   # still returns structure
 
 
 if __name__ == "__main__":

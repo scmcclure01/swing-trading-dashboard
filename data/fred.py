@@ -96,6 +96,42 @@ def fetch_fed_net_liquidity() -> dict:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def fetch_mispricing_rates() -> dict:
+    """
+    Fetch the rates Layer 1 (monthly mispricing) needs, from the FRED public CSV
+    (no API key required):
+      DFII10 — 10-year TIPS yield (real rate)     → Check 1 (earnings yield vs real rates)
+      DGS10  — 10-year nominal Treasury yield      → Check 3 (equity risk premium)
+
+    Returns {'tips_10y', 'tips_date', 'nominal_10y', 'nominal_date'} or {'error': ...}.
+    Each rate is a percentage (e.g. 2.15 means 2.15%).
+    """
+    def latest_value(series_id):
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            data = r.read().decode()
+        rows = list(csv.reader(StringIO(data)))[1:]
+        for row in reversed(rows):
+            if len(row) > 1 and row[1] not in (".", "", "NA"):
+                return float(row[1]), row[0]   # (value, date)
+        return None, ""
+
+    try:
+        tips, tips_date       = latest_value("DFII10")
+        nominal, nominal_date = latest_value("DGS10")
+        if tips is None or nominal is None:
+            return {"error": "FRED returned no usable DFII10/DGS10 data"}
+        return {
+            "tips_10y":     tips,
+            "tips_date":    tips_date,
+            "nominal_10y":  nominal,
+            "nominal_date": nominal_date,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_tbill_rate() -> float:
     """
     Fetch 3-Month T-Bill rate (DTB3) for earnings carry calculation.

@@ -108,10 +108,12 @@ from data.market import (
     fetch_screener_data,
     fetch_portfolio_prices,
     fetch_earnings_dates,
+    fetch_spy_forward_ey,
 )
 from data.fred import (
     fetch_fred_data,
     fetch_fed_net_liquidity,
+    fetch_mispricing_rates,
     fetch_tbill_rate,
     FRED_AVAILABLE,
 )
@@ -606,6 +608,7 @@ def run_screener_v3(
 from layers import (
     calc_layer0,
     score_recession_composite,
+    score_layer1_mispricing,
     calc_layer2,
     calc_layer3,
     calc_layer4,
@@ -863,6 +866,85 @@ def fmt_df(df: pd.DataFrame) -> pd.DataFrame:
 # TAB RENDER FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _staleness(date_str: str, stale_days: int = 45) -> tuple:
+    """Return (color, age_label) for a FRED as-of date string (YYYY-MM-DD).
+
+    Layer 1 is a monthly check, so 'fresh' is generous: green within ~1 month,
+    amber up to stale_days, red beyond (a CPI/PCE cycle has likely passed).
+    """
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return "#5A7BAA", "—"
+    age = (date.today() - d).days
+    if age <= 30:
+        return "#27500A", f"{age}d ago"
+    if age <= stale_days:
+        return "#E07800", f"{age}d ago"
+    return "#CC1111", f"{age}d ago — STALE"
+
+
+def _render_layer1_card() -> str:
+    """Build the Layer 1 monthly-mispricing card HTML (used on the macro tab).
+
+    Pulls FRED real/nominal 10y + SPY forward EY, scores the composite, and
+    color-codes by data staleness. Returns an HTML string for _card()."""
+    rates   = fetch_mispricing_rates()
+    fwd_ey  = fetch_spy_forward_ey()
+
+    if "error" in rates:
+        body = (f'<p style="font-size:12px; color:#CC1111; margin:0;">'
+                f'Rate data unavailable: {rates["error"]}</p>')
+        return _card("Layer 1 — Monthly Mispricing", body, pill="monthly")
+
+    gdp_signal = st.session_state.get("gdpnow_signal", "Not set")
+    result = score_layer1_mispricing(
+        fwd_earnings_yield=fwd_ey,
+        tips_10y=rates.get("tips_10y"),
+        nominal_10y=rates.get("nominal_10y"),
+        gdpnow_signal=gdp_signal,
+    )
+
+    # Staleness — drive the card's accent off the oldest FRED input.
+    tips_color, tips_age = _staleness(rates.get("tips_date", ""))
+    nom_color, nom_age   = _staleness(rates.get("nominal_date", ""))
+    # worst (reddest) of the two governs the header note
+    order = {"#27500A": 0, "#E07800": 1, "#CC1111": 2, "#5A7BAA": 0}
+    hdr_color = tips_color if order[tips_color] >= order[nom_color] else nom_color
+
+    # Composite verdict color
+    comp = result["composite"]
+    vcolor = "#27500A" if comp >= 2 else ("#CC1111" if comp <= -2 else "#5A7BAA")
+
+    ey_str = f"{fwd_ey:.2f}%" if fwd_ey is not None else "N/A"
+    rows = ""
+    for c in result["checks"]:
+        sc = c["score"]
+        sc_color = "#27500A" if sc > 0 else ("#CC1111" if sc < 0 else "#5A7BAA")
+        rows += (
+            f'<tr>'
+            f'<td style="padding:5px 8px; font-size:12px; color:#103766;">{c["name"]}</td>'
+            f'<td style="padding:5px 8px; font-size:12px; color:#103766; text-align:right;">{c["value"]}</td>'
+            f'<td style="padding:5px 8px; font-size:12px; color:{sc_color}; text-align:right;">{c["label"]}</td>'
+            f'</tr>'
+        )
+
+    body = (
+        f'<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">'
+        f'<span style="font-size:13px; font-weight:600; color:{vcolor};">{result["verdict"]} '
+        f'(composite {comp:+d})</span>'
+        f'<span style="font-size:10px; color:{hdr_color};">FRED rates: TIPS {tips_age} · 10y {nom_age}</span>'
+        f'</div>'
+        f'<p style="font-size:11px; color:#5A7BAA; margin:0 0 8px 0;">S&amp;P fwd earnings yield: {ey_str} '
+        f'· TIPS {rates.get("tips_10y")}% · 10y {rates.get("nominal_10y")}%</p>'
+        f'<table style="width:100%; border-collapse:collapse;">{rows}</table>'
+        f'<p style="font-size:11px; color:#5A7BAA; margin:8px 0 0 0;">{result["sizing"]}</p>'
+        f'<p style="font-size:10px; color:#5A7BAA; margin:4px 0 0 0;">'
+        f'Run after CPI/PCE. GDPNow leg set manually in sidebar.</p>'
+    )
+    return _card("Layer 1 — Monthly Mispricing", body, pill="monthly")
+
+
 def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
                          rec_flags: int, rec_total: int, perm: str,
                          limits: dict, l3_data: list) -> None:
@@ -1007,6 +1089,7 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
         '<div>'
         + _card("SPY Two-Speed Trend", spy_html)
         + _card("Recession Composite", rec_html, pill=rec_pill)
+        + _render_layer1_card()
         + _card("Gate Summary", gate_sum_html)
         + '</div>'
 
@@ -2770,13 +2853,14 @@ def main():
         "drawdown_state": "At or near peak — full risk",
         "lei_signal":    "Not set",
         "taylor_rule":   "Not set",
+        "gdpnow_signal": "Not set",
     }
     # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
     for etf in SECTOR_ETFS.values():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
     # Keys that persist across refreshes via URL query params
-    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule"]
+    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule", "gdpnow_signal"]
 
     # Load persisted values from URL on first visit
     qp = st.query_params
@@ -2857,6 +2941,14 @@ def main():
             "Taylor Rule Deviation (monthly)", _taylor_opts,
             index=_taylor_opts.index(st.session_state.taylor_rule),
             on_change=_save_manual_signals,
+        )
+        _gdpnow_opts = ["Not set", "Bullish", "Neutral", "Bearish"]
+        st.session_state.gdpnow_signal = st.selectbox(
+            "GDPNow vs Analyst EPS (L1, monthly)", _gdpnow_opts,
+            index=_gdpnow_opts.index(st.session_state.gdpnow_signal),
+            on_change=_save_manual_signals,
+            help="Atlanta Fed GDPNow vs analyst EPS direction. Bullish = GDP accelerating "
+                 "while estimates lag; Bearish = GDP falling while estimates haven't caught down.",
         )
 
         st.divider()
