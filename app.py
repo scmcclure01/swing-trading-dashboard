@@ -277,6 +277,11 @@ def run_screener_v3(
     frames = {}
     batch_size = 200
 
+    # Diagnostics — so the UI can tell "quiet market" apart from "data failed".
+    requested      = len(all_tickers)
+    failed_batches = 0           # whole batches that errored (likely rate-limit/network)
+    last_error     = ""
+
     for i in range(0, len(all_tickers), batch_size):
         batch = all_tickers[i:i + batch_size]
         try:
@@ -289,18 +294,37 @@ def run_screener_v3(
                         if len(df) >= 50:
                             frames[t] = df
                     except (KeyError, TypeError):
+                        # Individual ticker missing from the response — expected for
+                        # thinly traded / delisted names; counted via fetched total.
                         pass
             elif len(batch) == 1 and len(data) >= 50:
                 frames[batch[0]] = data[["Close", "Volume"]].dropna()
-        except Exception:
-            pass
+        except Exception as e:
+            # A whole batch failing usually means a network or rate-limit problem,
+            # not a quiet market — record it so the caller can warn the user.
+            failed_batches += 1
+            last_error = str(e)
         if i + batch_size < len(all_tickers):
             import time
             time.sleep(2)
 
+    # fetched excludes SPY (the benchmark, not a candidate)
+    fetched = len([t for t in frames if t != "SPY"])
+    diagnostics = {
+        "requested":      requested - 1,   # exclude SPY from the candidate count
+        "fetched":        fetched,
+        "failed_batches": failed_batches,
+        "last_error":     last_error,
+        "spy_missing":    "SPY" not in frames,
+    }
+
     spy_data = frames.get("SPY")
     if spy_data is None:
-        return pd.DataFrame()
+        # Benchmark itself failed — can't compute relative strength. Return an
+        # empty frame but carry the reason so the UI shows a data-error warning.
+        empty = pd.DataFrame()
+        empty.attrs["screener_diagnostics"] = diagnostics
+        return empty
     spy_close = spy_data["Close"].squeeze()
 
     # Compute signals
@@ -564,9 +588,12 @@ def run_screener_v3(
             continue
 
     if not results:
-        return pd.DataFrame()
+        empty = pd.DataFrame()
+        empty.attrs["screener_diagnostics"] = diagnostics
+        return empty
 
     df_out = pd.DataFrame(results).sort_values("RS_vs_SPY_21d", ascending=False).reset_index(drop=True)
+    df_out.attrs["screener_diagnostics"] = diagnostics
     return df_out
 
 
@@ -1784,6 +1811,40 @@ def _render_layer3_tab(l3_data: list) -> None:
         st.markdown(cb_table(pd.DataFrame(all_rows)), unsafe_allow_html=True)
 
 
+def _render_screener_data_warning(results_df) -> None:
+    """Surface a warning bar if the screener's data fetch was incomplete.
+
+    Reads diagnostics attached to the result DataFrame by run_screener_v3.
+    Silent when every requested ticker came back (the normal case).
+    """
+    if results_df is None:
+        return
+    diag = results_df.attrs.get("screener_diagnostics", {})
+    if not diag:
+        return
+    requested = diag.get("requested", 0)
+    fetched   = diag.get("fetched", 0)
+    failed    = diag.get("failed_batches", 0)
+
+    # Warn if whole batches failed, or if we got back noticeably fewer names
+    # than we asked for (a sign of throttling rather than a quiet tape).
+    incomplete = requested > 0 and fetched < requested * 0.8
+    if failed or incomplete:
+        bits = []
+        if failed:
+            bits.append(f"{failed} download batch(es) failed")
+        if incomplete:
+            bits.append(f"only {fetched}/{requested} stocks returned data")
+        st.markdown(
+            _gate_bar_html(
+                "Yellow",
+                "Incomplete data — " + "; ".join(bits) +
+                ". Results may be partial; wait a minute and re-run to refresh.",
+            ),
+            unsafe_allow_html=True,
+        )
+
+
 def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     """Render the Layer 4 — Screener tab (v3, button-triggered with 24h cache)."""
 
@@ -1856,10 +1917,19 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
                 st.session_state["screener_regime"] = regime
                 st.session_state["screener_last_run"] = datetime.now(ZoneInfo("UTC"))
 
+    _render_screener_data_warning(results_df)
+
     if results_df is None or results_df.empty:
+        # An empty frame can mean "data fetch failed" or "ran fine, nothing passed".
+        diag = results_df.attrs.get("screener_diagnostics", {}) if results_df is not None else {}
+        if diag.get("spy_missing") or diag.get("failed_batches"):
+            msg = "Screener could not fetch market data (likely a rate limit). Wait a minute and re-run."
+        elif diag:
+            msg = "Screener ran, but no candidates passed the filters in the scanned sectors."
+        else:
+            msg = "Click <b>Run Screener</b> to scan the universe. First run takes ~30 seconds."
         st.markdown(
-            '<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">'
-            'Click <b>Run Screener</b> to scan the universe. First run takes ~30 seconds.</p>',
+            f'<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">{msg}</p>',
             unsafe_allow_html=True,
         )
         return
