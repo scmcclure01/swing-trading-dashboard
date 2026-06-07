@@ -315,6 +315,69 @@ def score_layer1_mispricing(fwd_earnings_yield: float | None,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LAYER 8 — ETF EXIT MONITORING (Core / Layer 3 positions)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Sector ETF tickers — used to decide whether a held position is ETF-class.
+_SECTOR_ETF_SET = set(SECTOR_ETFS.values())
+
+
+def is_etf_position(position: dict) -> bool:
+    """True if a held position should be monitored by the ETF exit rules.
+
+    ETF exit rules (flow reversal, RS decline, 20d MA) apply to Core ETF and
+    Layer 3 ETF positions — not individual Tactical stocks. We treat a position
+    as ETF-class if it's tagged Core OR its ticker is a known sector ETF.
+    """
+    return position.get("layer") == "Core" or position.get("ticker") in _SECTOR_ETF_SET
+
+
+def etf_exit_signals(ticker: str,
+                     price: float | None,
+                     ma20: float | None,
+                     flow_strength: str | None,
+                     rs_trend: str | None) -> list:
+    """Evaluate the framework's ETF exit triggers for one held position.
+
+    Returns a list of triggered-exit dicts: {'trigger', 'severity', 'detail'}.
+    Empty list = no exit signals (holding is fine).
+
+    Framework Core/L3 exit triggers covered here (the data we have):
+      • Price closed below 20d MA          → exit (severity high)
+      • Flow reversal (classified Outflows) → exit review (severity high)
+      • RS vs SPY lagging/declining         → exit review (severity medium)
+
+    NOTE: "2 consecutive weeks" granularity isn't available from the flow
+    scraper or the weekly RS read, so we use the current classification as a
+    proxy and label it as a review trigger, not an auto-sell.
+    """
+    signals = []
+
+    if price is not None and ma20 is not None and price < ma20:
+        signals.append({
+            "trigger": "Below 20d MA",
+            "severity": "high",
+            "detail": f"Price ${price:.2f} < 20d MA ${ma20:.2f} — framework exit (confirm on volume).",
+        })
+
+    if flow_strength == "Outflows":
+        signals.append({
+            "trigger": "Flow reversal",
+            "severity": "high",
+            "detail": "ETF showing net outflows — framework flags 2-week reversal as exit. Review.",
+        })
+
+    if rs_trend == "Lagging":
+        signals.append({
+            "trigger": "RS declining",
+            "severity": "medium",
+            "detail": "RS vs SPY lagging — framework exits on 2+ weeks of RS decline. Review.",
+        })
+
+    return signals
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 9 — DRAWDOWN TIER (auto from peak equity)
 # ─────────────────────────────────────────────────────────────────────────────
 

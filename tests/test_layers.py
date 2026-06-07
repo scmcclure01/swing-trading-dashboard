@@ -19,6 +19,7 @@ import streamlit  # noqa: F401  (import guard — see note below)
 from layers import (
     calc_layer2, score_recession_composite, score_layer1_mispricing,
     drawdown_tier, DRAWDOWN_STATES,
+    is_etf_position, etf_exit_signals,
 )
 
 
@@ -147,6 +148,51 @@ def test_dd_boundary_minus7_is_tier2():
 def test_dd_new_high_above_peak():
     r = drawdown_tier(110000, 100000)  # above peak → treated as at-peak
     assert r["state"] == DRAWDOWN_STATES["peak"]
+
+
+# ── ETF exit monitoring ──────────────────────────────────────────────────────
+def test_is_etf_position_by_layer():
+    assert is_etf_position({"ticker": "AAPL", "layer": "Core"}) is True
+
+
+def test_is_etf_position_by_ticker():
+    assert is_etf_position({"ticker": "XLK", "layer": "Tactical"}) is True
+
+
+def test_is_not_etf_position():
+    assert is_etf_position({"ticker": "AAPL", "layer": "Tactical"}) is False
+
+
+def test_exit_below_ma_triggers():
+    sigs = etf_exit_signals("XLK", price=95.0, ma20=100.0,
+                            flow_strength="Strong", rs_trend="Leading")
+    assert any(s["trigger"] == "Below 20d MA" for s in sigs)
+    assert sigs[0]["severity"] == "high"
+
+
+def test_exit_flow_reversal_triggers():
+    sigs = etf_exit_signals("XLE", price=105.0, ma20=100.0,
+                            flow_strength="Outflows", rs_trend="Leading")
+    assert any(s["trigger"] == "Flow reversal" for s in sigs)
+
+
+def test_exit_rs_lagging_triggers_medium():
+    sigs = etf_exit_signals("XLU", price=105.0, ma20=100.0,
+                            flow_strength="Strong", rs_trend="Lagging")
+    assert any(s["trigger"] == "RS declining" and s["severity"] == "medium" for s in sigs)
+
+
+def test_exit_healthy_position_no_signals():
+    sigs = etf_exit_signals("XLK", price=110.0, ma20=100.0,
+                            flow_strength="Strong", rs_trend="Leading")
+    assert sigs == []
+
+
+def test_exit_handles_missing_data():
+    # No price/MA, no flow, no RS → nothing fires, no crash
+    sigs = etf_exit_signals("XLK", price=None, ma20=None,
+                            flow_strength=None, rs_trend=None)
+    assert sigs == []
 
 
 if __name__ == "__main__":

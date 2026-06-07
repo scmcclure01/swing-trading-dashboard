@@ -609,6 +609,8 @@ from layers import (
     score_recession_composite,
     score_layer1_mispricing,
     drawdown_tier,
+    is_etf_position,
+    etf_exit_signals,
     calc_layer2,
     calc_layer3,
     calc_layer4,
@@ -2431,12 +2433,68 @@ def _calc_performance(closed: list, start_dt: date, end_dt: date) -> dict:
     }
 
 
+def _render_etf_exit_alerts(open_positions: list) -> None:
+    """Check held ETF / Core positions against the framework's exit triggers
+    (below 20d MA, flow reversal, RS decline) and render any alerts."""
+    etf_positions = [p for p in open_positions if is_etf_position(p)]
+    if not etf_positions:
+        return  # nothing ETF-class to monitor
+
+    # Reverse map: ETF ticker → sector name (for RS-trend lookup from L0).
+    etf_to_sector = {etf: name for name, etf in SECTOR_ETFS.items()}
+
+    # Pull the signals we need (all cached).
+    flows = fetch_etf_fund_flows()
+    macro_close = fetch_macro_data()
+    l0 = calc_layer0(macro_close)
+    sector_rs = l0.get("sector_rs", {}) if isinstance(l0, dict) else {}
+
+    any_alert = False
+    blocks = ""
+    for p in etf_positions:
+        tkr = p["ticker"]
+        # 20d MA + price from macro data if the ETF is in the macro universe.
+        price = ma20 = None
+        if tkr in macro_close.columns:
+            series = macro_close[tkr].dropna()
+            if len(series) >= 20:
+                price = float(series.iloc[-1])
+                ma20  = float(series.rolling(20).mean().iloc[-1])
+        flow_strength = flows.get(tkr, {}).get("flow_strength")
+        sector_name = etf_to_sector.get(tkr)
+        rs_trend = sector_rs.get(sector_name, {}).get("trend") if sector_name else None
+
+        signals = etf_exit_signals(tkr, price, ma20, flow_strength, rs_trend)
+        if signals:
+            any_alert = True
+            for s in signals:
+                perm = "Red" if s["severity"] == "high" else "Yellow"
+                blocks += _gate_bar_html(perm, f"{tkr} — {s['trigger']}: {s['detail']}")
+
+    if any_alert:
+        st.markdown(
+            _card("ETF Exit Alerts (Core / Layer 3)", blocks, pill="L8"),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            _card("ETF Exit Alerts (Core / Layer 3)",
+                  '<p style="font-size:12px; color:#27500A; margin:0;">'
+                  'No exit triggers on held ETF positions — all holding.</p>',
+                  pill="L8"),
+            unsafe_allow_html=True,
+        )
+
+
 def _render_portfolio_tab() -> None:
     """Render the Portfolio Tracker tab."""
     today = date.today()
     data         = _portfolio_load()
     open_pos     = data.get("open_positions", [])
     closed_pos   = data.get("closed_positions", [])
+
+    # ── ETF exit monitoring (Core / Layer 3 positions) ──────────────────────
+    _render_etf_exit_alerts(open_pos)
 
     # ── Live prices ───────────────────────────────────────────────────────────
     open_tickers = [p["ticker"] for p in open_pos]
