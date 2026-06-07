@@ -1301,11 +1301,9 @@ def _render_layer3_tab(l3_data: list) -> None:
         st.markdown(_gate_bar_html("Yellow", "Insufficient data to build RRG chart."), unsafe_allow_html=True)
 
     # ── Consolidated legend + selector ────────────────────────────────────────
-    # One control that doubles as the legend: each checkbox is accent-coloured to
-    # its sector's line colour and labelled "Sector (XYZ)". Checking toggles the
+    # One control that doubles as the legend: each row shows a colour+dash swatch
+    # matching the sector's line, then a "Sector (XYZ)" checkbox that toggles that
     # line on the chart. Plotly's own legend is turned off (build_rrg_chart).
-    # Colour each checkbox by wrapping it in a uniquely-classed container, and
-    # shrink its label to roughly the old legend text size.
     css_rules = "\n".join(
         f'.rrgc-{i} [data-testid="stCheckbox"] input {{ accent-color:{SECTOR_COLORS[sec]}; }}'
         f'.rrgc-{i} [data-testid="stCheckbox"] label p {{ font-size:10px; color:#103766; }}'
@@ -1313,13 +1311,30 @@ def _render_layer3_tab(l3_data: list) -> None:
     )
     st.markdown(f"<style>{css_rules}</style>", unsafe_allow_html=True)
 
+    # SVG dash patterns matching Plotly's line styles.
+    _dash_da = {"solid": "", "dash": 'stroke-dasharray="6 3"',
+                "dot": 'stroke-dasharray="2 3"', "dashdot": 'stroke-dasharray="6 3 2 3"'}
+
     _leg_cols = st.columns(5)
     for i, sec in enumerate(ALL_SECTORS):
-        etf = SECTOR_ETFS[sec]
+        etf  = SECTOR_ETFS[sec]
+        col  = SECTOR_COLORS[sec]
+        dash = SECTOR_DASH_BY_SECTOR.get(sec, "solid")
         with _leg_cols[i % 5]:
-            st.markdown(f'<div class="rrgc-{i}">', unsafe_allow_html=True)
-            st.checkbox(f"{sec} ({etf})", value=True, key=f"rrg_show_{sec}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            # swatch (color+dash line) and checkbox, side by side
+            sw, cb = st.columns([1, 5])
+            with sw:
+                st.markdown(
+                    f'<div style="margin-top:9px;">'
+                    f'<svg width="26" height="8" viewBox="0 0 26 8">'
+                    f'<line x1="0" y1="4" x2="26" y2="4" stroke="{col}" stroke-width="2.5" '
+                    f'{_dash_da.get(dash, "")}/></svg></div>',
+                    unsafe_allow_html=True,
+                )
+            with cb:
+                st.markdown(f'<div class="rrgc-{i}">', unsafe_allow_html=True)
+                st.checkbox(f"{sec} ({etf})", value=True, key=f"rrg_show_{sec}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
     # Flow strength — auto-scraped from etfdb.com, feeds the Sizing/Risk columns
     # below directly (no manual override panel; the data drives sizing on its own).
