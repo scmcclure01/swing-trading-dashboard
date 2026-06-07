@@ -2574,27 +2574,22 @@ def _calc_performance(closed: list, start_dt: date, end_dt: date) -> dict:
     }
 
 
-def _render_etf_exit_alerts(open_positions: list) -> None:
-    """Check held ETF / Core positions against the framework's exit triggers
-    (below 20d MA, flow reversal, RS decline) and render any alerts."""
+def _collect_etf_exit_signals(open_positions: list) -> list:
+    """Return ETF/Core exit-trigger signals as a list of dicts:
+    {ticker, trigger, detail, severity}. No rendering — feeds the action hero."""
     etf_positions = [p for p in open_positions if is_etf_position(p)]
     if not etf_positions:
-        return  # nothing ETF-class to monitor
+        return []
 
-    # Reverse map: ETF ticker → sector name (for RS-trend lookup from L0).
     etf_to_sector = {etf: name for name, etf in SECTOR_ETFS.items()}
-
-    # Pull the signals we need (all cached).
     flows = fetch_etf_fund_flows()
     macro_close = fetch_macro_data()
     l0 = calc_layer0(macro_close)
     sector_rs = l0.get("sector_rs", {}) if isinstance(l0, dict) else {}
 
-    any_alert = False
-    blocks = ""
+    out = []
     for p in etf_positions:
         tkr = p["ticker"]
-        # 20d MA + price from macro data if the ETF is in the macro universe.
         price = ma20 = None
         if tkr in macro_close.columns:
             series = macro_close[tkr].dropna()
@@ -2604,27 +2599,55 @@ def _render_etf_exit_alerts(open_positions: list) -> None:
         flow_strength = flows.get(tkr, {}).get("flow_strength")
         sector_name = etf_to_sector.get(tkr)
         rs_trend = sector_rs.get(sector_name, {}).get("trend") if sector_name else None
+        for s in etf_exit_signals(tkr, price, ma20, flow_strength, rs_trend):
+            out.append({"ticker": tkr, **s})
+    return out
 
-        signals = etf_exit_signals(tkr, price, ma20, flow_strength, rs_trend)
-        if signals:
-            any_alert = True
-            for s in signals:
-                perm = "Red" if s["severity"] == "high" else "Yellow"
-                blocks += _gate_bar_html(perm, f"{tkr} — {s['trigger']}: {s['detail']}")
 
-    if any_alert:
-        st.markdown(
-            _card("ETF Exit Alerts (Core / Layer 3)", blocks, pill="L8"),
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            _card("ETF Exit Alerts (Core / Layer 3)",
-                  '<p style="font-size:12px; color:#27500A; margin:0;">'
-                  'No exit triggers on held ETF positions — all holding.</p>',
-                  pill="L8"),
-            unsafe_allow_html=True,
-        )
+def _mgmt_action_items(open_pos: list, prices: dict, account_size: float) -> list:
+    """Scan open positions for L8 management actions that need doing now
+    (stop→BE, sell 1/3 at T1, trail at T2, hold expired). Returns a list of
+    {severity, icon, text} dicts. Mirrors the mgmt_status logic in
+    _build_open_table without rendering a table."""
+    items = []
+    today = date.today()
+    for p in open_pos:
+        tkr     = p["ticker"]
+        layer   = p.get("layer", "Tactical")
+        entry   = p["entry_price"]
+        cur     = prices.get(tkr, p.get("current_price") or entry)
+        is_accel = "Accelerating" in (p.get("notes") or "")
+        if is_accel:
+            t1, t2 = round(entry*1.09, 2), round(entry*1.175, 2)
+            weeks = 6
+        elif layer == "Core":
+            t1 = t2 = None; weeks = None
+        else:
+            t1, t2 = round(entry*1.10, 2), round(entry*1.225, 2)
+            weeks = 12
+        be = round(entry*1.05, 2)
+
+        if layer != "Core":
+            if t2 and cur >= t2:
+                items.append({"severity": "info", "icon": "arrow-up-right",
+                              "text": f"{tkr} past T2 — trail remainder at 20d MA"})
+            elif t1 and cur >= t1:
+                items.append({"severity": "info", "icon": "arrow-up",
+                              "text": f"{tkr} past T1 — sell 1/3, move stop to breakeven"})
+            elif cur >= be:
+                items.append({"severity": "watch", "icon": "shield",
+                              "text": f"{tkr} above +5% — move stop to breakeven"})
+        # Max-hold expiry
+        if weeks:
+            entry_dt = datetime.strptime(p["entry_date"], "%Y-%m-%d").date()
+            days_left = ((entry_dt + timedelta(weeks=weeks)) - today).days
+            if days_left <= 0:
+                items.append({"severity": "watch", "icon": "clock",
+                              "text": f"{tkr} hit max hold ({weeks}w) — review for exit"})
+            elif days_left <= 7:
+                items.append({"severity": "info", "icon": "clock",
+                              "text": f"{tkr} {days_left}d to max hold"})
+    return items
 
 
 def _render_portfolio_tab() -> None:
@@ -2633,9 +2656,6 @@ def _render_portfolio_tab() -> None:
     data         = _portfolio_load()
     open_pos     = data.get("open_positions", [])
     closed_pos   = data.get("closed_positions", [])
-
-    # ── ETF exit monitoring (Core / Layer 3 positions) ──────────────────────
-    _render_etf_exit_alerts(open_pos)
 
     # ── Live prices ───────────────────────────────────────────────────────────
     open_tickers = [p["ticker"] for p in open_pos]
@@ -2732,36 +2752,36 @@ def _render_portfolio_tab() -> None:
     rpnl_color   = _pnl_color(perf["realized_pnl"])
     upnl_color   = _pnl_color(total_upnl)
 
-    # ── Summary tile row ──────────────────────────────────────────────────────
-    summary_html = (
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:15px 17px; margin-bottom:10px;">'
-        f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px; font-weight:500;">'
-        f'PERFORMANCE SUMMARY &nbsp;·&nbsp; {period_label}</div>'
-        f'<div style="display:grid; grid-template-columns:repeat(9,1fr); gap:9px;">'
-        + _tile("Account Value",  f"${account_value:,.0f}",
-                f"Cash + positions", "#103766")
-        + _tile("Cash to Trade",  f"${cash_balance:,.0f}",
-                f"{cash_balance/account_value*100:.0f}% of account" if account_value else "")
-        + _tile("Realized P&L",   _dollar_fmt(perf["realized_pnl"]),
-                f"{perf['count']} closed trades", rpnl_color)
-        + _tile("Unrealized P&L", _dollar_fmt(total_upnl),
-                f"{len(open_pos)} open positions", upnl_color)
-        + _tile("Win Rate",       f"{perf['win_rate']*100:.0f}%" if perf["count"] else "—",
+    # ── Drawdown (needed by hero health tiles) — computed early ───────────────
+    _peak = data.get("peak_equity", account_value)
+    _dd_pct_hero = ((account_value - _peak) / _peak * 100) if _peak > 0 else 0.0
+
+    # ── Action items: exit triggers + L8 mgmt + (compliance added below) ──────
+    action_items = []
+    for s in _collect_etf_exit_signals(open_pos):
+        sev = "alert" if s.get("severity") == "high" else "watch"
+        icon = "bell" if sev == "alert" else "alert-triangle"
+        action_items.append({"severity": sev, "icon": icon,
+                             "text": f"{s['ticker']} — {s['trigger']}: {s['detail']}"})
+    action_items += _mgmt_action_items(open_pos, prices, account_size)
+
+    # ── Performance period & health summary ───────────────────────────────────
+    # Hero renders just below (after compliance warnings are computed) so it can
+    # include breached caps. Build the demoted performance strip here.
+    perf_strip_html = (
+        f'<div style="font-size:11px; color:#5A7BAA; margin:11px 0 6px; font-weight:500;">'
+        f'How you’re doing <span style="font-weight:400;">— realized performance · {period_label}</span></div>'
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:6px;">'
+        + _tile("Realized P&L", _dollar_fmt(perf["realized_pnl"]),
+                f"{perf['count']} closed", rpnl_color)
+        + _tile("Win Rate", f"{perf['win_rate']*100:.0f}%" if perf["count"] else "—",
                 f"{perf.get('n_wins',0)}W / {perf.get('n_losses',0)}L" if perf["count"] else "")
-        + _tile("Profit Factor",  pf_str,
-                "≥ 1.5 target", "#27500A" if pf_val >= 1.5 else "#E07800" if pf_val >= 1.0 else "#CC1111")
-        + _tile("Deployed",       f"{deployed_pct*100:.1f}%",
-                f"${total_cb:,.0f} cost basis")
-        + _tile("Portfolio Heat", f"{heat_pct*100:.1f}%",
-                "risk $ / account",
-                "#CC1111" if heat_pct > 0.15 else "#E07800" if heat_pct > 0.08 else "#27500A")
+        + _tile("Profit Factor", pf_str,
+                "≥1.5 target", "#27500A" if pf_val >= 1.5 else "#E07800" if pf_val >= 1.0 else "#CC1111")
         + _tile("Avg Win / Loss",
-                f"{_pct_fmt(perf['avg_win'])} / {_pct_fmt(perf['avg_loss'])}" if perf["count"] else "—",
-                "")
-        + '</div></div>'
+                f"{_pct_fmt(perf['avg_win'])} / {_pct_fmt(perf['avg_loss'])}" if perf["count"] else "—", "")
+        + '</div>'
     )
-    st.markdown(summary_html, unsafe_allow_html=True)
 
     # ── L7 / L9 Compliance checks ───────────────────────────────────────────
     perm_state = st.session_state.get("_current_perm", "Green")  # set by main()
@@ -2850,33 +2870,73 @@ def _render_portfolio_tab() -> None:
     if drawdown_pct <= -7:
         warnings.append(f"⚠️ Drawdown {drawdown_pct:.1f}% — {dd_tier}")
 
-    warn_html = ""
-    if warnings:
-        warn_html = '<div style="margin-top:6px;">' + "".join(
-            f'<p style="font-size:12px; font-weight:500; color:#CC1111; margin:2px 0;">{w}</p>'
-            for w in warnings
-        ) + '</div>'
+    # Add breached compliance caps to the action hero (already-detailed warnings).
+    for w in warnings:
+        sev = "alert" if w.startswith("🔴") else "watch"
+        clean = w.lstrip("🔴⚠️ ").strip()
+        action_items.append({"severity": sev,
+                             "icon": "alert-triangle" if sev == "watch" else "alert-octagon",
+                             "text": clean})
 
-    st.markdown(
-        _card("L7 / L9 — Portfolio Compliance", compliance_html + warn_html,
-              pill=f"{'✅ All clear' if not warnings else '⚠️ ' + str(len(warnings)) + ' issue(s)'}"),
-        unsafe_allow_html=True,
+    # ── Render: ACTION HERO + health tiles + performance strip ────────────────
+    _ICON = {"bell": "🔔", "alert-triangle": "⚠️", "alert-octagon": "⛔",
+             "arrow-up": "↑", "arrow-up-right": "↗", "shield": "🛡️", "clock": "⏱️"}
+    _SEV_COLOR = {"alert": "#CC1111", "watch": "#E07800", "info": "#27500A"}
+    # Hero palette keyed to the worst severity present.
+    if any(a["severity"] == "alert" for a in action_items):
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
+    elif any(a["severity"] == "watch" for a in action_items):
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#FFF3D6", "rgba(224,120,0,.35)", "#854F0B", "#412402"
+    else:
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+
+    if action_items:
+        items_html = "".join(
+            f'<div style="margin:2px 0;"><span style="color:{_SEV_COLOR[a["severity"]]};">'
+            f'{_ICON.get(a["icon"], "•")}</span> {a["text"]}</div>'
+            for a in action_items
+        )
+        hero_title = f"Needs action today · {len(action_items)} item{'s' if len(action_items)!=1 else ''}"
+    else:
+        items_html = '<div style="margin-top:4px;">All positions holding — nothing needs a decision today.</div>'
+        hero_title = "Nothing needs action"
+
+    dd_color_hero = ("#27500A" if _dd_pct_hero >= -7 else "#E07800" if _dd_pct_hero > -10 else "#CC1111")
+    portfolio_hero = (
+        '<div style="display:grid; grid-template-columns:1.25fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:12px 14px;">'
+        f'<div style="font-size:10px; font-weight:500; color:{hb_lbl}; text-transform:uppercase;'
+        f' letter-spacing:.05em;">{hero_title}</div>'
+        f'<div style="font-size:12px; color:{hb_txt}; margin-top:6px; line-height:1.6;">{items_html}</div>'
+        '</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("Account value", f"${account_value:,.0f}", "", "#103766")
+        + _tile("Open P&L", _dollar_fmt(total_upnl), f"{len(open_pos)} open", upnl_color)
+        + _tile("Portfolio heat", f"{heat_pct*100:.1f}%", "",
+                "#CC1111" if heat_pct > 0.15 else "#E07800" if heat_pct > 0.08 else "#27500A")
+        + _tile("Drawdown", f"{_dd_pct_hero:+.1f}%", "", dd_color_hero)
+        + '</div>'
+        '</div>'
     )
+    st.markdown(portfolio_hero + perf_strip_html, unsafe_allow_html=True)
 
-    # ── Open positions ────────────────────────────────────────────────────────
+    # ── Open positions (reference) ────────────────────────────────────────────
     open_df, _, _, _, _ = _build_open_table(open_pos, prices, account_size)
     open_pill  = f"{pos_count} positions · {n_core} Core / {n_tactical} Tactical"
 
+    st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                'Positions <span style="font-weight:400; color:#5A7BAA;">— open holdings &amp; management state</span></div>',
+                unsafe_allow_html=True)
     if not open_df.empty:
         st.markdown(
-            _card("Open Positions — L8 Trade Management", cb_table(open_df, bordered=False), pill=open_pill),
+            _macro_card("Open Positions", cb_table(open_df, bordered=False), "", quiet=True),
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            _card("Open Positions",
+            _macro_card("Open Positions",
                   '<p style="font-size:13px; color:#5A7BAA;">No open positions. Add one in the sidebar.</p>',
-                  pill="0 positions"),
+                  "", quiet=True),
             unsafe_allow_html=True,
         )
 
@@ -2904,16 +2964,28 @@ def _render_portfolio_tab() -> None:
 
     if not closed_df.empty:
         st.markdown(
-            _card(f"Closed Positions — {selected_year}", cb_table(closed_df, bordered=False), pill=closed_pill),
+            _macro_card(f"Closed — {selected_year} · {closed_pill}",
+                        cb_table(closed_df, bordered=False), "", quiet=True),
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            _card(f"Closed Positions — {selected_year}",
+            _macro_card(f"Closed — {selected_year}",
                   f'<p style="font-size:13px; color:#5A7BAA;">No closed trades in {selected_year}.</p>',
-                  pill=f"{selected_year}"),
+                  "", quiet=True),
             unsafe_allow_html=True,
         )
+
+    # ── Full compliance detail (reference) — breaches surfaced in hero above ──
+    comp_clear = "All clear" if not warnings else f"{len(warnings)} issue(s)"
+    st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                'Risk &amp; compliance detail <span style="font-weight:400; color:#5A7BAA;">'
+                '— every cap &amp; floor · ' + comp_clear + '</span></div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        _macro_card("Compliance — all checks", compliance_html, "", quiet=True),
+        unsafe_allow_html=True,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
