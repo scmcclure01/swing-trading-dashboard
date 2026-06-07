@@ -315,6 +315,50 @@ def score_layer1_mispricing(fwd_earnings_yield: float | None,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LAYER 9 — DRAWDOWN TIER (auto from peak equity)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Canonical drawdown-state strings. These MUST match the sidebar dropdown options
+# verbatim so the position-sizing logic (which matches on "Tier 2", "7–10%", etc.)
+# reacts correctly whether the tier is auto-computed or manually selected.
+DRAWDOWN_STATES = {
+    "peak":      "At or near peak — full risk",
+    "tier1":     "Tier 1: 0–7% drawdown — full operations",
+    "tier2":     "Tier 2: 7–10% drawdown — reduce risk 50%",
+    "tier3":     "Tier 3: 10–15% drawdown — defensive",
+    "emergency": ">15% drawdown — 100% cash",
+}
+
+
+def drawdown_tier(current_equity: float, peak_equity: float) -> dict:
+    """Map current vs peak equity to a Layer 9 drawdown tier.
+
+    Returns {'pct': drawdown % (<= 0), 'state': canonical dropdown string,
+             'label': short tier name, 'color': hex}. Thresholds per v4:
+      0 to -7%   Tier 1 normal | -7 to -10% Tier 2 cut 50% |
+      -10 to -15% Tier 3 defensive | < -15% emergency cash.
+    """
+    if peak_equity and peak_equity > 0:
+        pct = (current_equity - peak_equity) / peak_equity * 100
+    else:
+        pct = 0.0
+
+    if pct >= 0:
+        key, label, color = "peak", "At peak", "#27500A"
+    elif pct > -7:
+        key, label, color = "tier1", "Tier 1: Normal", "#27500A"
+    elif pct > -10:
+        key, label, color = "tier2", "Tier 2: Reduce risk 50%", "#E07800"
+    elif pct > -15:
+        key, label, color = "tier3", "Tier 3: Defensive", "#CC1111"
+    else:
+        key, label, color = "emergency", "Emergency: 100% cash", "#CC1111"
+
+    return {"pct": round(pct, 1), "state": DRAWDOWN_STATES[key],
+            "label": label, "color": color}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LAYER 2 — MARKET PERMISSION STATE
 # ─────────────────────────────────────────────────────────────────────────────
 

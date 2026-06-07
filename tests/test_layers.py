@@ -16,7 +16,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit  # noqa: F401  (import guard — see note below)
-from layers import calc_layer2, score_recession_composite, score_layer1_mispricing
+from layers import (
+    calc_layer2, score_recession_composite, score_layer1_mispricing,
+    drawdown_tier, DRAWDOWN_STATES,
+)
 
 
 # ── calc_layer2 — permission state ───────────────────────────────────────────
@@ -104,6 +107,46 @@ def test_l1_missing_rates_not_computable():
                                 nominal_10y=2.5, gdpnow_signal="Not set")
     assert r["computable"] is False
     assert len(r["checks"]) == 3   # still returns structure
+
+
+# ── drawdown_tier ────────────────────────────────────────────────────────────
+def test_dd_at_peak():
+    r = drawdown_tier(100000, 100000)
+    assert r["pct"] == 0.0
+    assert r["state"] == DRAWDOWN_STATES["peak"]
+
+
+def test_dd_tier1_normal():
+    r = drawdown_tier(95000, 100000)   # -5%
+    assert r["pct"] == -5.0
+    assert "Tier 1" in r["state"]
+
+
+def test_dd_tier2_cut_risk():
+    r = drawdown_tier(91000, 100000)   # -9% → Tier 2
+    assert "Tier 2" in r["state"]
+    assert "7–10%" in r["state"]       # token the sizing logic matches on
+
+
+def test_dd_tier3_defensive():
+    r = drawdown_tier(88000, 100000)   # -12% → Tier 3
+    assert "Tier 3" in r["state"]
+
+
+def test_dd_emergency():
+    r = drawdown_tier(80000, 100000)   # -20% → emergency
+    assert ">15%" in r["state"]
+
+
+def test_dd_boundary_minus7_is_tier2():
+    # exactly -7% is NOT > -7, so it falls to Tier 2 (matches app's original logic)
+    r = drawdown_tier(93000, 100000)
+    assert "Tier 2" in r["state"]
+
+
+def test_dd_new_high_above_peak():
+    r = drawdown_tier(110000, 100000)  # above peak → treated as at-peak
+    assert r["state"] == DRAWDOWN_STATES["peak"]
 
 
 if __name__ == "__main__":
