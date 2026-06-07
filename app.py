@@ -2857,7 +2857,6 @@ def main():
     # Manual signals (set once per weekly review, persisted in URL query params)
     defaults = {
         "eps_signal":    "Not set",
-        "drawdown_choice": "Auto (from portfolio)",
         "lei_signal":    "Not set",
         "taylor_rule":   "Not set",
         "gdpnow_signal": "Not set",
@@ -2868,7 +2867,7 @@ def main():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
     # Keys that persist across refreshes via URL query params
-    _persist_keys = ["eps_signal", "drawdown_choice", "lei_signal", "taylor_rule", "gdpnow_signal", "spy_fwd_ey"]
+    _persist_keys = ["eps_signal", "lei_signal", "taylor_rule", "gdpnow_signal", "spy_fwd_ey"]
 
     # Load persisted values from URL on first visit
     qp = st.query_params
@@ -2915,8 +2914,10 @@ def main():
         _dd_data["peak_equity"] = round(_dd_peak, 2)
         _portfolio_save(_dd_data)
     _dd_tier = drawdown_tier(_dd_equity, _dd_peak)
-    st.session_state["_drawdown_auto"]     = _dd_tier["state"]
-    st.session_state["_drawdown_auto_pct"] = _dd_tier["pct"]
+    st.session_state["drawdown_state"]     = _dd_tier["state"]   # consumed by sizing/gate
+    st.session_state["drawdown_pct"]       = _dd_tier["pct"]
+    st.session_state["drawdown_label"]     = _dd_tier["label"]
+    st.session_state["drawdown_color"]     = _dd_tier["color"]
 
     # ── SIDEBAR ───────────────────────────────────────────────────────────────
     with st.sidebar:
@@ -2936,31 +2937,8 @@ def main():
             index=_eps_opts.index(st.session_state.eps_signal),
             on_change=_save_manual_signals,
         )
-        _dd_auto = st.session_state.get("_drawdown_auto", "At or near peak — full risk")
-        _dd_auto_pct = st.session_state.get("_drawdown_auto_pct", 0.0)
-        _drawdown_opts = [
-            "Auto (from portfolio)",
-            "At or near peak — full risk",
-            "Tier 1: 0–7% drawdown — full operations",
-            "Tier 2: 7–10% drawdown — reduce risk 50%",
-            "Tier 3: 10–15% drawdown — defensive",
-            ">15% drawdown — 100% cash",
-        ]
-        if st.session_state.drawdown_choice not in _drawdown_opts:
-            st.session_state.drawdown_choice = _drawdown_opts[0]
-        st.session_state.drawdown_choice = st.selectbox(
-            "Drawdown from Peak Equity", _drawdown_opts,
-            index=_drawdown_opts.index(st.session_state.drawdown_choice),
-            on_change=_save_manual_signals,
-            help=f"Auto computes drawdown from your portfolio's peak equity "
-                 f"(currently {_dd_auto_pct:+.1f}%). Override to set a tier manually.",
-        )
-        # Resolve the effective drawdown_state: auto-computed unless manually overridden.
-        if st.session_state.drawdown_choice == "Auto (from portfolio)":
-            st.session_state.drawdown_state = _dd_auto
-            st.caption(f"Auto: {_dd_auto_pct:+.1f}% from peak → {_dd_auto}")
-        else:
-            st.session_state.drawdown_state = st.session_state.drawdown_choice
+        # Drawdown is auto-computed from peak equity (see above) and shown in the
+        # header Drawdown tile — no manual control needed here.
         _lei_opts = ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"]
         st.session_state.lei_signal = st.selectbox(
             "Conference Board LEI", _lei_opts,
@@ -3090,7 +3068,10 @@ def main():
         + _tile("Core Deployed", f"{core_pct:.0f}%",           core_signal, core_color)
         + _tile("Velocity Flag", vel_label,                     ", ".join(accel_sectors) if accel_sectors else "All normal", vel_color)
         + _tile("Max Heat",      f"{limits['heat']}%",          "")
-        + _tile("Drawdown",      st.session_state.drawdown_state.split("—")[0].strip(), "")
+        + _tile("Drawdown",
+                f"{st.session_state.get('drawdown_pct', 0.0):+.1f}%",
+                st.session_state.get("drawdown_label", "At peak"),
+                st.session_state.get("drawdown_color", "#27500A"))
         + "</div>"
     )
 
