@@ -1344,16 +1344,12 @@ def _render_layer3_tab(l3_data: list) -> None:
         """Live flow-strength label for an ETF from the etfdb scrape."""
         return auto_flows.get(etf, {}).get("flow_strength", "Not set")
 
+    # Flow data auto-refreshes hourly (fetch_etf_fund_flows is cached ttl=3600),
+    # so no manual refresh button — a small freshness note is enough.
     _fl_as_of = next((auto_flows[e].get("as_of") for e in auto_flows
                       if auto_flows.get(e, {}).get("as_of")), "")
-    _fl1, _fl2 = st.columns([4, 1])
-    with _fl1:
-        st.caption(f"Flow strength (Sizing / Risk columns) is live from etfdb.com"
-                   + (f" · as of {_fl_as_of}" if _fl_as_of else ""))
-    with _fl2:
-        if st.button("🔄 Refresh flows", key="refresh_flows"):
-            fetch_etf_fund_flows.clear()
-            st.rerun()
+    st.caption("Flow strength (Sizing / Risk columns) is live from etfdb.com, "
+               "auto-updated hourly" + (f" · as of {_fl_as_of}" if _fl_as_of else ""))
 
     # ── ETF Entry Candidates / Weakening — two-column layout ────────────────
     candidates = [d for d in l3_data if d["quadrant"] in ("Improving", "Leading")]
