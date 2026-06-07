@@ -945,6 +945,8 @@ _MACRO_TIPS = {
     "velocity":  ("Acceleration detector", "Sector ROC 21 above +15% flags a parabolic move and switches that sector to the alternate entry protocol — the standard pullback entry never comes in a melt-up."),
     "sectorrs":  ("Regime flavor", "Which sectors lead SPY reveals the regime: tech/discretionary/financials = risk-on; energy/materials = reflation; staples/utilities = defensive. Guides where to hunt setups."),
     "flow":      ("Flow preview", "Sustained directional ETF inflows, checked weekly alongside RS. Feeds the Sector Rotation tab and Core deployment — Phase 1 is early/improving, Phase 2 is confirmed leading."),
+    "core_candidates": ("Core entry candidates", "Phase 2 (confirmed-leading) sectors from the rotation graph. These are eligible for Core deployment — enter on the standard trigger, stop at the 20-day MA shown."),
+    "core_holdings": ("Core holdings", "Your persistent regime exposure (sector ETFs). Exit triggers: a close below the 20-day MA, a move into the weakening/lagging quadrant, or a RED permission state (which exits all Core to cash)."),
 }
 
 
@@ -2075,18 +2077,8 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
     core_value   = account * core_pct / 100
     slots_used   = len(core_tickers)
     slots_max    = 3
-
-    # Build status card
-    status_rows = [
-        {"Metric": "Account Value",          "Value": f"${account:,.0f}"},
-        {"Metric": "Core % Deployed",         "Value": f"{core_pct:.0f}%"},
-        {"Metric": "Core $ Deployed",         "Value": f"${core_value:,.0f}"},
-        {"Metric": "Core Target",             "Value": f"{core_target}% (${account * core_target / 100:,.0f})"},
-        {"Metric": "Slots Used",              "Value": f"{slots_used} / {slots_max}"},
-        {"Metric": "Deployment Floor",        "Value": f"{floor_lo}–{floor_hi}% (${account * floor_lo / 100:,.0f}–${account * floor_hi / 100:,.0f})"},
-        {"Metric": "Floor Met?",              "Value": "✅ Yes" if core_pct >= floor_lo else "❌ Below floor"},
-    ]
-    status_html = cb_table(pd.DataFrame(status_rows), bordered=False)
+    target_value = account * core_target / 100
+    gap_value    = target_value - core_value  # +ve = room to deploy
 
     # Phase 2 candidates from RRG
     phase2 = [d for d in l3_data if d["quadrant"] == "Leading"]
@@ -2158,17 +2150,78 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
             for s in exit_signals
         ) + '</div>'
 
-    # Assemble layout
-    full_html = (
-        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
-        '<div>'
-        + _card("Core Status", status_html, pill=f"{'🟢' if core_pct >= floor_lo else '🔴'} Floor")
-        + _card("Current Core Positions", held_html + exit_html)
-        + '</div>'
-        '<div>'
-        + _card("Phase 2 Candidates — Core Entry Eligible", p2_html)
+    # ── Deployment hero ───────────────────────────────────────────────────────
+    # State palette: RED regime = exit (red); under floor = act (amber);
+    # at/above target = on-target (green).
+    if perm == "Red":
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
+        bar_color = "#CC1111"
+    elif core_pct < floor_lo:
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#FFF3D6", "rgba(224,120,0,.35)", "#854F0B", "#412402"
+        bar_color = "#E07800"
+    else:
+        hb_bg, hb_bd, hb_lbl, hb_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+        bar_color = "#27500A"
+
+    # Bar fill = current% scaled so the target sits at ~89% of the track width
+    # (leaves headroom to show over-deployment); floor marker placed at floor_lo.
+    track_target = max(core_target, floor_hi, 1)
+    fill_pct   = min(core_pct / track_target * 100, 100) if track_target else 0
+    floor_mark = min(floor_lo / track_target * 100, 100) if track_target else 0
+
+    if perm == "Red":
+        action_line = '<i class="ti ti-arrow-down" style="font-size:12px"></i> RED state — exit all Core positions to cash'
+    elif gap_value > account * 0.005:  # meaningfully under target
+        n_sec = 1 if gap_value < account * 0.20 else 2
+        action_line = (f'<i class="ti ti-arrow-up" style="font-size:12px"></i> '
+                       f'Under-deployed by {core_target - core_pct:.0f}% — deploy ~${gap_value:,.0f} '
+                       f'into {n_sec} Phase 2 sector{"s" if n_sec > 1 else ""}')
+    elif core_pct > floor_hi:
+        action_line = '<i class="ti ti-alert-triangle" style="font-size:12px"></i> Above deployment ceiling — trim toward target'
+    else:
+        action_line = '<i class="ti ti-check" style="font-size:12px"></i> On target — hold and manage'
+
+    core_hero = (
+        '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:12px 14px;">'
+        f'<div style="font-size:10px; font-weight:500; color:{hb_lbl}; text-transform:uppercase;'
+        f' letter-spacing:.05em;">Core deployment · {perm.upper()} regime</div>'
+        f'<div style="display:flex; align-items:baseline; gap:8px; margin:4px 0 2px;">'
+        f'<span style="font-size:30px; font-weight:500; color:{hb_txt}; line-height:1;">{core_pct:.0f}%</span>'
+        f'<span style="font-size:13px; color:{hb_lbl};">of {core_target}% target</span></div>'
+        f'<div style="height:9px; background:#fff; border-radius:5px; overflow:hidden;'
+        f' border:0.5px solid {hb_bd}; margin:6px 0 3px; position:relative;">'
+        f'<div style="position:absolute; left:0; top:0; bottom:0; width:{fill_pct:.0f}%; background:{bar_color};"></div>'
+        + (f'<div style="position:absolute; left:{floor_mark:.0f}%; top:-2px; bottom:-2px; width:2px; background:#27500A;"></div>'
+           if floor_lo > 0 else "")
+        + f'</div>'
+        f'<div style="font-size:11px; color:{hb_txt}; margin-top:5px;">{action_line}</div>'
+        '</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("Core $ deployed", f"${core_value:,.0f}", "", "#103766")
+        + _tile("Room to target", f"${gap_value:,.0f}" if gap_value > 0 else "At/over",
+                "", hb_lbl if gap_value > 0 else "#27500A")
+        + _tile("Slots used", f"{slots_used} / {slots_max}", "")
+        + _tile("Floor", f"{floor_lo}–{floor_hi}%", "",
+                "#CC1111" if core_pct < floor_lo else "#27500A")
         + '</div>'
         '</div>'
+    )
+
+    # ── Reference groups: candidates (to close gap) then holdings ─────────────
+    n_cand = len(phase2)
+    full_html = (
+        _MACRO_TIP_CSS  # enables the info-hover tooltips on this tab
+        + core_hero
+        + '<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+          'How to close the gap <span style="font-weight:400; color:#5A7BAA;">'
+          '— Phase 2 sectors eligible for Core entry</span></div>'
+        + _macro_card(f"Entry candidates · {n_cand} eligible", p2_html, "core_candidates", quiet=True)
+        + '<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+          'Holdings <span style="font-weight:400; color:#5A7BAA;">'
+          '— current Core positions &amp; exit watch</span></div>'
+        + _macro_card(f"Held · {slots_used} position{'s' if slots_used != 1 else ''}",
+                      held_html + exit_html, "core_holdings", quiet=True)
     )
     st.markdown(full_html, unsafe_allow_html=True)
 
