@@ -2163,11 +2163,11 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
         hb_bg, hb_bd, hb_lbl, hb_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
         bar_color = "#27500A"
 
-    # Bar fill = current% scaled so the target sits at ~89% of the track width
-    # (leaves headroom to show over-deployment); floor marker placed at floor_lo.
-    track_target = max(core_target, floor_hi, 1)
-    fill_pct   = min(core_pct / track_target * 100, 100) if track_target else 0
-    floor_mark = min(floor_lo / track_target * 100, 100) if track_target else 0
+    # Gauge scale: target sits at 75% of the track so there's headroom to show
+    # over-deployment, and the labeled target marker is well clear of the right edge.
+    track_max  = (core_target / 0.75) if core_target > 0 else max(floor_hi, 1)
+    fill_pct   = min(core_pct / track_max * 100, 100) if track_max else 0
+    target_mark = min(core_target / track_max * 100, 100) if track_max else 0
 
     if perm == "Red":
         action_line = '<i class="ti ti-arrow-down" style="font-size:12px"></i> RED state — exit all Core positions to cash'
@@ -2188,14 +2188,31 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
         f' letter-spacing:.05em;">Core deployment · {perm.upper()} regime</div>'
         f'<div style="display:flex; align-items:baseline; gap:8px; margin:4px 0 2px;">'
         f'<span style="font-size:30px; font-weight:500; color:{hb_txt}; line-height:1;">{core_pct:.0f}%</span>'
-        f'<span style="font-size:13px; color:{hb_lbl};">of {core_target}% target</span></div>'
-        f'<div style="height:9px; background:#fff; border-radius:5px; overflow:hidden;'
-        f' border:0.5px solid {hb_bd}; margin:6px 0 3px; position:relative;">'
+        f'<span style="font-size:13px; color:{hb_lbl};">'
+        + (f'of {core_target}% target' if core_target > 0 else 'deployed · target 0% in RED')
+        + '</span></div>'
+        # ── Deployment gauge with a prominent, labeled target marker ──────────
+        f'<div style="position:relative; margin:8px 0 3px; padding-top:2px;">'
+        # the bar track + fill
+        f'<div style="height:11px; background:#fff; border-radius:6px; overflow:hidden;'
+        f' border:0.5px solid {hb_bd}; position:relative;">'
         f'<div style="position:absolute; left:0; top:0; bottom:0; width:{fill_pct:.0f}%; background:{bar_color};"></div>'
-        + (f'<div style="position:absolute; left:{floor_mark:.0f}%; top:-2px; bottom:-2px; width:2px; background:#27500A;"></div>'
-           if floor_lo > 0 else "")
-        + f'</div>'
-        f'<div style="font-size:11px; color:{hb_txt}; margin-top:5px;">{action_line}</div>'
+        + (  # target marker — bold full-height line through the bar
+            f'<div style="position:absolute; left:{target_mark:.0f}%; top:-3px; bottom:-3px;'
+            f' width:2.5px; background:#103766; border-radius:1px;"></div>'
+            if core_target > 0 else ""
+        )
+        + '</div>'
+        # target label pinned under the marker (its own row so it never clips)
+        + (
+            f'<div style="position:relative; height:14px; margin-top:1px;">'
+            f'<div style="position:absolute; left:{target_mark:.0f}%; transform:translateX(-50%);'
+            f' font-size:10px; font-weight:500; color:#103766; white-space:nowrap;">'
+            f'▲ {core_target}% target</div></div>'
+            if core_target > 0 else ""
+        )
+        + '</div>'
+        f'<div style="font-size:11px; color:{hb_txt}; margin-top:3px;">{action_line}</div>'
         '</div>'
         '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
         + _tile("Core $ deployed", f"${core_value:,.0f}", "", "#103766")
@@ -3203,51 +3220,14 @@ def main():
     perm, limits = calc_layer2(l0, rec_flags, st.session_state.eps_signal, perm_ov)
     st.session_state["_current_perm"] = perm
 
-    # ── PAGE HEADER ───────────────────────────────────────────────────────────
+    # ── GLOBAL ALERTS ─────────────────────────────────────────────────────────
+    # The big title + 8-tile global strip were removed (June 2026): per-tab heroes
+    # carry that context, so the bottom block was pure redundancy. Only the
+    # cross-tab warning bars (liquidity override / recession) render globally —
+    # and only when something is actually wrong, so a clean state shows nothing.
     liq_override = l0.get("liquidity_tighten") or l0.get("fnl_signal") == "OVERRIDE ACTIVE"
+    core_pct     = st.session_state.core_pct_deployed  # used by downstream tabs
 
-    # Signal colors for tiles
-    regime_color = "#27500A" if regime in ("Risk-on", "Reflation") else ("#CC1111" if regime == "Stagflation" else "#5A7BAA")
-    perm_color   = {"Green": "#27500A", "Yellow": "#E07800", "Red": "#CC1111"}.get(perm, "#5A7BAA")
-    spy_color    = "#27500A" if l0["spy_ret_1m"] > 0 else "#CC1111"
-    risk_str     = f"{limits['risk_lo']}–{limits['risk_hi']}%/trade" if limits["risk_hi"] > 0 else "No new trades"
-
-    # Core deployment status (v4)
-    core_pct    = st.session_state.core_pct_deployed
-    core_target = {"Green": 40, "Yellow": 20, "Red": 0}.get(perm, 0)
-    core_color  = "#27500A" if core_pct >= core_target else ("#E07800" if core_pct > 0 else "#CC1111")
-    core_signal = f"Target: {core_target}%" if core_target > 0 else "No Core in Red"
-
-    # Velocity summary (v4)
-    accel_sectors = l0.get("accelerating", [])
-    vel_count     = len(accel_sectors)
-    vel_label     = f"{vel_count} sector{'s' if vel_count != 1 else ''}" if vel_count > 0 else "None"
-    vel_color     = "#CC1111" if vel_count > 0 else "#27500A"
-
-    tiles_html = (
-        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:6px;">'
-        + _tile("Regime",        regime,                        f"● {l0.get('regime_detail', regime)}", regime_color)
-        + _tile("Permission",    perm,                          f"● {'Full' if perm=='Green' else 'Selective' if perm=='Yellow' else 'Protection'}", perm_color)
-        + _tile("SPY",           f"${l0['spy_price']:.2f}",    f"{'+' if l0['spy_ret_1m']>0 else ''}{l0['spy_ret_1m']*100:.1f}% 1M", spy_color)
-        + _tile("Max Positions", str(limits["max_pos_label"]), f"{risk_str}")
-        + "</div>"
-        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:10px;">'
-        + _tile("Core Deployed", f"{core_pct:.0f}%",           core_signal, core_color)
-        + _tile("Velocity Flag", vel_label,                     ", ".join(accel_sectors) if accel_sectors else "All normal", vel_color)
-        + _tile("Max Heat",      f"{limits['heat']}%",          "")
-        + _tile("Drawdown",
-                f"{st.session_state.get('drawdown_pct', 0.0):+.1f}%",
-                st.session_state.get("drawdown_label", "At peak"),
-                st.session_state.get("drawdown_color", "#27500A"))
-        + "</div>"
-    )
-
-    # Permission verdict now lives in the Macro tab hero (_render_layer0_2_tab),
-    # so the global GREEN/YELLOW/RED gate bar is intentionally omitted here to
-    # avoid showing the verdict twice. Warning bars below are kept — they're a
-    # cross-tab alert not surfaced in the hero.
-
-    # Warning bars
     warn_bars = ""
     if liq_override:
         reasons = []
@@ -3259,17 +3239,8 @@ def main():
     elif rec_flags >= 1:
         warn_bars += _gate_bar_html("Yellow", f"Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
 
-    date_str = datetime.now().strftime("%A, %B %d, %Y")
-    # Title + date and the metric-tile panel render BELOW the nav (see below).
-    header_html = (
-        f'<div style="padding-top:2px; margin-bottom:4px;">'
-        f'<span style="font-size:28px; font-weight:500; color:#103766;">Swing Trading Framework</span>'
-        f'<span style="font-size:12px; font-weight:400; color:#5A7BAA; margin-left:14px;">{date_str}</span>'
-        f'</div>'
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:15px 17px; margin-bottom:10px;">{tiles_html}</div>'
-        f'{warn_bars}'
-    )
+    # Global alerts render below the nav, above tab content (only if non-empty).
+    header_html = warn_bars
 
     # ── TABS — rendered at the very top, styled as webpage nav links ──────────
     st.markdown("""
@@ -3327,8 +3298,9 @@ def main():
         "Portfolio",
     ])
 
-    # Title + tiles render here — below the nav, above tab content.
-    st.markdown(header_html, unsafe_allow_html=True)
+    # Global alert bars render here (below nav, above tab content) — only if any.
+    if header_html:
+        st.markdown(header_html, unsafe_allow_html=True)
 
     with tab1:
         _render_layer0_2_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l3_data, regime)
