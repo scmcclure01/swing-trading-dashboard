@@ -108,7 +108,6 @@ from data.market import (
     fetch_screener_data,
     fetch_portfolio_prices,
     fetch_earnings_dates,
-    fetch_spy_forward_ey,
 )
 from data.fred import (
     fetch_fred_data,
@@ -890,7 +889,9 @@ def _render_layer1_card() -> str:
     Pulls FRED real/nominal 10y + SPY forward EY, scores the composite, and
     color-codes by data staleness. Returns an HTML string for _card()."""
     rates   = fetch_mispricing_rates()
-    fwd_ey  = fetch_spy_forward_ey()
+    # Forward earnings yield is entered manually (no free forward-EY data source).
+    _ey_val = st.session_state.get("spy_fwd_ey", 0.0)
+    fwd_ey  = _ey_val if _ey_val and _ey_val > 0 else None
 
     if "error" in rates:
         body = (f'<p style="font-size:12px; color:#CC1111; margin:0;">'
@@ -939,8 +940,13 @@ def _render_layer1_card() -> str:
         f'· TIPS {rates.get("tips_10y")}% · 10y {rates.get("nominal_10y")}%</p>'
         f'<table style="width:100%; border-collapse:collapse;">{rows}</table>'
         f'<p style="font-size:11px; color:#5A7BAA; margin:8px 0 0 0;">{result["sizing"]}</p>'
-        f'<p style="font-size:10px; color:#5A7BAA; margin:4px 0 0 0;">'
-        f'Run after CPI/PCE. GDPNow leg set manually in sidebar.</p>'
+        + (
+            f'<p style="font-size:10px; color:#E07800; margin:4px 0 0 0;">'
+            f'Enter S&amp;P forward earnings yield in the sidebar to compute checks 1 &amp; 3.</p>'
+            if fwd_ey is None else
+            f'<p style="font-size:10px; color:#5A7BAA; margin:4px 0 0 0;">'
+            f'Run after CPI/PCE. Forward EY &amp; GDPNow leg set manually in sidebar.</p>'
+        )
     )
     return _card("Layer 1 — Monthly Mispricing", body, pill="monthly")
 
@@ -2854,13 +2860,14 @@ def main():
         "lei_signal":    "Not set",
         "taylor_rule":   "Not set",
         "gdpnow_signal": "Not set",
+        "spy_fwd_ey":    0.0,
     }
     # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
     for etf in SECTOR_ETFS.values():
         defaults[f"flow_{etf.lower()}"] = "Not set"
 
     # Keys that persist across refreshes via URL query params
-    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule", "gdpnow_signal"]
+    _persist_keys = ["eps_signal", "drawdown_state", "lei_signal", "taylor_rule", "gdpnow_signal", "spy_fwd_ey"]
 
     # Load persisted values from URL on first visit
     qp = st.query_params
@@ -2941,6 +2948,14 @@ def main():
             "Taylor Rule Deviation (monthly)", _taylor_opts,
             index=_taylor_opts.index(st.session_state.taylor_rule),
             on_change=_save_manual_signals,
+        )
+        st.session_state.spy_fwd_ey = st.number_input(
+            "S&P 500 Forward Earnings Yield % (L1, monthly)",
+            min_value=0.0, max_value=20.0, step=0.01, format="%.2f",
+            value=float(st.session_state.spy_fwd_ey),
+            on_change=_save_manual_signals,
+            help="Forward earnings yield = 100 / forward P/E. Source: FactSet Earnings "
+                 "Insight or multpl.com (forward). Leave 0 if not set. Feeds L1 checks 1 & 3.",
         )
         _gdpnow_opts = ["Not set", "Bullish", "Neutral", "Bearish"]
         st.session_state.gdpnow_signal = st.selectbox(

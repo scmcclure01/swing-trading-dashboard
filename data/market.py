@@ -59,21 +59,6 @@ def fetch_portfolio_prices(tickers_key: str) -> dict:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def fetch_spy_forward_ey() -> float | None:
-    """
-    S&P 500 forward earnings yield (%) for Layer 1 mispricing, via SPY's
-    forward P/E. Returns None if unavailable. Cached 24h.
-    """
-    try:
-        fwd_pe = yf.Ticker("SPY").info.get("forwardPE")
-        if fwd_pe and fwd_pe > 0:
-            return round((1.0 / fwd_pe) * 100, 2)
-    except Exception:
-        pass
-    return None
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_earnings_dates(tickers_key: str) -> dict:
     """Fetch next earnings dates for a batch of tickers (cached 24h)."""
     tickers = tickers_key.split(",")
