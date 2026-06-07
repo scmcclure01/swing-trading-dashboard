@@ -1,27 +1,20 @@
 {
-  "cash_balance": 54244.25,
-  "last_updated": "2026-06-02",
+  "cash_balance": 55908.96,
+  "last_updated": "2026-06-05",
   "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
   "note": "Account value = cash_balance + open positions at market. cash_balance = total account minus cost basis of open positions. Update cash_balance when positions are opened or closed.",
-  "pending_orders": [
+  "pending_orders": [],
+  "open_positions": [
     {
       "ticker": "XLK",
       "layer": "Core",
-      "action": "Buy",
-      "order_type": "Limit",
-      "limit_price": 188.00,
+      "entry_date": "2026-06-05",
+      "entry_price": 188.00,
       "shares": 40,
-      "stop_price_plan": "20d MA at fill (Core rule)",
-      "risk_dollars_est": "~shares × (fill - 20d MA)",
-      "max_hold": "No limit (Core — persists with regime)",
-      "time_in_force": "GTC",
-      "order_date": "2026-06-01",
-      "order_expiration": "2026-11-20",
-      "order_number": "17C303DL",
-      "notes": "Core sector ETF — Technology. Brokerage Link ***0700. On fill: set stop at 20d MA, move to open_positions, deduct from cash_balance."
-    }
-  ],
-  "open_positions": [
+      "stop_price": null,
+      "current_price": 188.00,
+      "notes": "Core sector ETF — Technology. Filled limit order 17C303DL @ $188.00 ($7,520). Position value $7,520 (10.0% of account). Set stop at 20d MA in broker. No max hold — Core persists with regime. Exit: below 20d MA on volume / RS declining 2wk / regime shift / RED state."
+    },
     {
       "ticker": "DOCN",
       "layer": "Tactical",
@@ -31,16 +24,6 @@
       "stop_price": 153.00,
       "current_price": 168.00,
       "notes": "Accelerating Protocol. GTC stop $153 — user to set in broker. Technology sector. Risk: $225 (0.31%). Max hold 2026-07-14."
-    },
-    {
-      "ticker": "QCOM",
-      "layer": "Tactical",
-      "entry_date": "2026-05-27",
-      "entry_price": 240.00,
-      "shares": 41,
-      "stop_price": 225.00,
-      "current_price": 243.29,
-      "notes": "Accelerating Protocol. GTC stop $225 set in broker (order 1790W5BX). Risk: $615 (0.86% of $71.5K). SMH ROC 21 +22%. Max hold 2026-07-08. AUDIT: Oversized — 13.7% of account vs 10% cap. Was sized against $100K. Framework says 17 shares. Live position, do not adjust."
     },
     {
       "ticker": "LRCX",
@@ -54,6 +37,17 @@
     }
   ],
   "closed_positions": [
+    {
+      "ticker": "QCOM",
+      "layer": "Tactical",
+      "entry_date": "2026-05-27",
+      "exit_date": "2026-06-05",
+      "entry_price": 240.00,
+      "exit_price": 224.02,
+      "shares": 41,
+      "exit_reason": "Stop",
+      "notes": "GTC stop $225 (order 1790W5BX) — filled $224.02, minor slippage. $0.19 fee. Proceeds $9,184.71. P&L: -$655.29 (-6.66%). Held 9 days. Accelerating Protocol position."
+    },
     {
       "ticker": "NVDA",
       "layer": "Tactical",
