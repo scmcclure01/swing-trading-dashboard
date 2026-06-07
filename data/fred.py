@@ -95,30 +95,64 @@ def fetch_fed_net_liquidity() -> dict:
         return {"error": str(e)}
 
 
+def _fred_latest_via_api(series_id: str):
+    """Latest (value, date) for a FRED series via fredapi. Returns (None, '') on failure."""
+    if not FRED_AVAILABLE:
+        return None, ""
+    try:
+        api_key = st.secrets.get("FRED_API_KEY", "")
+        if not api_key:
+            return None, ""
+        s = Fred(api_key=api_key).get_series(series_id, observation_start="2023-01-01").dropna()
+        if len(s) > 0:
+            return float(s.iloc[-1]), str(s.index[-1].date())
+    except Exception:
+        pass
+    return None, ""
+
+
+def _fred_latest_via_csv(series_id: str, timeout: int = 20, retries: int = 2):
+    """Latest (value, date) for a FRED series via the public CSV, with retries."""
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                data = r.read().decode()
+            rows = list(csv.reader(StringIO(data)))[1:]
+            for row in reversed(rows):
+                if len(row) > 1 and row[1] not in (".", "", "NA"):
+                    return float(row[1]), row[0]
+            return None, ""
+        except Exception:
+            if attempt == retries - 1:
+                raise
+    return None, ""
+
+
+def _fred_latest(series_id: str):
+    """Latest (value, date): try fredapi first, fall back to the public CSV."""
+    val, dt = _fred_latest_via_api(series_id)
+    if val is not None:
+        return val, dt
+    return _fred_latest_via_csv(series_id)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_mispricing_rates() -> dict:
     """
-    Fetch the rates Layer 1 (monthly mispricing) needs, from the FRED public CSV
-    (no API key required):
+    Fetch the rates Layer 1 (monthly mispricing) needs:
       DFII10 — 10-year TIPS yield (real rate)     → Check 1 (earnings yield vs real rates)
       DGS10  — 10-year nominal Treasury yield      → Check 3 (equity risk premium)
+
+    Tries fredapi (API key) first, then the public CSV with retries — so a single
+    slow FRED response doesn't blank the card.
 
     Returns {'tips_10y', 'tips_date', 'nominal_10y', 'nominal_date'} or {'error': ...}.
     Each rate is a percentage (e.g. 2.15 means 2.15%).
     """
-    def latest_value(series_id):
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-        with urllib.request.urlopen(url, timeout=10) as r:
-            data = r.read().decode()
-        rows = list(csv.reader(StringIO(data)))[1:]
-        for row in reversed(rows):
-            if len(row) > 1 and row[1] not in (".", "", "NA"):
-                return float(row[1]), row[0]   # (value, date)
-        return None, ""
-
     try:
-        tips, tips_date       = latest_value("DFII10")
-        nominal, nominal_date = latest_value("DGS10")
+        tips, tips_date       = _fred_latest("DFII10")
+        nominal, nominal_date = _fred_latest("DGS10")
         if tips is None or nominal is None:
             return {"error": "FRED returned no usable DFII10/DGS10 data"}
         return {
@@ -128,7 +162,7 @@ def fetch_mispricing_rates() -> dict:
             "nominal_date": nominal_date,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"FRED fetch failed ({e}). Refresh to retry."}
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
