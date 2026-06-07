@@ -91,7 +91,7 @@ from config import (
     RS_NEW_HI_THRESHOLD, VELOCITY_THRESHOLD,
     SECTOR_ETFS, SECTOR_TICKERS, ALL_SECTORS,
     RISK_ON_SECTORS, REFLATION_SECTORS, DEFENSIVE_SECTORS,
-    SECTOR_COLORS, SECTOR_DASH,
+    SECTOR_COLORS, SECTOR_DASH, SECTOR_DASH_BY_SECTOR,
     PERM_LIMITS, SETUP_STYLE,
     FLOW_OPTS, FLOW_SIZE_MAP, PHASE_MAP,
 )
@@ -758,11 +758,9 @@ def build_rrg_chart(l3_data: list) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(shapes=shapes)
 
-    all_sector_keys = list(SECTOR_COLORS.keys())
     for d in l3_data:
-        idx        = all_sector_keys.index(d["sector"]) if d["sector"] in all_sector_keys else 0
-        color      = list(SECTOR_COLORS.values())[idx % len(SECTOR_COLORS)]
-        dash_style = SECTOR_DASH[idx // len(SECTOR_COLORS)]
+        color      = SECTOR_COLORS.get(d["sector"], "#475569")
+        dash_style = SECTOR_DASH_BY_SECTOR.get(d["sector"], "solid")
         tx, ty     = d["trail_x"], d["trail_y"]
 
         # Spline trail — faded, markers on historical positions
@@ -805,14 +803,25 @@ def build_rrg_chart(l3_data: list) -> go.Figure:
         )
 
     fig.update_layout(
-        height=560,
+        height=600,
         paper_bgcolor="#EEF3FA", plot_bgcolor="#FFFFFF",
         font=dict(color="#103766", size=11),
-        margin=dict(l=55, r=20, t=30, b=55),
-        xaxis=dict(title="RS-Ratio  →  (stronger relative performance)", gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[xlo, xhi]),
-        yaxis=dict(title="RS-Momentum  ↑  (accelerating)",               gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[ylo, yhi]),
+        # Extra bottom room so the x-axis title and the legend don't collide.
+        margin=dict(l=55, r=20, t=30, b=110),
+        xaxis=dict(
+            title=dict(text="RS-Ratio  →  (stronger relative performance)", standoff=14),
+            gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[xlo, xhi],
+        ),
+        yaxis=dict(
+            title="RS-Momentum  ↑  (accelerating)",
+            gridcolor="rgba(16,55,102,0.10)", zeroline=False, range=[ylo, yhi],
+        ),
         showlegend=True,
-        legend=dict(orientation="h", x=0, y=-0.15, bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+        # Legend sits well below the axis title (more negative y) and is centred.
+        legend=dict(
+            orientation="h", xanchor="center", x=0.5, y=-0.22,
+            bgcolor="rgba(0,0,0,0)", font=dict(size=10),
+        ),
     )
     return fig
 
@@ -1168,9 +1177,9 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
     hero_html = (
         '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
-        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:12px 14px;">'
-        f'<div style="font-size:10px; font-weight:500; color:{h_lbl}; text-transform:uppercase;'
-        f' letter-spacing:.05em;">Permission state — {regime_lbl} regime</div>'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{h_lbl}; letter-spacing:.01em;'
+        f' margin-bottom:4px;">Permission state — {regime_lbl} regime</div>'
         f'<div style="font-size:30px; font-weight:500; color:{h_val}; line-height:1.1; margin:3px 0 2px;">'
         f'{perm.upper()}</div>'
         f'<div style="font-size:12px; color:{h_lbl}; font-weight:500;">{rule_str}</div>'
@@ -1257,9 +1266,9 @@ def _render_layer3_tab(l3_data: list) -> None:
 
     rotation_hero = (
         '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
-        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:12px 14px;">'
-        f'<div style="font-size:10px; font-weight:500; color:{h_lbl}; text-transform:uppercase;'
-        f' letter-spacing:.05em;">Where to act this week</div>'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{h_lbl}; letter-spacing:.01em;'
+        f' margin-bottom:4px;">Where to act this week</div>'
         f'<div style="font-size:12px; color:{h_txt}; margin-top:6px; line-height:1.7;">'
         + _act_row("#27500A", "Enter / hold (Leading)", leading_t)
         + _act_row("#288CFA", "Watch (Improving)", improving_t)
@@ -1281,10 +1290,15 @@ def _render_layer3_tab(l3_data: list) -> None:
                 '— sector ETFs vs SPY, trailing 8 weeks · clockwise = normal cycle progression</span></div>',
                 unsafe_allow_html=True)
 
-    chart_sectors = st.multiselect(
-        "Sectors to display", options=ALL_SECTORS, default=ALL_SECTORS,
-        label_visibility="collapsed",
-    )
+    # Sector selector — a row of checkboxes (cleaner than the dropdown).
+    st.markdown('<div style="font-size:11px; color:#5A7BAA; margin-bottom:2px;">Show sectors</div>',
+                unsafe_allow_html=True)
+    _sel_cols = st.columns(5)
+    chart_sectors = []
+    for i, sec in enumerate(ALL_SECTORS):
+        with _sel_cols[i % 5]:
+            if st.checkbox(sec, value=True, key=f"rrg_show_{sec}"):
+                chart_sectors.append(sec)
     chart_data = [d for d in l3_data if d["sector"] in chart_sectors] if chart_sectors else l3_data
 
     with st.spinner("Building RRG chart..."):
@@ -2218,9 +2232,9 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
 
     core_hero = (
         '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
-        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:12px 14px;">'
-        f'<div style="font-size:10px; font-weight:500; color:{hb_lbl}; text-transform:uppercase;'
-        f' letter-spacing:.05em;">Core deployment · {perm.upper()} regime</div>'
+        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{hb_lbl}; letter-spacing:.01em;'
+        f' margin-bottom:4px;">Core deployment · {perm.upper()} regime</div>'
         f'<div style="display:flex; align-items:baseline; gap:8px; margin:4px 0 2px;">'
         f'<span style="font-size:30px; font-weight:500; color:{hb_txt}; line-height:1;">{core_pct:.0f}%</span>'
         f'<span style="font-size:13px; color:{hb_lbl};">'
@@ -2852,9 +2866,9 @@ def _render_portfolio_tab() -> None:
     dd_color_hero = ("#27500A" if _dd_pct_hero >= -7 else "#E07800" if _dd_pct_hero > -10 else "#CC1111")
     portfolio_hero = (
         '<div style="display:grid; grid-template-columns:1.25fr 1fr; gap:9px; margin-bottom:4px;">'
-        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:12px 14px;">'
-        f'<div style="font-size:10px; font-weight:500; color:{hb_lbl}; text-transform:uppercase;'
-        f' letter-spacing:.05em;">{hero_title}</div>'
+        f'<div style="background:{hb_bg}; border:1px solid {hb_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{hb_lbl}; letter-spacing:.01em;'
+        f' margin-bottom:4px;">{hero_title}</div>'
         f'<div style="font-size:12px; color:{hb_txt}; margin-top:6px; line-height:1.6;">{items_html}</div>'
         '</div>'
         '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'

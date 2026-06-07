@@ -83,18 +83,32 @@ DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
 
 # ── Per-sector display colors for the RRG chart ──────────────────────────────
 SECTOR_COLORS = {
-    "Energy":                 "#F59E0B",   # amber
-    "Materials":              "#10B981",   # emerald
-    "Industrials":            "#3B82F6",   # blue
-    "Technology":             "#A78BFA",   # violet
-    "Semiconductors":         "#8B5CF6",   # purple
-    "Financials":             "#EC4899",   # pink
-    "Consumer Discretionary": "#F97316",   # orange
-    "Consumer Staples":       "#06B6D4",   # cyan
-    "Utilities":              "#EF4444",   # red
-    "Health Care":            "#84CC16",   # lime
+    "Energy":                 "#D97706",   # amber-700
+    "Materials":              "#059669",   # emerald-600
+    "Industrials":            "#2563EB",   # blue-600
+    "Technology":             "#7C3AED",   # violet-600
+    "Semiconductors":         "#DB2777",   # pink-600 (was near-violet; now distinct)
+    "Financials":             "#0891B2",   # cyan-700
+    "Consumer Discretionary": "#EA580C",   # orange-600
+    "Consumer Staples":       "#65A30D",   # lime-600
+    "Utilities":              "#DC2626",   # red-600
+    "Health Care":            "#475569",   # slate-600
 }
-SECTOR_DASH = ["solid", "dash", "dot", "dashdot"]   # line-style overflow fallback
+# Per-sector dash so every line is unique by colour+style, even where hues are
+# close (e.g. the amber/orange and the reds).
+SECTOR_DASH_BY_SECTOR = {
+    "Energy":                 "solid",
+    "Materials":              "solid",
+    "Industrials":            "solid",
+    "Technology":             "solid",
+    "Semiconductors":         "dash",
+    "Financials":             "dash",
+    "Consumer Discretionary": "dash",
+    "Consumer Staples":       "dot",
+    "Utilities":              "dot",
+    "Health Care":            "dashdot",
+}
+SECTOR_DASH = ["solid", "dash", "dot", "dashdot"]   # legacy fallback (still imported)
 
 # ── Permission state limits and display labels ───────────────────────────────
 PERM_LIMITS = {
