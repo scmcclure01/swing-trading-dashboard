@@ -3274,13 +3274,10 @@ def main():
         + "</div>"
     )
 
-    # Gate bar
-    gate_texts = {
-        "Green":  f"GREEN STATE — Full deployment. Momentum breakouts. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
-        "Yellow": f"YELLOW STATE — Selective entry. {SETUP_STYLE['Yellow']}. Up to {limits['max_pos_label']} positions · {risk_str} · {limits['heat']}% max heat.",
-        "Red":    f"RED STATE — Capital protection. No new entries. {limits['max_pos_label']} positions max · {limits['heat']}% max heat.",
-    }
-    gate_bar = _gate_bar_html(perm, gate_texts[perm])
+    # Permission verdict now lives in the Macro tab hero (_render_layer0_2_tab),
+    # so the global GREEN/YELLOW/RED gate bar is intentionally omitted here to
+    # avoid showing the verdict twice. Warning bars below are kept — they're a
+    # cross-tab alert not surfaced in the hero.
 
     # Warning bars
     warn_bars = ""
@@ -3295,47 +3292,60 @@ def main():
         warn_bars += _gate_bar_html("Yellow", f"Recession composite: {rec_flags}/{rec_total} indicator(s) flagging — monitor.")
 
     date_str = datetime.now().strftime("%A, %B %d, %Y")
+    # Title + date and the metric-tile panel render BELOW the nav (see below).
     header_html = (
-        f'<div style="padding-top:1rem; margin-bottom:4px;">'
+        f'<div style="padding-top:2px; margin-bottom:4px;">'
         f'<span style="font-size:28px; font-weight:500; color:#103766;">Swing Trading Framework</span>'
         f'<span style="font-size:12px; font-weight:400; color:#5A7BAA; margin-left:14px;">{date_str}</span>'
         f'</div>'
         f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
         f' padding:15px 17px; margin-bottom:10px;">{tiles_html}</div>'
-        f'{gate_bar}{warn_bars}'
+        f'{warn_bars}'
     )
-    st.markdown(header_html, unsafe_allow_html=True)
 
-    # ── TABS ──────────────────────────────────────────────────────────────────
-    # ── Tab nav styling ─────────────────────────────────────────────────────
+    # ── TABS — rendered at the very top, styled as webpage nav links ──────────
     st.markdown("""
     <style>
-    /* Tab container — clean bottom border */
+    /* Pull the tab nav to the very top of the page */
+    div[data-testid="stTabs"] { margin-top: -0.5rem; }
+    /* Nav row — sits flush at top, thin baseline rule like a site header */
     div[data-testid="stTabs"] > div[role="tablist"] {
-        border-bottom: 2px solid rgba(16,55,102,0.10);
-        gap: 0;
+        border-bottom: 1px solid rgba(16,55,102,0.12);
+        gap: 4px;
+        margin-bottom: 1rem;
     }
-    /* Individual tab buttons */
+    /* Tabs as text hyperlinks */
     div[data-testid="stTabs"] button[role="tab"] {
-        font-size: 13px;
-        font-weight: 500;
-        color: #5A7BAA;
-        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 400;
+        color: #288CFA;                     /* link blue */
+        padding: 6px 14px;
         border: none;
-        border-bottom: 2px solid transparent;
         background: transparent;
-        margin-bottom: -2px;
-        transition: color 0.15s, border-color 0.15s;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+        text-decoration-color: rgba(40,140,250,0.45);
+        transition: color 0.12s, text-decoration-color 0.12s;
+    }
+    div[data-testid="stTabs"] button[role="tab"] p {
+        font-size: 14px; font-weight: 400;  /* override Streamlit inner <p> */
     }
     div[data-testid="stTabs"] button[role="tab"]:hover {
         color: #103766;
-        border-bottom-color: rgba(16,55,102,0.25);
+        text-decoration-color: #103766;     /* darken underline on hover */
     }
+    /* Active tab — visited/current link: darker, no underline, bold */
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         color: #103766;
-        font-weight: 600;
-        border-bottom: 2px solid #103766;
+        font-weight: 500;
+        text-decoration: none;
     }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p {
+        font-weight: 500;
+    }
+    /* Hide the sliding red indicator bar Streamlit draws under tabs */
+    div[data-testid="stTabs"] [data-baseweb="tab-highlight"] { background: transparent !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -3348,6 +3358,9 @@ def main():
         "Charts",
         "Portfolio",
     ])
+
+    # Title + tiles render here — below the nav, above tab content.
+    st.markdown(header_html, unsafe_allow_html=True)
 
     with tab1:
         _render_layer0_2_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l3_data, regime)
