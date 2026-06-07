@@ -116,6 +116,12 @@ from data.fred import (
     FRED_AVAILABLE,
 )
 from data.flows import fetch_etf_fund_flows
+from trading_logic import (
+    compute_entry_stop,
+    period_to_range,
+    add_open_position,
+    close_position,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2135,19 +2141,10 @@ def _render_position_sizer_tab(
                 base_high = round(float(base_px.max()), 2)
                 base_low = round(float(base_px.min()), 2)
 
-                if trigger == "Breakout":
-                    # Entry: top of base (pivot). Stop: just below bottom of base.
-                    entry = round(base_high * 1.001, 2)
-                    stop = round(base_low * 0.99, 2)
-                elif trigger == "Pullback":
-                    # Entry: at the 20d or 50d MA. Stop: 1-2% below that MA.
-                    entry = round(ma20, 2)
-                    stop = round(ma20 * 0.98, 2)
-                else:  # Accelerating
-                    # Entry: current price (up to 15% above 20d MA). Stop: 10d EMA.
-                    entry = price
-                    stop = round(ema10 * 0.99, 2)
-
+                entry, stop = compute_entry_stop(trigger, {
+                    "price": price, "ma20": ma20, "ema10": ema10,
+                    "base_high": base_high, "base_low": base_low,
+                })
                 st.session_state["sizer_entry"] = entry
                 st.session_state["sizer_stop"] = stop
                 st.session_state["sizer_live_quote"] = {
@@ -2221,15 +2218,9 @@ def _render_position_sizer_tab(
         if not live:
             return
         trig = st.session_state.get("sizer_trigger", "Breakout")
-        if trig == "Breakout":
-            st.session_state["sizer_entry"] = round(live["base_high"] * 1.001, 2)
-            st.session_state["sizer_stop"] = round(live["base_low"] * 0.99, 2)
-        elif trig == "Pullback":
-            st.session_state["sizer_entry"] = round(live["ma20"], 2)
-            st.session_state["sizer_stop"] = round(live["ma20"] * 0.98, 2)
-        else:  # Accelerating
-            st.session_state["sizer_entry"] = round(live["price"], 2)
-            st.session_state["sizer_stop"] = round(live["ema10"] * 0.99, 2)
+        entry, stop = compute_entry_stop(trig, live)
+        st.session_state["sizer_entry"] = entry
+        st.session_state["sizer_stop"] = stop
 
     # ── Input columns ─────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -2943,14 +2934,11 @@ def _render_portfolio_tab() -> None:
                 stop_px    = st.number_input("Stop Price", min_value=0.01, step=0.01, format="%.2f", key="add_stop")
                 notes      = st.text_input("Notes", key="add_notes")
                 if st.form_submit_button("Add") and ticker and entry_px > 0 and shares > 0:
-                    cost = entry_px * int(shares)
-                    data["open_positions"].append({
-                        "ticker": ticker, "layer": layer,
-                        "entry_date": str(entry_date), "entry_price": entry_px,
-                        "shares": int(shares), "stop_price": stop_px,
-                        "current_price": None, "notes": notes,
-                    })
-                    data["cash_balance"] = data.get("cash_balance", 0) - cost
+                    add_open_position(
+                        data, ticker=ticker, layer=layer,
+                        entry_date=str(entry_date), entry_price=entry_px,
+                        shares=int(shares), stop_price=stop_px, notes=notes,
+                    )
                     _portfolio_save(data)
                     st.cache_data.clear()
                     st.rerun()
@@ -2965,21 +2953,13 @@ def _render_portfolio_tab() -> None:
                     exit_reason = st.selectbox("Exit Reason", ["Target","Stop","Rule-based"], key="close_reason")
                     close_notes = st.text_input("Notes", key="close_notes")
                     if st.form_submit_button("Close") and exit_px > 0:
-                        pos = next((p for p in data["open_positions"] if p["ticker"] == sel_ticker), None)
-                        if pos:
-                            proceeds = exit_px * pos["shares"]
-                            data["closed_positions"].insert(0, {
-                                "ticker": pos["ticker"], "layer": pos.get("layer","Tactical"),
-                                "entry_date": pos["entry_date"], "exit_date": str(exit_date),
-                                "entry_price": pos["entry_price"], "exit_price": exit_px,
-                                "shares": pos["shares"], "exit_reason": exit_reason,
-                                "notes": close_notes,
-                            })
-                            data["open_positions"] = [p for p in data["open_positions"] if p["ticker"] != sel_ticker]
-                            data["cash_balance"] = data.get("cash_balance", 0) + proceeds
-                            _portfolio_save(data)
-                            st.cache_data.clear()
-                            st.rerun()
+                        close_position(
+                            data, ticker=sel_ticker, exit_date=str(exit_date),
+                            exit_price=exit_px, exit_reason=exit_reason, notes=close_notes,
+                        )
+                        _portfolio_save(data)
+                        st.cache_data.clear()
+                        st.rerun()
 
     # ── Performance period selector ───────────────────────────────────────────
     perf_col1, perf_col2 = st.columns([2, 5])
@@ -2989,26 +2969,17 @@ def _render_portfolio_tab() -> None:
             ["YTD", "1M", "3M", "6M", "1Y", "Custom"],
             index=0, label_visibility="collapsed", key="port_period",
         )
-    if perf_period == "YTD":
-        p_start, p_end, period_label = date(today.year,1,1), today, f"YTD {today.year}"
-    elif perf_period == "1M":
-        p_start, p_end, period_label = today-timedelta(days=30), today, "Last 30 Days"
-    elif perf_period == "3M":
-        p_start, p_end, period_label = today-timedelta(days=91), today, "Last 3 Months"
-    elif perf_period == "6M":
-        p_start, p_end, period_label = today-timedelta(days=182), today, "Last 6 Months"
-    elif perf_period == "1Y":
-        p_start, p_end, period_label = today-timedelta(days=365), today, "Last 12 Months"
-    else:
+    custom_range = None
+    if perf_period == "Custom":
         with perf_col2:
             custom_range = st.date_input(
                 "Range", value=(date(today.year,1,1), today),
                 min_value=date(2020,1,1), max_value=today,
                 label_visibility="collapsed", key="port_custom_range",
             )
-        p_start = custom_range[0] if isinstance(custom_range,(list,tuple)) else date(today.year,1,1)
-        p_end   = custom_range[1] if isinstance(custom_range,(list,tuple)) and len(custom_range)>1 else today
-        period_label = f"{p_start} → {p_end}"
+        if not isinstance(custom_range, (list, tuple)):
+            custom_range = (custom_range, today)
+    p_start, p_end, period_label = period_to_range(perf_period, today, custom_range)
 
     perf = _calc_performance(closed_pos, p_start, p_end)
     _, total_mv, total_cb, total_upnl, total_risk = _build_open_table(open_pos, prices, account_size)
