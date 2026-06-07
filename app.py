@@ -88,132 +88,17 @@ st.markdown("""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTS
+# CONSTANTS — moved to config.py
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Lookback periods (trading days)
-LB_1M = 21    # ~1 calendar month
-LB_3M = 63    # ~3 calendar months
-LB_6M = 126   # ~6 calendar months
-
-# RS new-high threshold: within 2% of the recent peak = new high
-RS_NEW_HI_THRESHOLD = 0.98
-
-# Velocity Flag threshold (v4): sector ETF ROC 21 > 15% = Accelerating
-VELOCITY_THRESHOLD = 0.15
-
-# Sector ETF universe
-SECTOR_ETFS = {
-    "Energy":                 "XLE",
-    "Materials":              "XLB",
-    "Industrials":            "XLI",
-    "Technology":             "XLK",
-    "Semiconductors":         "SMH",
-    "Financials":             "XLF",
-    "Consumer Discretionary": "XLY",
-    "Consumer Staples":       "XLP",
-    "Utilities":              "XLU",
-    "Health Care":            "XLV",
-}
-
-SECTOR_TICKERS = {
-    "Energy": [
-        "XOM","CVX","COP","EOG","SLB","MPC","PSX","VLO","OXY","HES",
-        "DVN","HAL","BKR","FANG","MRO","APA","EQT","CTRA","TRGP","OKE",
-        "KMI","WMB","LNG","CVI","MGY",
-    ],
-    "Materials": [
-        "LIN","APD","ECL","SHW","FCX","NEM","NUE","VMC","MLM","ALB",
-        "DD","EMN","IFF","PPG","RPM","FMC","MOS","CF","BALL","IP",
-        "PKG","SEE","CCK","AVY","SON","AMCR","CE","DOW","LYB","WLK",
-    ],
-    "Industrials": [
-        "RTX","HON","UNP","UPS","BA","LMT","GE","CAT","DE","MMM",
-        "ITW","EMR","ETN","PH","ROK","FDX","CSX","NSC","WM","RSG",
-        "CTAS","CPRT","GWW","AME","TT","IR","CARR","OTIS","PWR","URI",
-        "MAS","JCI","XYL","AXON","TDG","HWM","NOC","GD","LHX","LDOS",
-        "HUBB","FTV","RRX","GNRC","SAIA","ODFL","JBHT","EXPD","TXT",
-    ],
-    "Technology": [
-        "AAPL","MSFT","NVDA","AVGO","ORCL","CRM","ACN","AMD","QCOM","TXN",
-        "AMAT","LRCX","KLAC","MU","ADI","MCHP","CDNS","SNPS","FTNT",
-        "PANW","CRWD","NOW","ZS","DDOG","NET",
-    ],
-    "Consumer Discretionary": [
-        "AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","TJX","BKNG","CMG",
-        "ROST","ORLY","AZO","DHI","LEN","PHM","ULTA","YUM","DRI",
-    ],
-    "Financials": [
-        "BRK-B","JPM","V","MA","BAC","WFC","GS","MS","BLK","SCHW",
-        "AXP","C","USB","PNC","TFC","COF","ICE","CME","SPGI","MCO",
-    ],
-    "Consumer Staples": [
-        "PG","KO","PEP","COST","WMT","PM","MO","CL","GIS","K",
-        "SJM","HRL","CAG","CPB","MKC","CHD","CLX","KMB","MDLZ",
-    ],
-    "Utilities": [
-        "NEE","DUK","SO","D","AEP","EXC","SRE","PEG","ETR","ED",
-        "XEL","WEC","ES","AWK","DTE","FE","PPL","AEE","CMS","NI",
-    ],
-    "Health Care": [
-        "LLY","UNH","JNJ","ABT","TMO","DHR","BMY","AMGN","ISRG","MDT",
-        "SYK","BSX","EW","BDX","IDXX","DXCM",
-    ],
-}
-
-ALL_SECTORS = list(SECTOR_ETFS.keys())
-
-# Regime classification sets.
-# Industrials appears in both Risk-on and Reflation per framework v3.
-RISK_ON_SECTORS   = {"Technology", "Semiconductors", "Financials", "Consumer Discretionary", "Industrials"}
-REFLATION_SECTORS = {"Energy", "Materials", "Industrials"}
-DEFENSIVE_SECTORS = {"Consumer Staples", "Utilities", "Health Care"}
-
-# Per-sector display colors for the RRG chart
-SECTOR_COLORS = {
-    "Energy":                 "#F59E0B",   # amber
-    "Materials":              "#10B981",   # emerald
-    "Industrials":            "#3B82F6",   # blue
-    "Technology":             "#A78BFA",   # violet
-    "Semiconductors":         "#8B5CF6",   # purple
-    "Financials":             "#EC4899",   # pink
-    "Consumer Discretionary": "#F97316",   # orange
-    "Consumer Staples":       "#06B6D4",   # cyan
-    "Utilities":              "#EF4444",   # red
-    "Health Care":            "#84CC16",   # lime
-}
-SECTOR_DASH = ["solid", "dash", "dot", "dashdot"]   # line-style overflow fallback
-
-# Permission state limits and display labels
-PERM_LIMITS = {
-    "Green":  {"max_pos": 20, "max_pos_label": "Up to 20", "risk_lo": 0.75, "risk_hi": 1.00, "heat": 15},
-    "Yellow": {"max_pos": 10, "max_pos_label": "8–12",     "risk_lo": 0.25, "risk_hi": 0.50, "heat": 8},
-    "Red":    {"max_pos":  5, "max_pos_label": "3–5",      "risk_lo": 0.00, "risk_hi": 0.00, "heat": 3},
-}
-
-SETUP_STYLE = {
-    "Green":  "Momentum breakouts",
-    "Yellow": "Pullbacks to 20d / 50d MA",
-    "Red":    "No new entries — protect capital",
-}
-
-# Layer 3 flow strength options and sizing map (framework v3, Table: Position Sizing)
-FLOW_OPTS = ["Not set", "Weak", "Moderate", "Strong", "Outflows"]
-
-FLOW_SIZE_MAP = {
-    "Weak":     ("Quarter",  "0.19%", "1 week of modest inflows — watch closely"),
-    "Moderate": ("Half",     "0.38%", "1–2 weeks consistent inflows — enter"),
-    "Strong":   ("Full",     "0.75%", "2+ weeks accelerating inflows — full size"),
-    "Outflows": ("Exit",     "—",     "Flow reversal — exit review immediately"),
-}
-
-# Layer 3 phase labels mapped from RRG quadrant
-PHASE_MAP = {
-    "Improving": "Phase 1 — Early",
-    "Leading":   "Phase 2 — Confirmed",
-    "Weakening": "Exiting",
-    "Lagging":   "No Trade",
-}
+from config import (
+    LB_1M, LB_3M, LB_6M,
+    RS_NEW_HI_THRESHOLD, VELOCITY_THRESHOLD,
+    SECTOR_ETFS, SECTOR_TICKERS, ALL_SECTORS,
+    RISK_ON_SECTORS, REFLATION_SECTORS, DEFENSIVE_SECTORS,
+    SECTOR_COLORS, SECTOR_DASH,
+    PERM_LIMITS, SETUP_STYLE,
+    FLOW_OPTS, FLOW_SIZE_MAP, PHASE_MAP,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1791,110 +1676,22 @@ def icon(v): return "✅" if v else "❌"
 def macd(v): return "▲" if v else "▼"
 
 
+# cb_table / _card / _gate_bar_html / _tile moved to ui_components.py.
+# Imported under the original names so existing call sites are unchanged.
+# app.py uses the macro color preset for cb_table.
+from ui_components import (
+    card as _card,
+    gate_bar_html as _gate_bar_html,
+    tile as _tile,
+    cb_table as _cb_table_base,
+    CB_PRESET_MACRO,
+)
+
+
 def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = True) -> str:
-    """Render a DataFrame as a Classic Blue styled HTML table.
-    bordered=False omits the outer container — use when the table sits inside a _card().
-    """
-    _GREEN  = ("#27500A", "500")
-    _RED    = ("#CC1111", "500")
-    _ORANGE = ("#E07800", "500")
-    _BLUE   = ("#288CFA", "500")
-    _DARK   = ("#103766", "400")
-
-    def _color(val: str):
-        s = str(val)
-        if any(x in s for x in ["✅", "Leading", "Positive", "Clear", "Open", "Rising",
-                                  "OK", "🟢", "Phase 2", "Confirmed", "GREEN"]):
-            return _GREEN
-        if any(x in s for x in ["❌", "Lagging", "Negative", "FLAG", "Closed",
-                                  "Declining", "🔴", "OVERRIDE", "ACTIVE", "Critical"]):
-            return _RED
-        if any(x in s for x in ["⚠️", "Mixed", "Weakening", "Elevated", "pressure", "🟡"]):
-            return _ORANGE
-        if any(x in s for x in ["🔵", "Improving", "Phase 1", "Early"]):
-            return _BLUE
-        return _DARK
-
-    TH      = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
-               " text-align: left; white-space: nowrap;")
-    TD_BASE = "padding: 8px 12px; font-size: 14px; border-top: 0.5px solid rgba(16,55,102,0.09);"
-
-    cols   = list(df.columns)
-    header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
-
-    rows_html = ""
-    for _, row in df.iterrows():
-        cells = ""
-        for col in cols:
-            val = row[col]
-            color, weight = _color(val)
-            cells += (f'<td style="{TD_BASE} color: {color}; font-weight: {weight};">'
-                      f'{val}</td>')
-        rows_html += f"<tr>{cells}</tr>"
-
-    inner = (
-        f'<table style="width: 100%; border-collapse: collapse; background: #FFFFFF;">'
-        f'<thead><tr style="background: #EEF3FA;">{header}</tr></thead>'
-        f'<tbody>{rows_html}</tbody>'
-        f'</table>'
-    )
-    if not bordered:
-        return inner
-    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
-    return (
-        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
-        f'{inner}</div><div style="margin-bottom:8px"></div>'
-    )
-
-
-def _card(heading: str, inner_html: str, pill: str = "") -> str:
-    """White card with uppercase heading, optional pill label, and arbitrary inner HTML."""
-    pill_html = (
-        f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
-        f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
-        if pill else ""
-    )
-    return (
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:15px 17px; margin-bottom:10px; overflow:hidden;">'
-        f'<div style="display:flex; align-items:center; justify-content:space-between;'
-        f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
-        f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
-        f' letter-spacing:0.04em;">{heading}</span>{pill_html}</div>'
-        f'{inner_html}</div>'
-    )
-
-
-def _gate_bar_html(perm: str, text: str) -> str:
-    """Render the permission state gate bar."""
-    cfg = {
-        "Green":  ("#D6F0D6", "rgba(29,122,42,0.30)",  "#1D7A2A", "#173404"),
-        "Yellow": ("#FFF3D6", "rgba(224,120,0,0.30)",   "#E07800", "#412402"),
-        "Red":    ("#FFE4E4", "rgba(204,17,17,0.30)",   "#CC1111", "#501313"),
-    }
-    bg, border, dot_c, text_c = cfg.get(perm, cfg["Green"])
-    return (
-        f'<div style="background:{bg}; border-radius:9px; border:0.5px solid {border};'
-        f' padding:10px 16px; display:flex; align-items:center; gap:10px; margin-bottom:10px;">'
-        f'<div style="width:9px; height:9px; border-radius:50%; background:{dot_c}; flex-shrink:0;"></div>'
-        f'<span style="font-size:13px; font-weight:500; color:{text_c};">{text}</span>'
-        f'</div>'
-    )
-
-
-def _tile(label: str, value: str, signal: str = "", signal_color: str = "#5A7BAA") -> str:
-    """Single metric tile for the header row."""
-    sig_html = (
-        f'<div style="font-size:11px; font-weight:500; color:{signal_color}; margin-top:3px;">{signal}</div>'
-        if signal else ""
-    )
-    return (
-        f'<div style="background:#EEF3FA; border-radius:9px; border:0.5px solid rgba(16,55,102,0.15);'
-        f' padding:10px 12px;">'
-        f'<div style="font-size:11px; font-weight:400; color:#5A7BAA; margin-bottom:2px;">{label}</div>'
-        f'<div style="font-size:17px; font-weight:500; color:#103766;">{value}</div>'
-        f'{sig_html}</div>'
-    )
+    """Classic Blue HTML table using the macro color preset (see ui_components)."""
+    return _cb_table_base(df, max_height=max_height, bordered=bordered,
+                          preset=CB_PRESET_MACRO, font_size=14)
 
 
 def fmt_df(df: pd.DataFrame) -> pd.DataFrame:

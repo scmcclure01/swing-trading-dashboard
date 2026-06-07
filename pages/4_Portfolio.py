@@ -9,6 +9,7 @@ import yfinance as yf
 import pandas as pd
 import json
 import os
+import sys
 from datetime import datetime, date, timedelta
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -18,92 +19,28 @@ from datetime import datetime, date, timedelta
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORTFOLIO_PATH = os.path.join(_HERE, "portfolio.json")
 
+# Ensure the framework root (parent of pages/) is importable for shared modules.
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SHARED STYLE HELPERS  (duplicated from app.py to keep this page self-contained)
+# SHARED STYLE HELPERS  (imported from ui_components / theme — single source)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _tile(label: str, value: str, signal: str = "", signal_color: str = "#5A7BAA") -> str:
-    sig_html = (
-        f'<div style="font-size:11px; font-weight:500; color:{signal_color}; margin-top:3px;">{signal}</div>'
-        if signal else ""
-    )
-    return (
-        f'<div style="background:#EEF3FA; border-radius:9px; border:0.5px solid rgba(16,55,102,0.15);'
-        f' padding:10px 12px;">'
-        f'<div style="font-size:11px; font-weight:400; color:#5A7BAA; margin-bottom:2px;">{label}</div>'
-        f'<div style="font-size:17px; font-weight:500; color:#103766;">{value}</div>'
-        f'{sig_html}</div>'
-    )
-
-
-def _card(heading: str, inner_html: str, pill: str = "") -> str:
-    pill_html = (
-        f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
-        f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
-        if pill else ""
-    )
-    return (
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:15px 17px; margin-bottom:10px; overflow:hidden;">'
-        f'<div style="display:flex; align-items:center; justify-content:space-between;'
-        f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
-        f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
-        f' letter-spacing:0.04em;">{heading}</span>{pill_html}</div>'
-        f'{inner_html}</div>'
-    )
+from ui_components import (
+    card as _card,
+    tile as _tile,
+    cb_table as _cb_table_base,
+    CB_PRESET_PORTFOLIO,
+)
+from theme import pnl_color as _pnl_color
 
 
 def cb_table(df: pd.DataFrame, max_height: int | None = None, bordered: bool = True) -> str:
-    _GREEN  = ("#27500A", "500")
-    _RED    = ("#CC1111", "500")
-    _ORANGE = ("#E07800", "500")
-    _BLUE   = ("#288CFA", "500")
-    _DARK   = ("#103766", "400")
-
-    def _color(val: str):
-        s = str(val)
-        if any(x in s for x in ["✅", "Target", "Core", "FULL", "🟢", "GREEN", "Open", "Rising"]):
-            return _GREEN
-        if any(x in s for x in ["❌", "Stop", "🔴", "RED", "loss"]):
-            return _RED
-        if any(x in s for x in ["⚠️", "Rule-based", "Mixed", "🟡", "HALF"]):
-            return _ORANGE
-        if any(x in s for x in ["🔵", "Tactical"]):
-            return _BLUE
-        return _DARK
-
-    TH      = ("padding: 7px 12px; font-size: 11px; font-weight: 500; color: #5A7BAA;"
-               " text-align: left; white-space: nowrap;")
-    TD_BASE = "padding: 8px 12px; font-size: 13px; border-top: 0.5px solid rgba(16,55,102,0.09);"
-
-    cols   = list(df.columns)
-    header = "".join(f'<th style="{TH}">{c}</th>' for c in cols)
-
-    rows_html = ""
-    for _, row in df.iterrows():
-        cells = ""
-        for col in cols:
-            val = row[col]
-            color, weight = _color(str(val))
-            cells += (f'<td style="{TD_BASE} color: {color}; font-weight: {weight};">'
-                      f'{val}</td>')
-        rows_html += f"<tr>{cells}</tr>"
-
-    inner = (
-        f'<table style="width: 100%; border-collapse: collapse; background: #FFFFFF;">'
-        f'<thead><tr style="background: #EEF3FA;">{header}</tr></thead>'
-        f'<tbody>{rows_html}</tbody>'
-        f'</table>'
-    )
-    if not bordered:
-        return inner
-    scroll = f"max-height: {max_height}px; overflow-y: auto;" if max_height else ""
-    return (
-        f'<div style="border-radius: 9px; overflow: hidden; border: 1px solid rgba(16,55,102,0.12); {scroll}">'
-        f'{inner}</div><div style="margin-bottom:8px"></div>'
-    )
+    """Classic Blue HTML table using the portfolio color preset (see ui_components)."""
+    return _cb_table_base(df, max_height=max_height, bordered=bordered,
+                          preset=CB_PRESET_PORTFOLIO, font_size=13)
 
 
 def pct_fmt(v: float, decimals: int = 1) -> str:
@@ -112,12 +49,6 @@ def pct_fmt(v: float, decimals: int = 1) -> str:
 
 def dollar_fmt(v: float) -> str:
     return f"${v:+,.0f}" if v != 0 else "$0"
-
-
-def _pnl_color(v: float) -> str:
-    if v > 0: return "#27500A"
-    if v < 0: return "#CC1111"
-    return "#5A7BAA"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
