@@ -2280,10 +2280,17 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
 
 
 def _render_charts_tab(passes_df: pd.DataFrame) -> None:
-    """Render the Charts tab — individual stock charts for Full Signal candidates."""
+    """Render the Charts tab — individual price charts for Full Signal candidates.
+
+    A utility view (no hero): pick a ticker, see its key stats + chart. Reads the
+    screener's Full-Signal passes; prompts to run the screener if none yet."""
 
     if passes_df.empty:
-        st.info("Run the screener first to populate charts.")
+        st.markdown(
+            _gate_bar_html("Yellow",
+                           "Run the screener first (Screener tab) to populate charts."),
+            unsafe_allow_html=True,
+        )
         return
 
     sel = st.selectbox(
@@ -2293,22 +2300,31 @@ def _render_charts_tab(passes_df: pd.DataFrame) -> None:
     )
     if sel:
         row = passes_df[passes_df["Ticker"] == sel].iloc[0]
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Price",    f"${row['Price']:.2f}")
-        c2.metric("RS vs SPY", f"+{row.get('RS_vs_SPY_21d', 0):.1f}%")
-        c3.metric("vs 20MA",   f"+{row.get('Dist_MA20_pct', 0):.1f}%")
+        rs  = row.get("RS_vs_SPY_21d", 0) or 0
+        ma  = row.get("Dist_MA20_pct", 0) or 0
+        rs_color = "#27500A" if rs >= 0 else "#CC1111"
+        ma_color = "#27500A" if ma >= 0 else "#CC1111"
+        tiles = (
+            '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:10px;">'
+            + _tile(f"{sel} price", f"${row['Price']:.2f}", row.get("Sector", ""))
+            + _tile("RS vs SPY (21d)", f"{rs:+.1f}%", "relative strength", rs_color)
+            + _tile("vs 20-day MA", f"{ma:+.1f}%", "distance from MA", ma_color)
+            + '</div>'
+        )
+        st.markdown(tiles, unsafe_allow_html=True)
         with st.spinner(f"Building {sel} chart..."):
             fig = build_chart(sel)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error(f"Could not load chart data for {sel}.")
+            st.markdown(_gate_bar_html("Red", f"Could not load chart data for {sel}."),
+                        unsafe_allow_html=True)
 
     if st.checkbox("Show all Full Signal charts"):
         for _, row in passes_df.head(20).iterrows():
-            t = row["Ticker"]
-            rs = row.get("RS_vs_SPY_21d", 0)
-            with st.expander(f"{t}  —  {row['Sector']}  |  RS: +{rs:.1f}%", expanded=False):
+            t  = row["Ticker"]
+            rs = row.get("RS_vs_SPY_21d", 0) or 0
+            with st.expander(f"{t}  —  {row['Sector']}  |  RS: {rs:+.1f}%", expanded=False):
                 with st.spinner(f"Loading {t}..."):
                     fig = build_chart(t)
                 if fig:
