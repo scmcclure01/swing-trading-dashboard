@@ -22,11 +22,7 @@ import os
 import warnings
 warnings.filterwarnings("ignore")
 
-try:
-    from fredapi import Fred
-    FRED_AVAILABLE = True
-except ImportError:
-    FRED_AVAILABLE = False
+# FRED_AVAILABLE is imported below from data.fred (the fredapi import lives there).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,252 +101,21 @@ from config import (
 # DATA FETCHING
 # ─────────────────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_macro_data() -> pd.DataFrame:
-    """Fetch 1-year daily close for SPY, sector ETFs, TLT, HYG, IEF, and VIX."""
-    tickers = ["SPY", "TLT", "HYG", "IEF"] + list(SECTOR_ETFS.values())
-    raw   = yf.download(tickers, period="1y", auto_adjust=True, progress=False)
-    close = raw["Close"]
-    try:
-        vix = yf.download("^VIX", period="1y", auto_adjust=True, progress=False)
-        close["^VIX"] = vix["Close"].squeeze()
-    except Exception:
-        pass
-    return close
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def fetch_fred_data() -> dict:
-    """Fetch recession composite indicators from FRED (cached 24h — updates daily/monthly)."""
-    if not FRED_AVAILABLE:
-        return {"error": "fredapi package not installed"}
-    try:
-        api_key = st.secrets.get("FRED_API_KEY", "")
-        if not api_key:
-            return {"error": "Add FRED_API_KEY to Streamlit Secrets to enable recession composite"}
-        fred = Fred(api_key=api_key)
-
-        def latest(series_id, start="2023-01-01"):
-            s = fred.get_series(series_id, observation_start=start).dropna()
-            return float(s.iloc[-1]), str(s.index[-1].date())
-
-        data = {}
-        data["sahm"],    data["sahm_date"]    = latest("SAHMREALTIME")
-        data["cfnai"],   data["cfnai_date"]   = latest("CFNAIMA3")
-        data["t10y3m"],  data["t10y3m_date"]  = latest("T10Y3M")
-        data["recprob"], data["recprob_date"] = latest("RECPROUSM156N")
-        return data
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def fetch_fed_net_liquidity() -> dict:
-    """
-    Fetch Fed Net Liquidity from FRED public CSV (no API key required).
-    Formula: WALCL - WTREGEN - RRPONTSYD
-    Signal: 4-week change <= -$200B → Override Active
-    Updates Thursdays at 4:30 PM ET with the H.4.1 release.
-    """
-    import urllib.request
-    import csv
-    from io import StringIO
-
-    def fetch_series(series_id):
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-        with urllib.request.urlopen(url, timeout=10) as r:
-            data = r.read().decode()
-        rows = list(csv.reader(StringIO(data)))[1:]
-        return {row[0]: float(row[1]) for row in rows if len(row) > 1 and row[1] not in ('.', '', 'NA')}
-
-    try:
-        walcl = fetch_series("WALCL")
-        tga   = fetch_series("WTREGEN")
-        rrp   = fetch_series("RRPONTSYD")
-
-        dates = sorted(set(walcl) & set(tga) & set(rrp))
-        if len(dates) < 5:
-            return {"error": "Insufficient FRED data"}
-
-        net_liq = {d: walcl[d] - tga[d] - rrp[d] for d in dates}
-        recent      = sorted(net_liq.keys())
-        latest_date = recent[-1]
-        prior_date  = recent[-5]  # 4 weeks back
-
-        current  = net_liq[latest_date]
-        prior    = net_liq[prior_date]
-        change_b = (current - prior) / 1000  # convert $M → $B
-
-        if change_b <= -200:
-            signal = "OVERRIDE ACTIVE"
-        elif change_b < 0:
-            signal = "DECLINING"
-        else:
-            signal = "RISING"
-
-        return {
-            "as_of":        latest_date,
-            "current_b":    round(current / 1000, 1),
-            "prior_b":      round(prior / 1000, 1),
-            "prior_date":   prior_date,
-            "change_4w_b":  round(change_b, 1),
-            "signal":       signal,
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def fetch_tbill_rate() -> float:
-    """
-    Fetch 3-Month T-Bill rate (DTB3) for earnings carry calculation.
-    Tries: 1) fredapi (API key), 2) FRED public CSV, 3) yfinance ^IRX.
-    Returns annualized rate as a percentage (e.g. 4.25 means 4.25%).
-    Falls back to 4.25% if all sources fail.
-    """
-    # Method 1: fredapi (same as recession composite)
-    if FRED_AVAILABLE:
-        try:
-            api_key = st.secrets.get("FRED_API_KEY", "")
-            if api_key:
-                fred = Fred(api_key=api_key)
-                s = fred.get_series("DTB3", observation_start="2024-01-01").dropna()
-                if len(s) > 0:
-                    return float(s.iloc[-1])
-        except Exception:
-            pass
-
-    # Method 2: FRED public CSV
-    import urllib.request
-    import csv
-    from io import StringIO
-    try:
-        url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
-        with urllib.request.urlopen(url, timeout=10) as r:
-            data = r.read().decode()
-        rows = list(csv.reader(StringIO(data)))[1:]
-        for row in reversed(rows):
-            if len(row) > 1 and row[1] not in (".", "", "NA"):
-                return float(row[1])
-    except Exception:
-        pass
-
-    # Method 3: yfinance ^IRX (13-week T-bill index, quoted in basis points / 10)
-    try:
-        irx = yf.Ticker("^IRX").history(period="5d")
-        if not irx.empty:
-            return float(irx["Close"].iloc[-1])
-    except Exception:
-        pass
-
-    # Fallback
-    return 4.25
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_etf_fund_flows() -> dict:
-    """
-    Fetch actual daily fund flow data from etfdb.com for each sector ETF.
-
-    Source: etfdb.com embeds a daily flow time series in each ETF page as a
-    data-series attribute (timestamp_ms, flow_in_billions). Updated daily.
-    No API key required.
-
-    Flow classification per ETF (framework Layer 3):
-      Strong   : 1w net > +$150M  AND  4w net > +$300M
-      Moderate : 1w net > +$50M   OR   4w net > +$100M (and not Strong)
-      Outflows : 1w net < -$50M   OR   4w net < -$100M
-      Weak     : everything else (small positive or flat)
-
-    Returns dict keyed by ETF ticker → {
-        'flow_strength':    str,    # "Strong" / "Moderate" / "Weak" / "Outflows" / "N/A"
-        'aum_1w_delta':     float,  # $M — 5 trading day net
-        'aum_4w_delta':     float,  # $M — 20 trading day net
-        'direction_5d':     str,    # e.g. "4/5 positive"
-        'direction_10d':    str,    # e.g. "7/10 positive"
-        'as_of':            str,    # date of most recent data point
-        'error':            str,    # only if fetch failed
-    }
-    """
-    import urllib.request
-    import re
-
-    def _scrape_flows(ticker):
-        url = f"https://etfdb.com/etf/{ticker}/"
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        })
-        resp = urllib.request.urlopen(req, timeout=15)
-        html = resp.read().decode()
-        match = re.search(r"data-series='(\[\[[\d\.,\-\s\[\]e]+\]\])'", html)
-        if not match:
-            return None
-        import json as _json
-        raw = _json.loads(match.group(1))
-        return [(ts, flow_b) for ts, flow_b in raw]
-
-    results = {}
-    etfs = list(SECTOR_ETFS.values())
-
-    for etf in etfs:
-        try:
-            data = _scrape_flows(etf)
-            if not data or len(data) < 20:
-                results[etf] = {"flow_strength": "N/A", "error": "Insufficient flow data"}
-                continue
-
-            as_of = datetime.utcfromtimestamp(data[-1][0] / 1000).strftime('%Y-%m-%d')
-
-            # 5-day (1 week) and 20-day (4 week) net flows — data is in $B
-            flows_5d  = [v for _, v in data[-5:]]
-            flows_10d = [v for _, v in data[-10:]]
-            flows_20d = [v for _, v in data[-20:]]
-
-            net_1w = sum(flows_5d) * 1000   # convert $B → $M
-            net_4w = sum(flows_20d) * 1000
-
-            # Directional consistency
-            pos_5d  = sum(1 for v in flows_5d if v > 0)
-            pos_10d = sum(1 for v in flows_10d if v > 0)
-
-            # Classify per framework thresholds
-            if net_1w > 150 and net_4w > 300:
-                flow_strength = "Strong"
-            elif net_1w > 50 or net_4w > 100:
-                flow_strength = "Moderate"
-            elif net_1w < -50 or net_4w < -100:
-                flow_strength = "Outflows"
-            else:
-                flow_strength = "Weak"
-
-            results[etf] = {
-                "flow_strength":  flow_strength,
-                "aum_1w_delta":   round(net_1w, 1),
-                "aum_4w_delta":   round(net_4w, 1),
-                "direction_5d":   f"{pos_5d}/5 positive",
-                "direction_10d":  f"{pos_10d}/10 positive",
-                "as_of":          as_of,
-            }
-
-        except Exception as e:
-            results[etf] = {"flow_strength": "N/A", "error": str(e)}
-
-    return results
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_screener_data(sectors_key: str) -> tuple:
-    """
-    Fetch 1-year OHLCV for all tickers in the given sectors (comma-separated key).
-    Returns (close_df, volume_df, tickers_list) or raises on network failure.
-    """
-    try:
-        sectors = sectors_key.split(",")
-        all_t   = [t for s in sectors for t in SECTOR_TICKERS.get(s, [])]
-        raw     = yf.download(all_t + ["SPY"], period="1y", auto_adjust=True, progress=False)
-        return raw["Close"], raw["Volume"], all_t
-    except Exception as e:
-        raise RuntimeError(f"Screener data fetch failed: {e}") from e
+# Data-fetching functions moved to the data/ package. Imported under their
+# original names so existing call sites are unchanged.
+from data.market import (
+    fetch_macro_data,
+    fetch_screener_data,
+    fetch_portfolio_prices,
+    fetch_earnings_dates,
+)
+from data.fred import (
+    fetch_fred_data,
+    fetch_fed_net_liquidity,
+    fetch_tbill_rate,
+    FRED_AVAILABLE,
+)
+from data.flows import fetch_etf_fund_flows
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1232,42 +997,7 @@ def calc_layer4(
 # LAYER 5 — ENTRYTRIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def fetch_earnings_dates(tickers_key: str) -> dict:
-    """Fetch next earnings dates for a batch of tickers (cached 24h)."""
-    tickers = tickers_key.split(",")
-    today   = datetime.today().date()
-    results = {}
-    for t in tickers:
-        try:
-            cal     = yf.Ticker(t).calendar
-            next_ed = None
-            if isinstance(cal, dict):
-                ed = cal.get("Earnings Date")
-                if ed is not None:
-                    dates = ed if isinstance(ed, list) else [ed]
-                    for d in dates:
-                        try:
-                            dt = pd.Timestamp(d).date()
-                            if dt >= today:
-                                next_ed = dt
-                                break
-                        except Exception:
-                            pass
-            elif isinstance(cal, pd.DataFrame) and not cal.empty:
-                for col in cal.columns:
-                    try:
-                        val = cal.at["Earnings Date", col]
-                        dt  = pd.Timestamp(val).date()
-                        if dt >= today:
-                            next_ed = dt
-                            break
-                    except Exception:
-                        pass
-            results[t] = next_ed
-        except Exception:
-            results[t] = None
-    return results
+# fetch_earnings_dates moved to data/market.py (imported at top of file).
 
 
 def calc_layer5(
@@ -3004,20 +2734,7 @@ def _portfolio_save(data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_portfolio_prices(tickers_key: str) -> dict:
-    """Fetch last close for open positions. Cached 5 min."""
-    tickers = [t.strip() for t in tickers_key.split(",") if t.strip()]
-    if not tickers:
-        return {}
-    try:
-        raw = yf.download(tickers, period="2d", auto_adjust=True, progress=False)
-        closes = raw["Close"] if len(tickers) > 1 else raw["Close"].rename(tickers[0])
-        if isinstance(closes, pd.Series):
-            closes = closes.to_frame()
-        return {t: float(closes[t].dropna().iloc[-1]) for t in tickers if t in closes.columns}
-    except Exception:
-        return {}
+# fetch_portfolio_prices moved to data/market.py (imported at top of file).
 
 
 def _dollar_fmt(v: float) -> str:
