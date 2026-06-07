@@ -947,6 +947,8 @@ _MACRO_TIPS = {
     "flow":      ("Flow preview", "Sustained directional ETF inflows, checked weekly alongside RS. Feeds the Sector Rotation tab and Core deployment — Phase 1 is early/improving, Phase 2 is confirmed leading."),
     "core_candidates": ("Core entry candidates", "Phase 2 (confirmed-leading) sectors from the rotation graph. These are eligible for Core deployment — enter on the standard trigger, stop at the 20-day MA shown."),
     "core_holdings": ("Core holdings", "Your persistent regime exposure (sector ETFs). Exit triggers: a close below the 20-day MA, a move into the weakening/lagging quadrant, or a RED permission state (which exits all Core to cash)."),
+    "rot_candidates": ("Entry candidates", "Sectors in the Improving (early) or Leading (confirmed) quadrants of the rotation graph. Flow strength sets the size: stronger sustained inflows justify a fuller position."),
+    "rot_exit": ("Exit watch", "Sectors that have rotated into the Weakening quadrant — momentum is fading even if still above SPY. Review stops; outflows confirm the exit."),
 }
 
 
@@ -1227,17 +1229,61 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
 
 def _render_layer3_tab(l3_data: list) -> None:
     """
-    Render the Layer 3 — Sector Rotation tab.
-    Includes the RRG chart, quadrant summary, ETF entry candidates with
-    phase labels, flow-strength sizing override, and exit review.
+    Render the Sector Rotation tab.
+    Where-to-act hero (tickers by action) + quadrant counts, then the RRG chart
+    as centerpiece, then entry candidates and exit-watch as quiet reference.
+    Flow-strength and All-Sectors detail live in expanders.
     """
-    st.caption("Relative Rotation Graph — sector ETFs vs SPY. Weekly data, trailing 8 weeks. Clockwise rotation is normal cycle progression.")
+    # ── Quadrant membership (drives the hero + counts) ────────────────────────
+    leading_t   = [d["etf"] for d in l3_data if d["quadrant"] == "Leading"]
+    improving_t = [d["etf"] for d in l3_data if d["quadrant"] == "Improving"]
+    weakening_t = [d["etf"] for d in l3_data if d["quadrant"] == "Weakening"]
+    n_leading, n_improving = len(leading_t), len(improving_t)
+    n_weakening = len(weakening_t)
+    n_lagging   = sum(1 for d in l3_data if d["quadrant"] == "Lagging")
 
-    # Sector filter for the chart
+    def _act_row(dot, label, tickers):
+        names = ", ".join(tickers) if tickers else "None"
+        return (f'<div><span style="color:{dot}">●</span> '
+                f'<strong style="font-weight:500">{label}:</strong> {names}</div>')
+
+    # Hero recolors: green if anything Leading, amber if only weakening to act on.
+    if n_leading > 0:
+        h_bg, h_bd, h_lbl, h_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+    elif n_improving > 0:
+        h_bg, h_bd, h_lbl, h_txt = "#E6F1FB", "rgba(40,140,250,.35)", "#185FA5", "#042C53"
+    else:
+        h_bg, h_bd, h_lbl, h_txt = "#FFF3D6", "rgba(224,120,0,.35)", "#854F0B", "#412402"
+
+    rotation_hero = (
+        '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:12px 14px;">'
+        f'<div style="font-size:10px; font-weight:500; color:{h_lbl}; text-transform:uppercase;'
+        f' letter-spacing:.05em;">Where to act this week</div>'
+        f'<div style="font-size:12px; color:{h_txt}; margin-top:6px; line-height:1.7;">'
+        + _act_row("#27500A", "Enter / hold (Leading)", leading_t)
+        + _act_row("#288CFA", "Watch (Improving)", improving_t)
+        + _act_row("#E07800", "Review stops (Weakening)", weakening_t)
+        + '</div></div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("Leading", str(n_leading), "Confirmed", "#27500A")
+        + _tile("Improving", str(n_improving), "Early", "#288CFA")
+        + _tile("Weakening", str(n_weakening), "Exiting", "#E07800")
+        + _tile("Lagging", str(n_lagging), "No trade", "#CC1111")
+        + '</div>'
+        '</div>'
+    )
+    st.markdown(_MACRO_TIP_CSS + rotation_hero, unsafe_allow_html=True)
+
+    # ── The rotation graph (centerpiece) ──────────────────────────────────────
+    st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                'The rotation <span style="font-weight:400; color:#5A7BAA;">'
+                '— sector ETFs vs SPY, trailing 8 weeks · clockwise = normal cycle progression</span></div>',
+                unsafe_allow_html=True)
+
     chart_sectors = st.multiselect(
-        "Sectors to display",
-        options=ALL_SECTORS,
-        default=ALL_SECTORS,
+        "Sectors to display", options=ALL_SECTORS, default=ALL_SECTORS,
+        label_visibility="collapsed",
     )
     chart_data = [d for d in l3_data if d["sector"] in chart_sectors] if chart_sectors else l3_data
 
@@ -1247,22 +1293,6 @@ def _render_layer3_tab(l3_data: list) -> None:
         st.plotly_chart(rrg_fig, use_container_width=True)
     else:
         st.markdown(_gate_bar_html("Yellow", "Insufficient data to build RRG chart."), unsafe_allow_html=True)
-
-    # Quadrant count summary
-    n_improving = sum(1 for d in l3_data if d["quadrant"] == "Improving")
-    n_leading   = sum(1 for d in l3_data if d["quadrant"] == "Leading")
-    n_weakening = sum(1 for d in l3_data if d["quadrant"] == "Weakening")
-    n_lagging   = sum(1 for d in l3_data if d["quadrant"] == "Lagging")
-
-    quad_html = (
-        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:10px;">'
-        + _tile("Improving", str(n_improving), "Phase 1 — Early", "#288CFA")
-        + _tile("Leading", str(n_leading), "Phase 2 — Confirmed", "#27500A")
-        + _tile("Weakening", str(n_weakening), "Exiting", "#E07800")
-        + _tile("Lagging", str(n_lagging), "No Trade", "#CC1111")
-        + '</div>'
-    )
-    st.markdown(quad_html, unsafe_allow_html=True)
 
     # Flow strength inputs — auto-populated from implied flows, manually overridable
     with st.expander("📊 Weekly Flow Strength — live from etfdb.com, override if needed"):
@@ -1368,13 +1398,18 @@ def _render_layer3_tab(l3_data: list) -> None:
     else:
         weak_html = '<p style="font-size:13px; color:#27500A;">No sectors in Weakening quadrant.</p>'
 
-    two_col_html = (
-        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
-        + _card("ETF Entry Candidates", cand_html, pill=f"{len(candidates)} sectors")
-        + _card("Weakening — Review Stops", weak_html, pill=f"{len(weakening)} sectors")
-        + '</div>'
+    st.markdown(
+        '<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+        'Entry candidates <span style="font-weight:400; color:#5A7BAA;">'
+        '— Improving + Leading, with flow-based sizing</span></div>'
+        + _macro_card(f"{len(candidates)} eligible", cand_html, "rot_candidates", quiet=True)
+        + '<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+          'Exit watch <span style="font-weight:400; color:#5A7BAA;">'
+          '— Weakening quadrant, review stops</span></div>'
+        + _macro_card(f"{len(weakening)} sector{'s' if len(weakening) != 1 else ''}",
+                      weak_html, "rot_exit", quiet=True),
+        unsafe_allow_html=True,
     )
-    st.markdown(two_col_html, unsafe_allow_html=True)
 
     # Full sector table
     st.markdown('<div style="margin-top:4px;"></div>', unsafe_allow_html=True)
