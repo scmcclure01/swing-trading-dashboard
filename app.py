@@ -887,19 +887,24 @@ def _staleness(date_str: str, stale_days: int = 45) -> tuple:
 
 
 def _render_layer1_card() -> str:
-    """Build the Layer 1 monthly-mispricing card HTML (used on the macro tab).
+    """Backward-compatible wrapper: full Layer-1 card (heading + body)."""
+    return _card("Layer 1 — Monthly Mispricing", _layer1_body_html(), pill="monthly")
+
+
+def _layer1_body_html() -> str:
+    """Build the Layer 1 monthly-mispricing card BODY html (no card chrome).
 
     Pulls FRED real/nominal 10y + SPY forward EY, scores the composite, and
-    color-codes by data staleness. Returns an HTML string for _card()."""
+    color-codes by data staleness. Returned body is wrapped by _card() or
+    _macro_card() at the call site."""
     rates   = fetch_mispricing_rates()
     # Forward earnings yield is entered manually (no free forward-EY data source).
     _ey_val = st.session_state.get("spy_fwd_ey", 0.0)
     fwd_ey  = _ey_val if _ey_val and _ey_val > 0 else None
 
     if "error" in rates:
-        body = (f'<p style="font-size:12px; color:#CC1111; margin:0;">'
+        return (f'<p style="font-size:12px; color:#CC1111; margin:0;">'
                 f'Rate data unavailable: {rates["error"]}</p>')
-        return _card("Layer 1 — Monthly Mispricing", body, pill="monthly")
 
     gdp_signal = st.session_state.get("gdpnow_signal", "Not set")
     result = score_layer1_mispricing(
@@ -951,13 +956,86 @@ def _render_layer1_card() -> str:
             f'Run after CPI/PCE. Forward EY &amp; GDPNow leg set manually in sidebar.</p>'
         )
     )
-    return _card("Layer 1 — Monthly Mispricing", body, pill="monthly")
+    return body
+
+
+# ── Macro-tab redesign helpers (2026-06-07) ──────────────────────────────────
+# Tooltip copy is sourced from Framework/swing_trading_framework_v4.md so the
+# on-screen explanation stays in sync with the framework document.
+_MACRO_TIPS = {
+    "spy":       ("Two-speed trend", "SPY 1-month and 6-month rate of change. Both positive opens the gate (green); both negative forces red; mixed pulls toward yellow. This is the primary permission signal."),
+    "recession": ("Recession composite", "Five macro indicators (Chauvet-Piger, Sahm, yield curve, claims, LEI). 2–3 flags push the state to yellow; 4+ forces red regardless of SPY."),
+    "liquidity": ("The override", "HYG/IEF credit spread, Fed net liquidity, TLT vs SPY. Rapidly tightening liquidity forces red and overrides every other signal — so it sits with the gate inputs."),
+    "mispricing":("Valuation governor", "Earnings yield vs real rates, equity risk premium, GDPNow gap. Run monthly after CPI/PCE. Doesn't change the gate — it cuts max risk per trade when equities are rich vs macro."),
+    "velocity":  ("Acceleration detector", "Sector ROC 21 above +15% flags a parabolic move and switches that sector to the alternate entry protocol — the standard pullback entry never comes in a melt-up."),
+    "sectorrs":  ("Regime flavor", "Which sectors lead SPY reveals the regime: tech/discretionary/financials = risk-on; energy/materials = reflation; staples/utilities = defensive. Guides where to hunt setups."),
+    "flow":      ("Flow preview", "Sustained directional ETF inflows, checked weekly alongside RS. Feeds the Sector Rotation tab and Core deployment — Phase 1 is early/improving, Phase 2 is confirmed leading."),
+}
+
+
+def _info_hover(key: str) -> str:
+    """Return an inline info-icon + CSS tooltip for a macro card heading."""
+    title, body = _MACRO_TIPS.get(key, ("", ""))
+    if not title:
+        return ""
+    return (
+        '<span class="mt-info" tabindex="0">ⓘ'
+        f'<span class="mt-tip"><b>{title}.</b> {body}</span>'
+        '</span>'
+    )
+
+
+def _macro_card(heading: str, inner_html: str, tip_key: str = "",
+                accent: str = "", quiet: bool = False) -> str:
+    """Card variant for the macro tab: optional left accent + info hover.
+
+    accent: hex color for a 3px left border (gate/modifier tiering). "" = none.
+    quiet:  reference-tier styling (muted fill, fainter border).
+    """
+    info = _info_hover(tip_key)
+    bg     = "#F6F8FC" if quiet else "#FFFFFF"
+    border = "rgba(16,55,102,0.07)" if quiet else "rgba(16,55,102,0.12)"
+    accent_css = (f"border-left:3px solid {accent}; border-radius:0 8px 8px 0;"
+                  if accent else "")
+    head_color = "#5A7BAA"
+    return (
+        f'<div style="background:{bg}; border:0.5px solid {border}; {accent_css}'
+        f' border-radius:8px; padding:9px 11px; margin-bottom:8px; overflow:visible;">'
+        f'<div style="display:flex; align-items:center; justify-content:space-between;'
+        f' gap:6px; font-size:10px; font-weight:500; color:{head_color};'
+        f' text-transform:uppercase; letter-spacing:0.04em;'
+        f' border-bottom:0.5px solid rgba(16,55,102,0.09); padding-bottom:5px; margin-bottom:6px;">'
+        f'<span>{heading}</span>{info}</div>'
+        f'{inner_html}</div>'
+    )
+
+
+# CSS injected once per tab render — powers the info-hover tooltips.
+_MACRO_TIP_CSS = """
+<style>
+.mt-info{position:relative; display:inline-flex; cursor:help; color:#85B7EB; font-size:12px; flex-shrink:0;}
+.mt-info .mt-tip{visibility:hidden; opacity:0; transition:opacity .12s; position:absolute; right:0; top:18px;
+ width:215px; background:#103766; color:#EAF1FB; font-size:11px; font-weight:400; line-height:1.45;
+ text-transform:none; letter-spacing:0; padding:8px 10px; border-radius:7px; z-index:50;
+ box-shadow:0 2px 10px rgba(16,55,102,.25); text-align:left;}
+.mt-info .mt-tip b{color:#fff; font-weight:500;}
+.mt-info:hover .mt-tip, .mt-info:focus .mt-tip{visibility:visible; opacity:1;}
+.mt-group{font-size:11px; font-weight:500; color:#103766; margin:12px 0 6px;}
+.mt-group span{color:#5A7BAA; font-weight:400;}
+</style>
+"""
 
 
 def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
                          rec_flags: int, rec_total: int, perm: str,
-                         limits: dict, l3_data: list) -> None:
-    """Render the combined Layer 0 & 2 — Macro Regime + Permission State tab."""
+                         limits: dict, l3_data: list, regime: str = "") -> None:
+    """Render the combined Layer 0 & 2 — Macro Regime + Permission State tab.
+
+    Layout (redesigned 2026-06-07): verdict hero + ranked tiles on top, then
+    cards grouped by framework role — "what sets the state" (gate-deciding),
+    "what scales the risk" (sizing/entry modifiers), "where to look" (sector
+    reference). No visible layer codes; each card carries an info-hover that
+    explains its framework tie. See Dashboards/UX_Audit_2026-06-07.md."""
 
     roc1_pos      = l0["spy_ret_1m"] > 0
     roc6_pos      = l0["spy_ret_6m"] > 0
@@ -1025,7 +1103,7 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
          "Value": (
              f"${l0['fnl_current']:,.1f}B  |  4-week: ${l0['fnl_change_4w']:+.1f}B  |  "
              f"{'🔴 OVERRIDE ACTIVE' if l0['fnl_signal'] == 'OVERRIDE ACTIVE' else ('⚠️ Declining' if l0['fnl_signal'] == 'DECLINING' else '✅ Rising')}"
-         ) if l0.get("fnl_current") is not None else l0.get("fnl_error", "N/A")},
+         ) if l0.get("fnl_current") is not None else "⚪ Unavailable — data pull failed, retry"},
     ]
     bond_html = cb_table(pd.DataFrame(bond_rows), bordered=False)
 
@@ -1081,28 +1159,91 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
     ]
     gate_sum_html = cb_table(pd.DataFrame(gate_rows), bordered=False)
 
-    # ── Assemble full two-column HTML layout ──────────────────────────────────
-    rec_pill = f"{'🟢' if rec_flags==0 else '🟡' if rec_flags<=2 else '🔴'} {rec_flags}/{rec_total}"
-    full_html = (
-        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+    # ── Verdict hero + ranked tiles ───────────────────────────────────────────
+    # Palette per permission state (bg, border, accent, text).
+    _HERO = {
+        "Green":  ("#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404", "#3B6D11"),
+        "Yellow": ("#FFF3D6", "rgba(224,120,0,.35)", "#854F0B", "#412402", "#854F0B"),
+        "Red":    ("#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313", "#A32D2D"),
+    }
+    h_bg, h_bd, h_lbl, h_val, h_sub = _HERO.get(perm, _HERO["Green"])
+    risk_str = (f"{limits['risk_lo']}–{limits['risk_hi']}% risk"
+                if limits.get("risk_hi", 0) > 0 else "No new trades")
+    core_target = {"Green": 40, "Yellow": 20, "Red": 0}.get(perm, 0)
+    rule_str = (f"Up to {limits['max_pos_label']} positions · {risk_str} · "
+                f"Core {core_target}%")
 
-        # ── Left: Layer 0 ──────────────────────────────────────────────────
-        '<div>'
-        + _card("Sector Relative Strength vs SPY", sector_rs_html)
-        + _card("Velocity Flag — ROC 21", velocity_html, pill="v4")
-        + _card("Bond &amp; Liquidity", bond_html)
-        + _card("Sector Flow Momentum", flow_html, pill="L3 Preview")
-        + '</div>'
+    # Gate one-liner — the three inputs that decided the state.
+    spy_ok = "✓" if spy_signal == "GREEN" else ("✗" if spy_signal == "RED" else "~")
+    liq_ok = "✗" if liq_override else "✓"
+    rec_ok = "✓" if rec_flags < 2 else ("~" if rec_flags < 4 else "✗")
+    gate_line = (f"SPY both positive {spy_ok} · Liquidity clear {liq_ok} · "
+                 f"Recession {rec_flags}/{rec_total} {rec_ok}")
 
-        # ── Right: Layer 2 ─────────────────────────────────────────────────
-        '<div>'
-        + _card("SPY Two-Speed Trend", spy_html)
-        + _card("Recession Composite", rec_html, pill=rec_pill)
-        + _render_layer1_card()
-        + _card("Gate Summary", gate_sum_html)
-        + '</div>'
+    regime_lbl = regime or l0.get("regime", "")
+    spy_tile_color = "#27500A" if l0["spy_ret_1m"] > 0 else "#CC1111"
+    dd_pct   = st.session_state.get("drawdown_pct", 0.0)
+    dd_label = st.session_state.get("drawdown_label", "At peak")
+    dd_color = st.session_state.get("drawdown_color", "#27500A")
+    core_pct = st.session_state.core_pct_deployed
 
+    hero_html = (
+        '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:12px 14px;">'
+        f'<div style="font-size:10px; font-weight:500; color:{h_lbl}; text-transform:uppercase;'
+        f' letter-spacing:.05em;">Permission state — {regime_lbl} regime</div>'
+        f'<div style="font-size:30px; font-weight:500; color:{h_val}; line-height:1.1; margin:3px 0 2px;">'
+        f'{perm.upper()}</div>'
+        f'<div style="font-size:12px; color:{h_lbl}; font-weight:500;">{rule_str}</div>'
+        f'<div style="font-size:11px; color:{h_sub}; margin-top:5px;">Gate: {gate_line}</div>'
         '</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("SPY trend", f"{pct(l0['spy_ret_1m'])} / {pct(l0['spy_ret_6m'])}", "", spy_tile_color)
+        + _tile("Drawdown", f"{dd_pct:+.1f}%", dd_label, dd_color)
+        + _tile("Core deployed", f"{core_pct:.0f}%", f"Target {core_target}%")
+        + _tile("Max heat", f"{limits['heat']}%", "")
+        + '</div>'
+        '</div>'
+    )
+
+    # ── Grouped, framework-honest card layout ─────────────────────────────────
+    # Accent colors: green = gate-deciding & clear; amber = watch / modifier.
+    GATE_GREEN, MOD_AMBER = "#1D7A2A", "#E07800"
+    liq_accent = MOD_AMBER if not liq_override else "#CC1111"
+
+    full_html = (
+        _MACRO_TIP_CSS
+        + hero_html
+
+        # ── What sets the state ───────────────────────────────────────────
+        + '<div class="mt-group">What sets the state '
+          '<span>— these decide green, yellow, or red</span></div>'
+        + '<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">'
+        + _macro_card("SPY Two-Speed Trend", spy_html, "spy", accent=GATE_GREEN)
+        + _macro_card("Recession Composite", rec_html, "recession", accent=GATE_GREEN)
+        + _macro_card("Bond &amp; Liquidity", bond_html, "liquidity", accent=liq_accent)
+        + '</div>'
+
+        # ── What scales the risk ──────────────────────────────────────────
+        + '<div class="mt-group">What scales the risk '
+          '<span>— these adjust sizing &amp; entry inside the state</span></div>'
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">'
+        + _macro_card("Monthly Mispricing", _layer1_body_html(), "mispricing", accent=MOD_AMBER)
+        + _macro_card("Velocity Flag", velocity_html, "velocity", accent=MOD_AMBER)
+        + '</div>'
+
+        # ── Where to look ─────────────────────────────────────────────────
+        + '<div class="mt-group">Where to look '
+          '<span>— sector context for stock selection</span></div>'
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">'
+        + _macro_card("Sector Relative Strength", sector_rs_html, "sectorrs", quiet=True)
+        + _macro_card("Sector Flow Momentum", flow_html, "flow", quiet=True)
+        + '</div>'
+
+        # ── Full gate detail (reference) ──────────────────────────────────
+        + '<div class="mt-group">Gate detail '
+          '<span>— every input and its effect on the state</span></div>'
+        + _macro_card("Gate Summary", gate_sum_html, "", quiet=True)
     )
     st.markdown(full_html, unsafe_allow_html=True)
 
@@ -3209,7 +3350,7 @@ def main():
     ])
 
     with tab1:
-        _render_layer0_2_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l3_data)
+        _render_layer0_2_tab(l0, fred_data, rec_indicators, rec_flags, rec_total, perm, limits, l3_data, regime)
 
     with tab2:
         _render_layer3_tab(l3_data)
