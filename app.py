@@ -93,7 +93,7 @@ from config import (
     RISK_ON_SECTORS, REFLATION_SECTORS, DEFENSIVE_SECTORS,
     SECTOR_COLORS, SECTOR_DASH, SECTOR_DASH_BY_SECTOR,
     PERM_LIMITS, SETUP_STYLE,
-    FLOW_OPTS, FLOW_SIZE_MAP, PHASE_MAP,
+    FLOW_SIZE_MAP, PHASE_MAP,
 )
 
 
@@ -1308,58 +1308,24 @@ def _render_layer3_tab(l3_data: list) -> None:
     else:
         st.markdown(_gate_bar_html("Yellow", "Insufficient data to build RRG chart."), unsafe_allow_html=True)
 
-    # Flow strength inputs — auto-populated from implied flows, manually overridable
-    with st.expander("📊 Weekly Flow Strength — live from etfdb.com, override if needed"):
-        fc1, fc2 = st.columns([3, 1])
-        with fc1:
-            st.caption(
-                "Actual daily fund flows scraped from etfdb.com. "
-                "Override any sector manually. "
-                "5-day and 4-week net flows in $M."
-            )
-        with fc2:
-            if st.button("🔄 Refresh Flows", key="refresh_flows"):
-                fetch_etf_fund_flows.clear()
-                st.rerun()
+    # Flow strength — auto-scraped from etfdb.com, feeds the Sizing/Risk columns
+    # below directly (no manual override panel; the data drives sizing on its own).
+    auto_flows = fetch_etf_fund_flows()
 
-        # Load auto-computed flows and seed session state (only if not already set this session)
-        auto_flows = fetch_etf_fund_flows()
-        for sector, etf in SECTOR_ETFS.items():
-            key = f"flow_{etf.lower()}"
-            auto_val = auto_flows.get(etf, {}).get("flow_strength", "Not set")
-            # Seed from auto if session state is still at default "Not set"
-            if st.session_state.get(key, "Not set") == "Not set" and auto_val in FLOW_OPTS:
-                st.session_state[key] = auto_val
+    def _flow_of(etf: str) -> str:
+        """Live flow-strength label for an ETF from the etfdb scrape."""
+        return auto_flows.get(etf, {}).get("flow_strength", "Not set")
 
-        flow_cols = st.columns(3)
-        for i, (sector, etf) in enumerate(SECTOR_ETFS.items()):
-            key = f"flow_{etf.lower()}"
-            auto_data = auto_flows.get(etf, {})
-            auto_val  = auto_data.get("flow_strength", "N/A")
-            delta_1w  = auto_data.get("aum_1w_delta")
-            delta_4w  = auto_data.get("aum_4w_delta")
-            err       = auto_data.get("error")
-
-            # Build sublabel showing actual flow data
-            dir_5d  = auto_data.get("direction_5d", "")
-            dir_10d = auto_data.get("direction_10d", "")
-            flow_date = auto_data.get("as_of", "")
-            if err:
-                sublabel = f"⚠️ {err[:40]}"
-            elif delta_1w is not None:
-                sublabel = f"{auto_val} | 1w ${delta_1w:+,.0f}M · 4w ${delta_4w:+,.0f}M | {dir_5d}"
-            else:
-                sublabel = f"{auto_val}"
-
-            with flow_cols[i % 3]:
-                st.session_state[key] = st.selectbox(
-                    f"{etf} — {sector}",
-                    FLOW_OPTS,
-                    index=FLOW_OPTS.index(st.session_state.get(key, "Not set")),
-                    key=f"flow_sel_{etf}",
-                    help=sublabel,
-                )
-                st.caption(sublabel)
+    _fl_as_of = next((auto_flows[e].get("as_of") for e in auto_flows
+                      if auto_flows.get(e, {}).get("as_of")), "")
+    _fl1, _fl2 = st.columns([4, 1])
+    with _fl1:
+        st.caption(f"Flow strength (Sizing / Risk columns) is live from etfdb.com"
+                   + (f" · as of {_fl_as_of}" if _fl_as_of else ""))
+    with _fl2:
+        if st.button("🔄 Refresh flows", key="refresh_flows"):
+            fetch_etf_fund_flows.clear()
+            st.rerun()
 
     # ── ETF Entry Candidates / Weakening — two-column layout ────────────────
     candidates = [d for d in l3_data if d["quadrant"] in ("Improving", "Leading")]
@@ -1368,8 +1334,7 @@ def _render_layer3_tab(l3_data: list) -> None:
     if candidates:
         cand_rows = []
         for d in candidates:
-            flow_key      = f"flow_{d['etf'].lower()}"
-            flow_strength = st.session_state.get(flow_key, "Not set")
+            flow_strength = _flow_of(d["etf"])
             if flow_strength in FLOW_SIZE_MAP:
                 sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
             else:
@@ -1395,8 +1360,7 @@ def _render_layer3_tab(l3_data: list) -> None:
     if weakening:
         weak_rows = []
         for d in weakening:
-            flow_key      = f"flow_{d['etf'].lower()}"
-            flow_strength = st.session_state.get(flow_key, "Not set")
+            flow_strength = _flow_of(d["etf"])
             weak_rows.append({
                 "ETF":         d["etf"],
                 "Sector":      d["sector"],
@@ -1431,8 +1395,7 @@ def _render_layer3_tab(l3_data: list) -> None:
         q_icons = {"Leading": "🟢", "Improving": "🔵", "Weakening": "🟡", "Lagging": "🔴"}
         all_rows = []
         for d in l3_data:
-            flow_key      = f"flow_{d['etf'].lower()}"
-            flow_strength = st.session_state.get(flow_key, "Not set")
+            flow_strength = _flow_of(d["etf"])
             if flow_strength in FLOW_SIZE_MAP:
                 sizing, risk_pct, _ = FLOW_SIZE_MAP[flow_strength]
             else:
@@ -3095,9 +3058,6 @@ def main():
         "gdpnow_signal": "Not set",
         "spy_fwd_ey":    0.0,
     }
-    # Layer 3 flow strength per sector ETF (set in the L3 tab expander)
-    for etf in SECTOR_ETFS.values():
-        defaults[f"flow_{etf.lower()}"] = "Not set"
 
     # Keys that persist across refreshes via URL query params
     _persist_keys = ["eps_signal", "lei_signal", "taylor_rule", "gdpnow_signal", "spy_fwd_ey"]
