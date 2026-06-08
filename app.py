@@ -1183,7 +1183,7 @@ def _render_layer0_2_tab(l0: dict, fred_data: dict, rec_indicators: list,
         '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
         + _tile("SPY trend", f"{pct(l0['spy_ret_1m'])} / {pct(l0['spy_ret_6m'])}", "", spy_tile_color)
         + _tile("Drawdown", f"{dd_pct:+.1f}%", dd_label, dd_color)
-        + _tile("Core deployed", f"{core_pct:.0f}%", f"Target {core_target}%")
+        + _tile("Core deployed", f"{core_pct:.1f}%", f"Target {core_target}%")
         + _tile("Max heat", f"{limits['heat']}%", "")
         + '</div>'
         '</div>'
@@ -1559,7 +1559,7 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
         else:
             msg = "Click <b>Run Screener</b> to scan the universe. First run takes ~30 seconds."
         st.markdown(
-            f'<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">{msg}</p>',
+            f'<p style="font-size:13px; color:#5A7BAA; text-align:center; padding:40px;">{msg}</p>',
             unsafe_allow_html=True,
         )
         return
@@ -1714,8 +1714,8 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             "Stop":       df["Stop"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—").values,
             "Verdict":    df["Verdict"].values,
             "Carry":      (df["Carry_Spread"].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "—") if "Carry_Spread" in df.columns else pd.Series(["—"] * len(df))).values,
-            "RS vs SPY":  df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
-            "vs 20MA":    df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+            "RS vs SPY":  df["RS_vs_SPY_21d"].apply(lambda x: f"{x:+.1f}%").values,
+            "vs 20MA":    df["Dist_MA20_pct"].apply(lambda x: f"{x:+.1f}%").values,
             "Vol 5d":     df["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
             "MACD":       df["MACD_Crossover"].apply(lambda x: "✓" if x else "").values,
             "Notes":      df["Notes"].values,
@@ -1780,9 +1780,9 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
             "Ticker":     monitoring_df["Ticker"].values,
             "Sector":     monitoring_df["Sector"].values,
             "Price":      monitoring_df["Price"].apply(lambda x: f"${x:.2f}").values,
-            "vs 20MA":    monitoring_df["Dist_MA20_pct"].apply(lambda x: f"+{x:.1f}%").values,
+            "vs 20MA":    monitoring_df["Dist_MA20_pct"].apply(lambda x: f"{x:+.1f}%").values,
             "Entry Zone": monitoring_df["Entry_Zone"].values,
-            "RS vs SPY":  monitoring_df["RS_vs_SPY_21d"].apply(lambda x: f"+{x:.1f}%").values,
+            "RS vs SPY":  monitoring_df["RS_vs_SPY_21d"].apply(lambda x: f"{x:+.1f}%").values,
             "Vol 5d":     monitoring_df["Vol_Ratio_5d"].apply(lambda x: f"{x:.1f}x").values,
             "MACD":       monitoring_df["MACD_Crossover"].apply(lambda x: "✓" if x else "").values,
             "Notes":      monitoring_df["Notes"].values,
@@ -1928,7 +1928,7 @@ def _render_position_sizer_tab(perm: str, l0: dict) -> None:
         + _tile("Orders", str(n_orders), "queued")
         + _tile("Total risk", f"${total_risk:,}", f"{(total_risk/account*100 if account else 0):.1f}% acct",
                 "#CC1111" if total_risk/account > 0.15 else "#27500A" if account else "#5A7BAA")
-        + _tile("Total value", f"${total_value:,}", f"{(total_value/account*100 if account else 0):.0f}% acct")
+        + _tile("Total value", f"${total_value:,}", f"{(total_value/account*100 if account else 0):.1f}% acct")
         + _tile("State", perm, "sizing",
                 {"Green": "#27500A", "Yellow": "#E07800", "Red": "#CC1111"}.get(perm, "#5A7BAA"))
         + '</div>'
@@ -1963,12 +1963,12 @@ def _render_position_sizer_tab(perm: str, l0: dict) -> None:
             ) + '</div>'
 
         body = (
-            f'<div style="font-size:16px; font-weight:500; color:#173404;">'
+            f'<div style="font-size:18px; font-weight:500; color:#173404; line-height:1.2;">'
             f'Buy {o["shares"]:,} shares @ ${o["entry"]:,.2f}</div>'
             f'<div style="font-size:12px; color:#27500A; margin-top:1px;">'
-            f'Stop ${o["stop"]:,.2f} · risking ${o["actual_risk"]:,} ({o["actual_risk_pct"]:.2f}% of account)</div>'
+            f'Stop ${o["stop"]:,.2f} · risking ${o["actual_risk"]:,} ({o["actual_risk_pct"]:.1f}% of account)</div>'
             f'<div style="font-size:11px; color:#5A7BAA; margin-top:4px;">'
-            f'Position ${o["pos_value"]:,} · {o["pos_pct"]:.0f}% of account · {o["trigger"]} · {o["sector"]}</div>'
+            f'Position ${o["pos_value"]:,} · {o["pos_pct"]:.1f}% of account · {o["trigger"]} · {o["sector"]}</div>'
             f'<div style="font-size:11px; color:#5A7BAA; margin-top:6px; padding-top:6px;'
             f' border-top:0.5px solid rgba(16,55,102,.09);">'
             f'Manage: breakeven ${o["be"]:,.2f} (+5%) · '
@@ -2100,7 +2100,7 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
     elif gap_value > account * 0.005:  # meaningfully under target
         n_sec = 1 if gap_value < account * 0.20 else 2
         action_line = (f'<i class="ti ti-arrow-up" style="font-size:12px"></i> '
-                       f'Under-deployed by {core_target - core_pct:.0f}% — deploy ~${gap_value:,.0f} '
+                       f'Under-deployed by {core_target - core_pct:.1f}% — deploy ~${gap_value:,.0f} '
                        f'into {n_sec} Phase 2 sector{"s" if n_sec > 1 else ""}')
     elif core_pct > floor_hi:
         action_line = '<i class="ti ti-alert-triangle" style="font-size:12px"></i> Above deployment ceiling — trim toward target'
@@ -2113,7 +2113,7 @@ def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
         f'<div style="font-size:13px; font-weight:500; color:{hb_lbl}; letter-spacing:.01em;'
         f' margin-bottom:4px;">Core deployment · {perm.upper()} regime</div>'
         f'<div style="display:flex; align-items:baseline; gap:8px; margin:4px 0 2px;">'
-        f'<span style="font-size:30px; font-weight:500; color:{hb_txt}; line-height:1;">{core_pct:.0f}%</span>'
+        f'<span style="font-size:30px; font-weight:500; color:{hb_txt}; line-height:1;">{core_pct:.1f}%</span>'
         f'<span style="font-size:13px; color:{hb_lbl};">'
         + (f'of {core_target}% target' if core_target > 0 else 'deployed · target 0% in RED')
         + '</span></div>'
@@ -2629,7 +2629,7 @@ def _render_portfolio_tab() -> None:
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:6px;">'
         + _tile("Realized P&L", _dollar_fmt(perf["realized_pnl"]),
                 f"{perf['count']} closed", rpnl_color)
-        + _tile("Win Rate", f"{perf['win_rate']*100:.0f}%" if perf["count"] else "—",
+        + _tile("Win Rate", f"{perf['win_rate']*100:.1f}%" if perf["count"] else "—",
                 f"{perf.get('n_wins',0)}W / {perf.get('n_losses',0)}L" if perf["count"] else "")
         + _tile("Profit Factor", pf_str,
                 "≥1.5 target", "#27500A" if pf_val >= 1.5 else "#E07800" if pf_val >= 1.0 else "#CC1111")
@@ -2704,7 +2704,7 @@ def _render_portfolio_tab() -> None:
          "Limit": f"Floor {floor_lo}–{floor_hi}%",
          "Status": "✅ OK" if deployed_pct * 100 >= floor_lo else "⚠️ Below floor"},
         {"Check": "Max Sector",
-         "Current": f"{max_sector_name}: {max_sector_pct:.0f}%",
+         "Current": f"{max_sector_name}: {max_sector_pct:.1f}%",
          "Limit": "Max 25%",
          "Status": "✅ OK" if max_sector_pct <= 25 else "❌ Over concentrated"},
         {"Check": "Drawdown",
