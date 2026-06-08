@@ -118,7 +118,6 @@ from data.fred import (
 )
 from data.flows import fetch_etf_fund_flows
 from trading_logic import (
-    compute_entry_stop,
     period_to_range,
     add_open_position,
     close_position,
@@ -1798,374 +1797,194 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
         )
 
 
-def _render_position_sizer_tab(
-    candidates_df: pd.DataFrame,
-    perm: str,
-    l0: dict,
-) -> None:
-    """
-    Render the Position Sizer tab — standalone.
-    Reads selected ticker from screener or allows custom entry.
-    Computes shares, risk, and shows profit targets.
-    """
-    # Order-ticket hero renders below once entry/stop are set; this tab leads with
-    # the order, not a preamble card. (Risk % auto-adjusts to permission state and
-    # drawdown tier; pick a screener candidate or enter custom values.)
+def _size_one_order(item: dict, account: float, perm: str, drawdown_state: str) -> dict:
+    """Size a single queued candidate. Returns a dict with shares, risk, targets,
+    warnings, and display fields. Uses the screener's entry/stop (no live fetch).
+
+    Framework rules: risk % from permission state, drawdown tier multiplier,
+    negative-carry 25% cut, accelerating half-size, 10% position cap, T1/T2."""
+    entry = float(item.get("entry") or 0)
+    stop  = float(item.get("stop") or 0)
+    trig  = item.get("trigger", "Breakout")
+    is_accel = trig == "Accelerating"
+
+    base_risk = {"Green": 0.0075, "Yellow": 0.005, "Red": 0.0}.get(perm, 0.0075)
+
+    # Drawdown tier (recalibrated v4)
+    if "7–10%" in drawdown_state or "Tier 2" in drawdown_state:
+        dd_mult, dd_note = 0.50, "Tier 2 drawdown — risk reduced 50%"
+    elif "10–15%" in drawdown_state or "Tier 3" in drawdown_state:
+        dd_mult, dd_note = 0.0, "Tier 3 drawdown — no new entries"
+    elif ">15%" in drawdown_state:
+        dd_mult, dd_note = 0.0, "Emergency — no new positions"
+    else:
+        dd_mult, dd_note = 1.0, ""
+
+    # Negative earnings carry → size down 25%
+    carry_mult, carry_note = 1.0, ""
+    if item.get("carry_label") == "Negative":
+        carry_mult = 0.75
+        carry_note = f"Negative carry ({item.get('carry_spread', 0):+.1f}%) — size reduced 25%"
+
+    adj_risk = base_risk * dd_mult * carry_mult
+    rps = entry - stop
+    valid = entry > 0 and stop > 0 and entry > stop
+
+    if not valid:
+        return {"ticker": item.get("ticker", ""), "valid": False,
+                "reason": "Entry must be above stop." if (entry or stop) else "No entry/stop from screener.",
+                "sector": item.get("sector", "")}
+
+    risk_dollars = round(account * adj_risk)
+    shares = int(risk_dollars / rps) if rps > 0 else 0
+    if is_accel:
+        shares //= 2
+
+    pos_value = round(shares * entry)
+    max_pos = round(account * 0.10)
+    capped = False
+    if pos_value > max_pos:
+        shares = int(max_pos / entry) if entry > 0 else 0
+        pos_value = round(shares * entry)
+        capped = True
+
+    actual_risk = round(shares * rps)
+    actual_risk_pct = (actual_risk / account * 100) if account > 0 else 0
+
+    if is_accel:
+        t1_pct, t2_pct, t1_lab, t2_lab, hold = 0.09, 0.175, "+8-10%", "+15-20%", "6 weeks"
+    else:
+        t1_pct, t2_pct, t1_lab, t2_lab, hold = 0.10, 0.225, "+8-12%", "+20-25%", "12 weeks"
+
+    warnings = []
+    if perm == "Red":
+        warnings.append("RED state — no new positions allowed")
+    if is_accel:
+        warnings.append("Accelerating — half-sized, 10d EMA stop, 6-week hold")
+    if capped:
+        warnings.append(f"Capped at 10% of account (${max_pos:,})")
+    if carry_note:
+        warnings.append(carry_note)
+    if dd_note:
+        warnings.append(dd_note)
+
+    return {
+        "ticker": item.get("ticker", ""), "valid": True, "sector": item.get("sector", ""),
+        "entry": entry, "stop": stop, "trigger": trig, "shares": shares,
+        "pos_value": pos_value, "pos_pct": (pos_value / account * 100) if account else 0,
+        "actual_risk": actual_risk, "actual_risk_pct": actual_risk_pct, "rps": rps,
+        "adj_risk_pct": adj_risk * 100,
+        "be": round(entry * 1.05, 2),
+        "t1": round(entry * (1 + t1_pct), 2), "t1_lab": t1_lab,
+        "t2": round(entry * (1 + t2_pct), 2), "t2_lab": t2_lab,
+        "hold": hold, "warnings": warnings,
+        "verdict": item.get("verdict", ""),
+    }
+
+
+def _render_position_sizer_tab(perm: str, l0: dict) -> None:
+    """Render the Position Sizer tab.
+
+    Sizes every ticker queued from the Screener at once and shows each as an
+    order card (Buy N shares @ entry, stop, risk, % account, warnings). Read-only;
+    final triage happens in TradingView. Queue-only — no custom entry."""
     account = st.session_state.account_value
     drawdown_state = st.session_state.drawdown_state
-
-    # ── Build candidate list from sizer_queue (selected on Screener tab) ─────
     queue = st.session_state.get("sizer_queue", [])
-    candidates = {}
 
-    # Only show queued tickers (selected via checkboxes on Screener tab)
-    for item in queue:
-        label = f"{item['ticker']}  —  {item.get('verdict', '')}  ({item.get('trigger', 'Breakout')})  ${item.get('price', 0):.2f}"
-        candidates[label] = item
-
-    st.session_state["_sizer_candidates"] = candidates
-
-    def _on_candidate_change():
-        sel = st.session_state.get("sizer_select", "Custom entry")
-        cands = st.session_state.get("_sizer_candidates", {})
-        if sel == "Custom entry":
-            st.session_state["sizer_entry"] = 0.0
-            st.session_state["sizer_stop"] = 0.0
-            st.session_state["sizer_live_quote"] = None
-        elif sel in cands:
-            c = cands[sel]
-            trigger_opts = ["Breakout", "Pullback", "Accelerating"]
-            if c.get("trigger") in trigger_opts:
-                st.session_state["sizer_trigger"] = c["trigger"]
-            trigger = c.get("trigger", "Breakout")
-
-            # Fetch live data and compute entry/stop per framework L5 rules
-            try:
-                tkr = yf.Ticker(c["ticker"])
-                hist = tkr.history(period="6mo")
-                close = hist["Close"].squeeze()
-                volume = hist["Volume"].squeeze()
-                if isinstance(close, pd.DataFrame):
-                    close = close.iloc[:, 0]
-                close = close.dropna()
-                price = round(float(close.iloc[-1]), 2)
-                ma20 = round(float(close.rolling(20).mean().iloc[-1]), 2)
-                ma50 = round(float(close.rolling(50).mean().iloc[-1]), 2)
-                ema10 = round(float(close.ewm(span=10, adjust=False).mean().iloc[-1]), 2)
-
-                # 6-week base range
-                base_px = close.iloc[-30:]
-                base_high = round(float(base_px.max()), 2)
-                base_low = round(float(base_px.min()), 2)
-
-                entry, stop = compute_entry_stop(trigger, {
-                    "price": price, "ma20": ma20, "ema10": ema10,
-                    "base_high": base_high, "base_low": base_low,
-                })
-                st.session_state["sizer_entry"] = entry
-                st.session_state["sizer_stop"] = stop
-                st.session_state["sizer_live_quote"] = {
-                    "price": price,
-                    "ticker": c["ticker"],
-                    "ma20": ma20,
-                    "ma50": ma50,
-                    "ema10": ema10,
-                    "base_high": base_high,
-                    "base_low": base_low,
-                }
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                # Fallback to screener values
-                st.session_state["sizer_entry"] = c.get("entry", 0.0)
-                st.session_state["sizer_stop"] = c.get("stop", 0.0)
-                st.session_state["sizer_live_quote"] = None
-
-    if "sizer_entry" not in st.session_state:
-        st.session_state["sizer_entry"] = 0.0
-    if "sizer_stop" not in st.session_state:
-        st.session_state["sizer_stop"] = 0.0
-
-    # Order-ticket hero placeholder — filled after sizing is computed below, so
-    # the order ("Buy N shares @ X, stop Y, risking Z") leads the tab.
-    order_slot = st.empty()
-
-    # Show queue status
-    if queue:
-        queue_tickers = [e["ticker"] for e in queue]
+    if not queue:
         st.markdown(
-            _gate_bar_html("Green", f"From screener: {', '.join(queue_tickers)}"),
+            _gate_bar_html("Yellow",
+                           "No setups queued. Go to the Screener tab and click "
+                           "“Size” on a candidate to size it here."),
             unsafe_allow_html=True,
         )
+        return
 
-    options = ["Custom entry"] + list(candidates.keys())
-    st.selectbox(
-        "Select candidate",
-        options,
-        key="sizer_select",
-        on_change=_on_candidate_change,
-    )
+    orders = [_size_one_order(item, account, perm, drawdown_state) for item in queue]
+    valid_orders = [o for o in orders if o["valid"]]
+    n_orders = len(valid_orders)
+    total_risk = sum(o["actual_risk"] for o in valid_orders)
+    total_value = sum(o["pos_value"] for o in valid_orders)
 
-    # ── Live quote & reference levels ────────────────────────────────────────
-    live = st.session_state.get("sizer_live_quote")
-    if live:
-        sel_key = st.session_state.get("sizer_select", "Custom entry")
-        cands_ref = st.session_state.get("_sizer_candidates", {})
-        screener_px = cands_ref.get(sel_key, {}).get("price", 0)
-        chg = live["price"] - screener_px if screener_px else 0
-        chg_pct = (chg / screener_px * 100) if screener_px else 0
-        chg_color = "#22C55E" if chg >= 0 else "#EF4444"
-        ref_parts = []
-        if live.get("ma20"):
-            ref_parts.append(f'20d MA: ${live["ma20"]:.2f}')
-        if live.get("ma50"):
-            ref_parts.append(f'50d MA: ${live["ma50"]:.2f}')
-        if live.get("ema10"):
-            ref_parts.append(f'10d EMA: ${live["ema10"]:.2f}')
-        if live.get("base_high"):
-            ref_parts.append(f'Base: ${live["base_low"]:.2f}–${live["base_high"]:.2f}')
-        ref_str = " · ".join(ref_parts)
-        st.markdown(
-            f'<p style="font-size:13px; margin:4px 0 2px 0;">'
-            f'<b>{live["ticker"]}</b> live: <b>${live["price"]:.2f}</b> '
-            f'<span style="color:{chg_color};">({chg:+.2f} / {chg_pct:+.1f}% vs screener)</span></p>'
-            f'<p style="font-size:11px; color:#5A7BAA; margin:0 0 8px 0;">{ref_str}</p>',
-            unsafe_allow_html=True,
-        )
-
-    # ── Recompute entry/stop when trigger type changes ──────────────────────
-    def _on_trigger_change():
-        live = st.session_state.get("sizer_live_quote")
-        if not live:
-            return
-        trig = st.session_state.get("sizer_trigger", "Breakout")
-        entry, stop = compute_entry_stop(trig, live)
-        st.session_state["sizer_entry"] = entry
-        st.session_state["sizer_stop"] = stop
-
-    # ── Input columns ─────────────────────────────────────────────────────────
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        entry_px = st.number_input("Entry $", step=0.01, format="%.2f", key="sizer_entry")
-    with c2:
-        stop_px = st.number_input("Stop $", step=0.01, format="%.2f", key="sizer_stop")
-    with c3:
-        trigger_type = st.selectbox(
-            "Trigger type",
-            ["Breakout", "Pullback", "Accelerating"],
-            key="sizer_trigger",
-            on_change=_on_trigger_change,
-        )
-    with c4:
-        acct_override = st.number_input("Account $", value=account, step=1000, format="%d", key="sizer_acct")
-
-    # ── Compute sizing ────────────────────────────────────────────────────────
-    if entry_px > 0 and stop_px > 0 and entry_px > stop_px:
-        # Base risk % from permission state
-        risk_pct_map = {"Green": 0.0075, "Yellow": 0.005, "Red": 0.0}
-        base_risk_pct = risk_pct_map.get(perm, 0.0075)
-
-        # Drawdown adjustment (Layer 9)
-        if "7–10%" in drawdown_state or "Tier 2" in drawdown_state:
-            drawdown_mult = 0.50
-            dd_note = "Tier 2 drawdown — risk reduced 50%"
-        elif "10–15%" in drawdown_state or "Tier 3" in drawdown_state:
-            drawdown_mult = 0.0
-            dd_note = "Tier 3 drawdown — no new Tactical entries"
-        elif ">15%" in drawdown_state:
-            drawdown_mult = 0.0
-            dd_note = "Emergency — no new positions"
-        else:
-            drawdown_mult = 1.0
-            dd_note = ""
-
-        adj_risk_pct = base_risk_pct * drawdown_mult
-
-        # Earnings carry adjustment (L4 Step 4): negative carry → reduce 25%
-        carry_mult = 1.0
-        carry_note = ""
-        sel_key_carry = st.session_state.get("sizer_select", "Custom entry")
-        cands_carry = st.session_state.get("_sizer_candidates", {})
-        if sel_key_carry in cands_carry:
-            c_carry = cands_carry[sel_key_carry]
-            if c_carry.get("carry_label") == "Negative":
-                carry_mult = 0.75
-                carry_spread_val = c_carry.get("carry_spread", 0)
-                carry_note = f"Negative carry ({carry_spread_val:+.1f}%) — size reduced 25%"
-
-        adj_risk_pct = adj_risk_pct * carry_mult
-        is_accel = trigger_type == "Accelerating"
-
-        risk_dollars = round(acct_override * adj_risk_pct)
-        risk_per_share = entry_px - stop_px
-        shares = int(risk_dollars / risk_per_share) if risk_per_share > 0 else 0
-
-        if is_accel:
-            shares = shares // 2
-
-        pos_value = round(shares * entry_px)
-        max_pos_value = round(acct_override * 0.10)
-        capped = False
-        if pos_value > max_pos_value:
-            shares = int(max_pos_value / entry_px)
-            pos_value = round(shares * entry_px)
-            capped = True
-
-        actual_risk = round(shares * risk_per_share)
-        actual_risk_pct = (actual_risk / acct_override * 100) if acct_override > 0 else 0
-
-        # T1 / T2 targets
-        if is_accel:
-            t1_pct, t2_pct = 0.09, 0.175
-            t1_label, t2_label = "+8-10%", "+15-20%"
-            max_hold = "6 weeks"
-        else:
-            t1_pct, t2_pct = 0.10, 0.225
-            t1_label, t2_label = "+8-12%", "+20-25%"
-            max_hold = "12 weeks"
-
-        t1_price = round(entry_px * (1 + t1_pct), 2)
-        t2_price = round(entry_px * (1 + t2_pct), 2)
-        breakeven_trigger = round(entry_px * 1.05, 2)
-
-        # Build result rows
-        result_rows = [
-            {"Metric": "Shares",           "Value": f"{shares:,}"},
-            {"Metric": "Position Value",   "Value": f"${pos_value:,}  ({pos_value/acct_override*100:.1f}% of account)"},
-            {"Metric": "Risk Dollars",     "Value": f"${actual_risk:,}  ({actual_risk_pct:.2f}% of account)"},
-            {"Metric": "Risk / Share",     "Value": f"${risk_per_share:.2f}"},
-            {"Metric": "Risk %",           "Value": f"{adj_risk_pct*100:.3f}%  ({perm} state{', drawdown adjusted' if drawdown_mult < 1 else ''}{', carry adjusted' if carry_mult < 1 else ''})"},
-        ]
-
-        target_rows = [
-            {"Level": "Breakeven stop",  "Price": f"${breakeven_trigger:.2f}", "Action": "Move stop to breakeven at +5%"},
-            {"Level": f"T1 ({t1_label})", "Price": f"${t1_price:.2f}",         "Action": "Sell 1/3, stop → breakeven"},
-            {"Level": f"T2 ({t2_label})", "Price": f"${t2_price:.2f}",         "Action": "Sell 1/3, trail at 20d MA"},
-            {"Level": "Max hold",         "Price": max_hold,                    "Action": "Exit if insufficient progress"},
-        ]
-
-        # Sector concentration check (25% cap per framework L7)
-        sector_conc_warn = ""
-        sel_key = st.session_state.get("sizer_select", "Custom entry")
-        cands_ref = st.session_state.get("_sizer_candidates", {})
-        candidate_sector = cands_ref.get(sel_key, {}).get("sector", "")
-        if candidate_sector:
-            port_data = _portfolio_load()
-            existing_in_sector = 0.0
-            for p in port_data.get("open_positions", []):
-                p_sec = ""
-                for s, tickers in SECTOR_TICKERS.items():
-                    if p["ticker"] in tickers:
-                        p_sec = s
-                        break
-                # Also check SECTOR_ETFS for Core ETF positions
-                if not p_sec:
-                    for s, etf in SECTOR_ETFS.items():
-                        if p["ticker"] == etf:
-                            p_sec = s
-                            break
-                if p_sec == candidate_sector:
-                    existing_in_sector += p["entry_price"] * p["shares"]
-            new_total = existing_in_sector + pos_value
-            sector_pct = new_total / acct_override * 100 if acct_override > 0 else 0
-            if sector_pct > 25:
-                sector_conc_warn = f"⚠️ Sector concentration: {candidate_sector} would be {sector_pct:.0f}% of account (${new_total:,.0f}) — exceeds 25% cap"
-
-        # Warnings
-        warnings = []
-        if is_accel:
-            warnings.append("🔥 Accelerating Protocol — half-sized, 10d EMA stop, 6-week hold")
-        if capped:
-            warnings.append(f"⚠️ Position capped at 10% of account (${max_pos_value:,})")
-        if sector_conc_warn:
-            warnings.append(sector_conc_warn)
-        if carry_note:
-            warnings.append(f"📉 {carry_note}")
-        if dd_note:
-            warnings.append(f"⚠️ {dd_note}")
-        if perm == "Red":
-            warnings.append("❌ RED state — no new positions allowed")
-
-        warn_html = ""
-        if warnings:
-            warn_html = '<div style="margin-bottom:8px;">' + "".join(
-                f'<p style="font-size:12px; font-weight:500; color:#CC1111; margin:2px 0;">{w}</p>'
-                for w in warnings
-            ) + '</div>'
-
-        # ── Order-ticket hero (fills the top placeholder) ────────────────────
-        sel_key_h = st.session_state.get("sizer_select", "Custom entry")
-        cands_h   = st.session_state.get("_sizer_candidates", {})
-        order_tkr = cands_h.get(sel_key_h, {}).get("ticker", "")
-        tkr_label = f" — {order_tkr}" if order_tkr else ""
-
-        if perm == "Red" or shares <= 0:
-            oh_bg, oh_bd, oh_lbl, oh_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
-            order_head  = "No position"
-            order_big   = "RED state — no new entries" if perm == "Red" else "Risk too small for 1 share"
-            order_sub   = ""
-        else:
-            oh_bg, oh_bd, oh_lbl, oh_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
-            order_head  = f"Order{tkr_label}"
-            order_big   = f"Buy {shares:,} shares @ ${entry_px:,.2f}"
-            order_sub   = (f"Stop ${stop_px:,.2f} · risking ${actual_risk:,} "
-                           f"({actual_risk_pct:.2f}% of account)")
-        order_meta = (f"Position ${pos_value:,} · {pos_value/acct_override*100:.1f}% of account · "
-                      f"{perm} sizing" if shares > 0 and perm != "Red" else "")
-
-        # warnings shown inside the hero so they're impossible to miss
-        hero_warn = ""
-        if warnings:
-            hero_warn = '<div style="margin-top:6px; font-size:11px; line-height:1.5;">' + "".join(
-                f'<div style="color:#A32D2D;">{w}</div>' for w in warnings
-            ) + '</div>'
-
-        order_html = (
-            '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:8px;">'
-            f'<div style="background:{oh_bg}; border:1px solid {oh_bd}; border-radius:10px; padding:11px 13px;">'
-            f'<div style="font-size:13px; font-weight:500; color:{oh_lbl}; margin-bottom:4px;">{order_head}</div>'
-            f'<div style="font-size:18px; font-weight:500; color:{oh_txt}; line-height:1.2;">{order_big}</div>'
-            + (f'<div style="font-size:12px; color:{oh_lbl}; margin-top:2px;">{order_sub}</div>' if order_sub else "")
-            + (f'<div style="font-size:11px; color:{oh_lbl}; margin-top:4px;">{order_meta}</div>' if order_meta else "")
-            + hero_warn
-            + '</div>'
-            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
-            + _tile("Shares", f"{shares:,}", "")
-            + _tile("Risk $", f"${actual_risk:,}", f"{actual_risk_pct:.2f}%")
-            + _tile("Risk / share", f"${risk_per_share:.2f}", "")
-            + _tile("Position", f"${pos_value:,}", f"{pos_value/acct_override*100:.0f}% acct")
-            + '</div>'
-            '</div>'
-        )
-        order_slot.markdown(order_html, unsafe_allow_html=True)
-
-        # ── Demoted reference: full sizing detail + targets ──────────────────
-        st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
-                    'Sizing detail <span style="font-weight:400; color:#5A7BAA;">— how the order was computed</span></div>',
-                    unsafe_allow_html=True)
-        st.markdown(_macro_card("Sizing breakdown",
-                                cb_table(pd.DataFrame(result_rows), bordered=False), "", quiet=True),
-                    unsafe_allow_html=True)
-        st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
-                    'Manage <span style="font-weight:400; color:#5A7BAA;">— profit targets &amp; stops</span></div>',
-                    unsafe_allow_html=True)
-        st.markdown(_macro_card(f"Targets · {trigger_type}",
-                                cb_table(pd.DataFrame(target_rows), bordered=False), "", quiet=True),
-                    unsafe_allow_html=True)
+    # ── Hero: queue summary ───────────────────────────────────────────────────
+    if perm == "Red":
+        h_bg, h_bd, h_lbl, h_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
+        h_title = "No new positions — RED state"
+        h_body  = "Orders shown for reference only; do not enter in RED."
     else:
-        if entry_px > 0 and stop_px > 0 and entry_px <= stop_px:
-            order_slot.markdown(
-                _gate_bar_html("Yellow", "Entry price must be greater than stop price."),
+        h_bg, h_bd, h_lbl, h_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+        h_title = f"{n_orders} order{'s' if n_orders != 1 else ''} ready to place"
+        h_body  = ", ".join(o["ticker"] for o in valid_orders) if n_orders <= 6 \
+                  else f"{n_orders} sized — see order cards below"
+
+    hero = (
+        '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{h_lbl}; margin-bottom:4px;">{h_title}</div>'
+        f'<div style="font-size:12px; color:{h_txt}; line-height:1.5;">{h_body}</div>'
+        '</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("Orders", str(n_orders), "queued")
+        + _tile("Total risk", f"${total_risk:,}", f"{(total_risk/account*100 if account else 0):.1f}% acct",
+                "#CC1111" if total_risk/account > 0.15 else "#27500A" if account else "#5A7BAA")
+        + _tile("Total value", f"${total_value:,}", f"{(total_value/account*100 if account else 0):.0f}% acct")
+        + _tile("State", perm, "sizing",
+                {"Green": "#27500A", "Yellow": "#E07800", "Red": "#CC1111"}.get(perm, "#5A7BAA"))
+        + '</div>'
+        '</div>'
+    )
+    st.markdown(hero, unsafe_allow_html=True)
+
+    if st.button("Clear queue", key="sizer_clear_queue"):
+        st.session_state["sizer_queue"] = []
+        st.rerun()
+
+    # ── One order card per queued ticker ──────────────────────────────────────
+    st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                'Orders <span style="font-weight:400; color:#5A7BAA;">— sized from screener entry/stop · '
+                'finalize in TradingView</span></div>', unsafe_allow_html=True)
+
+    for o in orders:
+        if not o["valid"]:
+            st.markdown(
+                _macro_card(f"{o['ticker']} — cannot size",
+                            f'<p style="font-size:12px; color:#CC1111; margin:0;">{o["reason"]}</p>',
+                            "", quiet=True),
                 unsafe_allow_html=True,
             )
-        else:
-            order_slot.markdown(
-                '<p style="font-size:13px; color:#5A7BAA; text-align:center; padding:20px;">'
-                'Pick a screener candidate or enter entry/stop prices to build the order.</p>',
-                unsafe_allow_html=True,
-            )
+            continue
 
+        accent = "#CC1111" if perm == "Red" else "#1D7A2A"
+        warn_html = ""
+        if o["warnings"]:
+            warn_html = '<div style="margin-top:6px; font-size:11px; line-height:1.5;">' + "".join(
+                f'<div style="color:#A32D2D;">⚠ {w}</div>' for w in o["warnings"]
+            ) + '</div>'
 
+        body = (
+            f'<div style="font-size:16px; font-weight:500; color:#173404;">'
+            f'Buy {o["shares"]:,} shares @ ${o["entry"]:,.2f}</div>'
+            f'<div style="font-size:12px; color:#27500A; margin-top:1px;">'
+            f'Stop ${o["stop"]:,.2f} · risking ${o["actual_risk"]:,} ({o["actual_risk_pct"]:.2f}% of account)</div>'
+            f'<div style="font-size:11px; color:#5A7BAA; margin-top:4px;">'
+            f'Position ${o["pos_value"]:,} · {o["pos_pct"]:.0f}% of account · {o["trigger"]} · {o["sector"]}</div>'
+            f'<div style="font-size:11px; color:#5A7BAA; margin-top:6px; padding-top:6px;'
+            f' border-top:0.5px solid rgba(16,55,102,.09);">'
+            f'Manage: breakeven ${o["be"]:,.2f} (+5%) · '
+            f'T1 ${o["t1"]:,.2f} ({o["t1_lab"]}) sell 1/3 · '
+            f'T2 ${o["t2"]:,.2f} ({o["t2_lab"]}) trail 20d · max hold {o["hold"]}</div>'
+            + warn_html
+        )
+        st.markdown(
+            f'<div style="background:#fff; border:0.5px solid rgba(16,55,102,.12);'
+            f' border-left:3px solid {accent}; border-radius:0 8px 8px 0; padding:11px 13px;'
+            f' margin-bottom:8px;">'
+            f'<div style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
+            f' letter-spacing:.04em; margin-bottom:5px;">{o["ticker"]} {o.get("verdict", "")}</div>'
+            f'{body}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _render_core_tab(l0: dict, l3_data: list, perm: str) -> None:
@@ -3435,20 +3254,8 @@ def main():
         _render_layer4_tab(perm, regime, l0)
 
     with tab5:
-        # Position Sizer — standalone tab, reads selected ticker from screener
-        results_df = st.session_state.get("screener_results")
-        if results_df is not None and not results_df.empty:
-            # Build candidate list from screener results that have entry/stop
-            sizer_candidates = results_df[
-                results_df["Entry"].notna() & results_df["Stop"].notna()
-            ].copy()
-            _render_position_sizer_tab(sizer_candidates, perm, l0)
-        else:
-            st.markdown(
-                '<p style="font-size:14px; color:#5A7BAA; text-align:center; padding:40px;">'
-                'Run the screener first (Screener tab) to populate candidates for sizing.</p>',
-                unsafe_allow_html=True,
-            )
+        # Position Sizer — sizes whatever is queued from the Screener tab.
+        _render_position_sizer_tab(perm, l0)
 
     with tab6:
         passes_df = st.session_state.get("screener_passes", pd.DataFrame())
