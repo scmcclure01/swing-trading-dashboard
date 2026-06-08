@@ -1474,7 +1474,10 @@ def _render_screener_data_warning(results_df) -> None:
 
 
 def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
-    """Render the Layer 4 — Screener tab (v3, button-triggered with 24h cache)."""
+    """Render the Screener tab (v3, button-triggered with 24h cache).
+
+    Leads with an entry-ready hero + stat tiles, then Actionable / Watchlist /
+    Monitoring tables. Per-row 'Size' buttons queue a pick for the sizer."""
 
     if perm == "Red":
         st.markdown(
@@ -1579,86 +1582,110 @@ def _render_layer4_tab(perm: str, regime: str, l0: dict) -> None:
     st.session_state["screener_passes"] = passes_df
     st.session_state["screener_half"]   = half_df
 
-    # ── Stats tiles ──────────────────────────────────────────────────────────
+    # ── Entry-ready hero + stat tiles ────────────────────────────────────────
     full_ready = int((passes_df["Verdict"] == "🟢 ENTRY READY").sum()) if not passes_df.empty else 0
     full_watch = int((passes_df["Verdict"] == "🟡 WATCH").sum()) if not passes_df.empty else 0
     half_ready_watch = int(half_df["Verdict"].isin(["🟢 ENTRY READY", "🟡 WATCH"]).sum()) if not half_df.empty else 0
-    stats_html = (
-        f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-        f' padding:15px 17px; margin-bottom:10px;">'
-        f'<div style="font-size:11px; color:#5A7BAA; margin-bottom:10px;">'
-        f'Sectors: {", ".join(screen_sectors)} &nbsp;·&nbsp; Scanned: {len(results_df)} passing L4 filters</div>'
-        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:9px;">'
-        + _tile("Entry Ready", str(full_ready), "Full signal + trigger confirmed", "#27500A")
-        + _tile("Watch", str(full_watch), "Full signal, trigger pending", "#E07800")
-        + _tile("Half Signal", str(half_ready_watch), "Mixed two-speed, actionable", "#288CFA")
-        + _tile("Scanned", str(len(results_df)), "Total passing L4 filters")
-        + '</div></div>'
+
+    # Tickers that are entry-ready right now (for the hero summary).
+    ready_tickers = (
+        passes_df.loc[passes_df["Verdict"] == "🟢 ENTRY READY", "Ticker"].tolist()
+        if not passes_df.empty else []
     )
-    st.markdown(stats_html, unsafe_allow_html=True)
+    # Hero recolors: green if anything ready, amber if only watch, grey if none.
+    if perm == "Red":
+        h_bg, h_bd, h_lbl, h_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
+    elif full_ready > 0:
+        h_bg, h_bd, h_lbl, h_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+    elif full_watch > 0:
+        h_bg, h_bd, h_lbl, h_txt = "#FFF3D6", "rgba(224,120,0,.35)", "#854F0B", "#412402"
+    else:
+        h_bg, h_bd, h_lbl, h_txt = "#EEF3FA", "rgba(16,55,102,.18)", "#5A7BAA", "#103766"
 
-    # ── Helper: render a selectable table with checkboxes ────────────────────
+    # Fixed-height body: name tickers when few, else just the count.
+    if perm == "Red":
+        hero_title = "No new entries — RED state"
+        hero_body  = "Results shown for reference only."
+    elif full_ready == 0:
+        hero_title = "No entry-ready setups"
+        hero_body  = (f"{full_watch} on watch · {half_ready_watch} half-signal — see tables below"
+                      if (full_watch or half_ready_watch) else "Nothing actionable in this scan.")
+    elif full_ready <= 5:
+        hero_title = f"{full_ready} entry-ready setup{'s' if full_ready != 1 else ''}"
+        hero_body  = ", ".join(ready_tickers)
+    else:
+        hero_title = f"{full_ready} entry-ready setups"
+        hero_body  = "See the Actionable Setups table below to review and size."
+
+    screener_hero = (
+        '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:4px;">'
+        f'<div style="background:{h_bg}; border:1px solid {h_bd}; border-radius:10px; padding:11px 13px;">'
+        f'<div style="font-size:13px; font-weight:500; color:{h_lbl}; letter-spacing:.01em;'
+        f' margin-bottom:4px;">{hero_title}</div>'
+        f'<div style="font-size:12px; color:{h_txt}; line-height:1.5;">{hero_body}</div>'
+        f'<div style="font-size:10px; color:{h_lbl}; margin-top:6px;">'
+        f'Scanned {len(results_df)} · sectors: {", ".join(screen_sectors)}</div>'
+        '</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        + _tile("Entry ready", str(full_ready), "trigger confirmed", "#27500A")
+        + _tile("Watch", str(full_watch), "trigger pending", "#E07800")
+        + _tile("Half signal", str(half_ready_watch), "mixed two-speed", "#288CFA")
+        + _tile("Scanned", str(len(results_df)), "passed filters")
+        + '</div>'
+        '</div>'
+    )
+    st.markdown(screener_hero, unsafe_allow_html=True)
+
+    # ── Helper: queue a ticker for sizing (used by the per-row Size buttons) ──
+    def _queue_for_sizing(df_raw, ticker):
+        match = df_raw[df_raw["Ticker"] == ticker]
+        if match.empty:
+            return
+        row = match.iloc[0]
+        existing = st.session_state.get("sizer_queue", [])
+        if any(e["ticker"] == ticker for e in existing):
+            return  # already queued
+        existing.append({
+            "ticker": ticker,
+            "entry": float(row["Entry"]) if pd.notna(row.get("Entry")) else 0,
+            "stop":  float(row["Stop"])  if pd.notna(row.get("Stop"))  else 0,
+            "trigger": row.get("Trigger", "Breakout"),
+            "price": float(row["Price"]),
+            "sector": row.get("Sector", ""),
+            "verdict": row.get("Verdict", ""),
+            "carry_spread": float(row["Carry_Spread"]) if "Carry_Spread" in row.index and pd.notna(row.get("Carry_Spread")) else None,
+            "carry_label": row.get("Carry_Label", "N/A") if "Carry_Label" in row.index else "N/A",
+        })
+        st.session_state["sizer_queue"] = existing
+
+    # ── Helper: render a styled table + a row of per-ticker "Size" buttons ────
     def _selectable_table(df_raw, display_cols, section_key, heading, pill=""):
-        """
-        Render a table with checkbox selection (st.data_editor). Selected tickers
-        are stored in session state and pushed to the Position Sizer tab.
-        df_raw must have Ticker, Entry, Stop, Trigger columns for sizing.
-        display_cols is a dict of {display_name: series}.
-        """
-        disp = pd.DataFrame(display_cols)
-        disp.insert(0, "Size", False)
-        disp = disp.reset_index(drop=True)
-
+        """Render the candidates as a Classic-Blue table, then a wrapped row of
+        'Size <TICKER>' buttons that queue the pick for the Position Sizer tab.
+        Replaces the old checkbox-grid (st.data_editor)."""
+        # styled, scannable table (no Size column — actions are buttons below)
         st.markdown(
-            f'<div style="background:#FFFFFF; border-radius:12px; border:0.5px solid rgba(16,55,102,0.12);'
-            f' padding:15px 17px; margin-bottom:4px;">'
-            f'<div style="display:flex; align-items:center; justify-content:space-between;'
-            f' margin-bottom:10px; padding-bottom:7px; border-bottom:0.5px solid rgba(16,55,102,0.09);">'
-            f'<span style="font-size:11px; font-weight:500; color:#5A7BAA; text-transform:uppercase;'
-            f' letter-spacing:0.04em;">{heading}</span>'
-            + (f'<span style="background:#EEF3FA; color:#5A7BAA; font-size:10px; font-weight:500;'
-               f' padding:2px 8px; border-radius:4px; border:0.5px solid rgba(16,55,102,0.15);">{pill}</span>'
-               if pill else "")
-            + f'</div></div>',
+            _card(heading, cb_table(pd.DataFrame(display_cols), bordered=False), pill=pill),
             unsafe_allow_html=True,
         )
-
-        edited = st.data_editor(
-            disp,
-            column_config={
-                "Size": st.column_config.CheckboxColumn("Size", default=False, width="small"),
-            },
-            column_order=list(disp.columns),
-            disabled=[c for c in disp.columns if c != "Size"],
-            hide_index=True,
-            use_container_width=True,
-            key=f"sel3_{section_key}",
-        )
-
-        # Collect selected tickers and push to session state
-        if edited is not None and "Size" in edited.columns:
-            selected_rows = edited[edited["Size"] == True]
-            if not selected_rows.empty:
-                selected_tickers = selected_rows["Ticker"].tolist()
-                existing = st.session_state.get("sizer_queue", [])
-                for t in selected_tickers:
-                    match = df_raw[df_raw["Ticker"] == t]
-                    if not match.empty:
-                        row = match.iloc[0]
-                        entry = {
-                            "ticker": t,
-                            "entry": float(row["Entry"]) if pd.notna(row.get("Entry")) else 0,
-                            "stop": float(row["Stop"]) if pd.notna(row.get("Stop")) else 0,
-                            "trigger": row.get("Trigger", "Breakout"),
-                            "price": float(row["Price"]),
-                            "sector": row.get("Sector", ""),
-                            "verdict": row.get("Verdict", ""),
-                            "carry_spread": float(row["Carry_Spread"]) if "Carry_Spread" in row.index and pd.notna(row.get("Carry_Spread")) else None,
-                            "carry_label": row.get("Carry_Label", "N/A") if "Carry_Label" in row.index else "N/A",
-                        }
-                        if not any(e["ticker"] == t for e in existing):
-                            existing.append(entry)
-                st.session_state["sizer_queue"] = existing
+        # one Size button per row, laid out 6-up so it wraps cleanly
+        tickers = list(df_raw["Ticker"].values)
+        queued  = {e["ticker"] for e in st.session_state.get("sizer_queue", [])}
+        st.markdown('<div style="font-size:10px; color:#5A7BAA; margin:2px 0 3px;">'
+                    'Size a setup →</div>', unsafe_allow_html=True)
+        n_per_row = 6
+        for start in range(0, len(tickers), n_per_row):
+            chunk = tickers[start:start + n_per_row]
+            cols = st.columns(n_per_row)
+            for j, tkr in enumerate(chunk):
+                with cols[j]:
+                    if tkr in queued:
+                        st.button(f"✓ {tkr}", key=f"size_{section_key}_{tkr}",
+                                  disabled=True, use_container_width=True)
+                    elif st.button(f"Size {tkr}", key=f"size_{section_key}_{tkr}",
+                                   use_container_width=True):
+                        _queue_for_sizing(df_raw, tkr)
+                        st.rerun()
 
         st.markdown('<div style="margin-bottom:10px"></div>', unsafe_allow_html=True)
 
@@ -1781,17 +1808,9 @@ def _render_position_sizer_tab(
     Reads selected ticker from screener or allows custom entry.
     Computes shares, risk, and shows profit targets.
     """
-    st.markdown(
-        _card(
-            "Layer 6 — Position Sizer",
-            '<p style="font-size:12px; color:#5A7BAA; margin:0;">'
-            'Select a candidate from the screener or enter custom values. '
-            'Risk % auto-adjusts to permission state and drawdown tier.</p>',
-            pill="v4",
-        ),
-        unsafe_allow_html=True,
-    )
-
+    # Order-ticket hero renders below once entry/stop are set; this tab leads with
+    # the order, not a preamble card. (Risk % auto-adjusts to permission state and
+    # drawdown tier; pick a screener candidate or enter custom values.)
     account = st.session_state.account_value
     drawdown_state = st.session_state.drawdown_state
 
@@ -1866,6 +1885,10 @@ def _render_position_sizer_tab(
         st.session_state["sizer_entry"] = 0.0
     if "sizer_stop" not in st.session_state:
         st.session_state["sizer_stop"] = 0.0
+
+    # Order-ticket hero placeholder — filled after sizing is computed below, so
+    # the order ("Buy N shares @ X, stop Y, risking Z") leads the tab.
+    order_slot = st.empty()
 
     # Show queue status
     if queue:
@@ -2070,27 +2093,75 @@ def _render_position_sizer_tab(
                 for w in warnings
             ) + '</div>'
 
-        sizing_html = warn_html + cb_table(pd.DataFrame(result_rows), bordered=False)
-        targets_html = cb_table(pd.DataFrame(target_rows), bordered=False)
+        # ── Order-ticket hero (fills the top placeholder) ────────────────────
+        sel_key_h = st.session_state.get("sizer_select", "Custom entry")
+        cands_h   = st.session_state.get("_sizer_candidates", {})
+        order_tkr = cands_h.get(sel_key_h, {}).get("ticker", "")
+        tkr_label = f" — {order_tkr}" if order_tkr else ""
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown(
-                _card("Position Size", sizing_html, pill=f"{shares:,} shares"),
-                unsafe_allow_html=True,
-            )
-        with col_b:
-            st.markdown(
-                _card("Profit Targets & Management", targets_html, pill=trigger_type),
-                unsafe_allow_html=True,
-            )
+        if perm == "Red" or shares <= 0:
+            oh_bg, oh_bd, oh_lbl, oh_txt = "#FFE4E4", "rgba(204,17,17,.35)", "#A32D2D", "#501313"
+            order_head  = "No position"
+            order_big   = "RED state — no new entries" if perm == "Red" else "Risk too small for 1 share"
+            order_sub   = ""
+        else:
+            oh_bg, oh_bd, oh_lbl, oh_txt = "#D6F0D6", "rgba(29,122,42,.35)", "#27500A", "#173404"
+            order_head  = f"Order{tkr_label}"
+            order_big   = f"Buy {shares:,} shares @ ${entry_px:,.2f}"
+            order_sub   = (f"Stop ${stop_px:,.2f} · risking ${actual_risk:,} "
+                           f"({actual_risk_pct:.2f}% of account)")
+        order_meta = (f"Position ${pos_value:,} · {pos_value/acct_override*100:.1f}% of account · "
+                      f"{perm} sizing" if shares > 0 and perm != "Red" else "")
+
+        # warnings shown inside the hero so they're impossible to miss
+        hero_warn = ""
+        if warnings:
+            hero_warn = '<div style="margin-top:6px; font-size:11px; line-height:1.5;">' + "".join(
+                f'<div style="color:#A32D2D;">{w}</div>' for w in warnings
+            ) + '</div>'
+
+        order_html = (
+            '<div style="display:grid; grid-template-columns:1.3fr 1fr; gap:9px; margin-bottom:8px;">'
+            f'<div style="background:{oh_bg}; border:1px solid {oh_bd}; border-radius:10px; padding:11px 13px;">'
+            f'<div style="font-size:13px; font-weight:500; color:{oh_lbl}; margin-bottom:4px;">{order_head}</div>'
+            f'<div style="font-size:18px; font-weight:500; color:{oh_txt}; line-height:1.2;">{order_big}</div>'
+            + (f'<div style="font-size:12px; color:{oh_lbl}; margin-top:2px;">{order_sub}</div>' if order_sub else "")
+            + (f'<div style="font-size:11px; color:{oh_lbl}; margin-top:4px;">{order_meta}</div>' if order_meta else "")
+            + hero_warn
+            + '</div>'
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+            + _tile("Shares", f"{shares:,}", "")
+            + _tile("Risk $", f"${actual_risk:,}", f"{actual_risk_pct:.2f}%")
+            + _tile("Risk / share", f"${risk_per_share:.2f}", "")
+            + _tile("Position", f"${pos_value:,}", f"{pos_value/acct_override*100:.0f}% acct")
+            + '</div>'
+            '</div>'
+        )
+        order_slot.markdown(order_html, unsafe_allow_html=True)
+
+        # ── Demoted reference: full sizing detail + targets ──────────────────
+        st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                    'Sizing detail <span style="font-weight:400; color:#5A7BAA;">— how the order was computed</span></div>',
+                    unsafe_allow_html=True)
+        st.markdown(_macro_card("Sizing breakdown",
+                                cb_table(pd.DataFrame(result_rows), bordered=False), "", quiet=True),
+                    unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px; font-weight:500; color:#103766; margin:11px 0 6px;">'
+                    'Manage <span style="font-weight:400; color:#5A7BAA;">— profit targets &amp; stops</span></div>',
+                    unsafe_allow_html=True)
+        st.markdown(_macro_card(f"Targets · {trigger_type}",
+                                cb_table(pd.DataFrame(target_rows), bordered=False), "", quiet=True),
+                    unsafe_allow_html=True)
     else:
         if entry_px > 0 and stop_px > 0 and entry_px <= stop_px:
-            st.warning("Entry price must be greater than stop price.")
+            order_slot.markdown(
+                _gate_bar_html("Yellow", "Entry price must be greater than stop price."),
+                unsafe_allow_html=True,
+            )
         else:
-            st.markdown(
+            order_slot.markdown(
                 '<p style="font-size:13px; color:#5A7BAA; text-align:center; padding:20px;">'
-                'Select a candidate above or enter entry/stop prices to calculate position size.</p>',
+                'Pick a screener candidate or enter entry/stop prices to build the order.</p>',
                 unsafe_allow_html=True,
             )
 
