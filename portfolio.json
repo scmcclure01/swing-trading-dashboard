@@ -1,10 +1,20 @@
 {
-  "cash_balance": 55908.96,
-  "last_updated": "2026-06-05",
+  "cash_balance": 51552.58,
+  "last_updated": "2026-06-12",
   "data_source": "Fidelity BrokerageLink (650840700) — transactions only. Do not add positions without a user-posted transaction.",
   "note": "Account value = cash_balance + open positions at market. cash_balance = total account minus cost basis of open positions. Update cash_balance when positions are opened or closed.",
   "pending_orders": [],
   "open_positions": [
+    {
+      "ticker": "EXPD",
+      "layer": "Tactical",
+      "entry_date": "2026-06-09",
+      "entry_price": 165.00,
+      "shares": 20,
+      "stop_price": null,
+      "current_price": 165.00,
+      "notes": "Bought 20 sh @ $165.00 ($3,300, Cash, settled 2026-06-10). Industrials (logistics/freight). STOP NOT SET — user to define entry stop and set GTC in broker. Risk % pending stop. Max hold 2026-09-01 (entry + 12wk)."
+    },
     {
       "ticker": "XLK",
       "layer": "Core",
@@ -30,13 +40,24 @@
       "layer": "Tactical",
       "entry_date": "2026-05-28",
       "entry_price": 310.00,
-      "shares": 16,
-      "stop_price": 295.00,
-      "current_price": 318.00,
-      "notes": "Accelerating Protocol. GTC stop $295 set in broker (order 1790T7JB). Risk: $240 (0.24%). Two-speed Full, carry Positive. Max hold 2026-07-09."
+      "shares": 11,
+      "stop_price": 325.00,
+      "current_price": 368.86,
+      "notes": "Accelerating Protocol. T1 partial taken 2026-06-12 (5 sh @ $368.50, +18.9%). Remaining 11 sh. GTC stop raised to $325 (order 1832Z1RL, expires 2026-11-25) — now locks in profit vs $310 entry. Two-speed Full, carry Positive. Max hold 2026-07-09."
     }
   ],
   "closed_positions": [
+    {
+      "ticker": "LRCX",
+      "layer": "Tactical",
+      "entry_date": "2026-05-28",
+      "exit_date": "2026-06-12",
+      "entry_price": 310.00,
+      "exit_price": 368.50,
+      "shares": 5,
+      "exit_reason": "Target",
+      "notes": "T1 partial (1/3) — Accelerating Protocol. Market sell order 1832V1SB filled $368.5049, proceeds $1,842.48. P&L: +$292.52 (+18.9%). 11-share remainder continues, stop raised to $325 (order 1832Z1RL)."
+    },
     {
       "ticker": "QCOM",
       "layer": "Tactical",
