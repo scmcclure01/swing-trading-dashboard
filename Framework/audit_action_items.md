@@ -1,6 +1,6 @@
 # Framework Audit — Action Items
 **Audit date:** 2026-06-04
-**Last updated:** 2026-06-06
+**Last updated:** 2026-06-07
 
 ---
 
@@ -11,8 +11,8 @@
 | Critical | 4 | 3 | 1 |
 | High | 9 | 8 | 1 |
 | Medium | 10 | 10 | 0 |
-| Low | 7 | 7 | 0 |
-| **Total** | **30** | **28** | **2** |
+| Low | 11 | 7 | 4 |
+| **Total** | **34** | **28** | **6** |
 
 ---
 
@@ -32,7 +32,15 @@
 
 ### Low
 
-*(all low items resolved)*
+- [ ] **L8: Rebuild ETF exit monitoring on true 2-consecutive-week signals** — The ETF exit-alert card (Portfolio tab) currently uses single-snapshot proxies: flow "Outflows" classification and RS "Lagging" trend. The framework actually requires *2 consecutive weeks* of net outflows OR 2+ weeks of RS decline. The current proxy does not accomplish this and is not trusted. Rebuild: persist weekly flow + RS history (e.g. a small rolling store in portfolio.json or a separate JSON), and fire the flow/RS exit triggers only on a genuine 2-week streak. The 20d-MA trigger is exact and can stay. Until rebuilt, treat the flow/RS alerts as informational only.
+
+- [ ] **L9: Build Energy three-layer signal (Layer 4 Step 5)** — Not yet in the app. Framework specifies a 3-part composite for energy/commodity names: (A) crude term structure CL1!−CL2! (backwardation bullish), (B) CFTC COT positioning percentile (below 20th = contrarian bullish, above 80th = fragile), (C) XLE vs 50d SMA trend. Score +1/0/−1 each, weight 50/25/25, composite sizes energy entries. Main effort is sourcing/parsing CFTC COT data (cftc.gov, published Fri 3:30 PM ET; or tradingster.com/barchart). Narrow applicability (energy names only) — hence low priority.
+
+- [ ] **L10: Make Taylor Rule feed sizing instead of informational-only** — The Taylor Rule deviation is a manual monthly sidebar dropdown but the Gate Summary marks it "Informational" and nothing consumes it. Framework treats a >1% deviation as a positioning/sizing input (Fed too loose → reduce rate-sensitive longs; too tight → favors risk-on). Decide the concrete sizing/tilt effect and wire it in, or remove the input if it's not going to drive anything.
+
+- [ ] **L11: Add volume confirmation to exit triggers** — Framework repeatedly specifies "close below MA *on above-average volume*" for exits (Tactical 50d/20d and ETF 20d). The Portfolio tab's trade-management status and the new ETF exit card key off price vs MA but do not gate on the volume condition. Add the above-average-volume check so a low-volume dip below the MA doesn't read as a hard exit.
+
+*(L1–L7 resolved — see Completed Items)*
 
 ---
 

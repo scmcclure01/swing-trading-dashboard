@@ -42,4 +42,10 @@ Running list of deferred items and automation improvements. Updated as new items
 
 ---
 
-*Last updated: 2026-06-06*
+## UI — Revisit After Road Time
+
+- [ ] **(Low priority) Position Sizer — cards vs. table** — Currently renders each queued order as a per-order card (more detail per order, but more vertical scrolling with many orders). Considered a true table (all orders visible at once, management details via hover/second line) but kept cards for the detail. Revisit after a few weeks of real use to decide if a compact table reads better with larger queues. Decided 2026-06-07.
+
+---
+
+*Last updated: 2026-06-07*

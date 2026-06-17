@@ -51,20 +51,12 @@ def fetch_fed_net_liquidity() -> dict:
     Signal: 4-week change <= -$200B → Override Active
     Updates Thursdays at 4:30 PM ET with the H.4.1 release.
     """
-    def fetch_series(series_id, timeout=20, retries=3):
+    def fetch_series(series_id):
         url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        last_err = None
-        for attempt in range(retries):
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as r:
-                    data = r.read().decode()
-                rows = list(csv.reader(StringIO(data)))[1:]
-                return {row[0]: float(row[1]) for row in rows
-                        if len(row) > 1 and row[1] not in ('.', '', 'NA')}
-            except Exception as e:
-                last_err = e
-        raise RuntimeError(f"{series_id} fetch failed after {retries} tries: {last_err}")
+        with urllib.request.urlopen(url, timeout=10) as r:
+            data = r.read().decode()
+        rows = list(csv.reader(StringIO(data)))[1:]
+        return {row[0]: float(row[1]) for row in rows if len(row) > 1 and row[1] not in ('.', '', 'NA')}
 
     try:
         walcl = fetch_series("WALCL")
@@ -100,7 +92,7 @@ def fetch_fed_net_liquidity() -> dict:
             "signal":       signal,
         }
     except Exception as e:
-        return {"error": f"Fed Net Liquidity fetch failed ({e}). Refresh to retry."}
+        return {"error": str(e)}
 
 
 def _fred_latest_via_api(series_id: str):
