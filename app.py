@@ -3055,6 +3055,8 @@ def main():
         st.caption("Set once at the start of each weekly review.")
 
         _eps_opts = ["Not set", "↑ Rising 3+ weeks ✅", "Flat", "↓ Declining ⚠️"]
+        if st.session_state.eps_signal not in _eps_opts:
+            st.session_state.eps_signal = "Not set"
         st.session_state.eps_signal = st.selectbox(
             "EPS Revisions (FactSet)", _eps_opts,
             index=_eps_opts.index(st.session_state.eps_signal),
@@ -3063,6 +3065,8 @@ def main():
         # Drawdown is auto-computed from peak equity (see above) and shown in the
         # header Drawdown tile — no manual control needed here.
         _lei_opts = ["Not set", "Rising ✅", "Flat", "6mo declining ⚠️"]
+        if st.session_state.lei_signal not in _lei_opts:
+            st.session_state.lei_signal = "Not set"
         st.session_state.lei_signal = st.selectbox(
             "Conference Board LEI", _lei_opts,
             index=_lei_opts.index(st.session_state.lei_signal),
@@ -3074,6 +3078,8 @@ def main():
             "Near zero (−1% to +1%) — neutral",
             "Negative <−1% — Fed too tight ✅",
         ]
+        if st.session_state.taylor_rule not in _taylor_opts:
+            st.session_state.taylor_rule = "Not set"
         st.session_state.taylor_rule = st.selectbox(
             "Taylor Rule Deviation (monthly)", _taylor_opts,
             index=_taylor_opts.index(st.session_state.taylor_rule),
@@ -3088,6 +3094,8 @@ def main():
                  "Insight or multpl.com (forward). Leave 0 if not set. Feeds L1 checks 1 & 3.",
         )
         _gdpnow_opts = ["Not set", "Bullish", "Neutral", "Bearish"]
+        if st.session_state.gdpnow_signal not in _gdpnow_opts:
+            st.session_state.gdpnow_signal = "Not set"
         st.session_state.gdpnow_signal = st.selectbox(
             "GDPNow vs Analyst EPS (L1, monthly)", _gdpnow_opts,
             index=_gdpnow_opts.index(st.session_state.gdpnow_signal),
